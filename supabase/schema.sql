@@ -161,6 +161,17 @@ create table if not exists settings (       -- Parameter als JSON: battery, pv, 
   updated_at timestamptz not null default now()
 );
 
+create table if not exists weather_daily (   -- v5 (App v0.10): Wetter-Tageswerte von Open-Meteo
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  day date not null,
+  temp_mean numeric not null,        -- Tagesmitteltemperatur °C
+  rad_kwh numeric not null,          -- Globalstrahlung kWh/m² (horizontal)
+  sun_h numeric,                     -- Sonnenstunden
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
+
 -- v3 (App v0.7): Boni als Einzelposten je Tarif, z. B.
 -- [{"name":"Sofortbonus","amount":100},{"name":"Neukundenbonus","amount":80,"minKwh":2000,"amountBelow":50}]
 alter table tariffs add column if not exists boni_items jsonb;
@@ -191,7 +202,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['anker_daily','meters','meter_readings','events','tariffs','installments',
-                           'payments','investments','fuel_log','charge_log','car_log','settings']
+                           'payments','investments','fuel_log','charge_log','car_log','settings','weather_daily']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists own_rows on %I', t);
@@ -205,5 +216,5 @@ begin
   end loop;
 end $$;
 
--- Kontrolle 1: muss 12 Zeilen zeigen, alle rowsecurity = true
+-- Kontrolle 1: muss 13 Zeilen zeigen, alle rowsecurity = true
 select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;

@@ -153,3 +153,22 @@
 - Beispielwerte in Kommentaren (Boni-Posten) durch neutrale Zahlen ersetzt.
 - Tests: 55 Unit-Tests (neu `tests/v09.test.mjs`), `scripts/v09-check.mjs` 13 Prüfungen; Seitenvergleich,
   Bearbeiten, Offline, v0.7 und v0.8 unverändert bestanden.
+
+## v0.10.0 – Wetter
+- **Schema v5** (`docs/UPDATE_V10.sql`): Tabelle `weather_daily` (Tagesmitteltemperatur, Globalstrahlung kWh/m²,
+  Sonnenstunden) mit RLS wie alle Tabellen. Fehlt sie, läuft die App ohne Wetter weiter und zeigt einen Hinweis.
+- **Datenquelle Open-Meteo** (`js/weather.js`, frei, ohne Schlüssel): Archiv bis etwa 6 Tage vor heute, die letzten
+  Tage aus der Vorhersage-API. Ortssuche über Open-Meteo, Koordinaten auf 0,01° gerundet und nur in
+  `settings.data.wx` gespeichert. Fehlende Tage werden beim Öffnen ergänzt, die letzten 10 Tage immer neu geholt.
+- **Wärmepumpe wetterbereinigt** (Zähler & Wärmepumpe): Gradtage nach VDI 3807 (Raum 20 °C, Heizgrenze 15 °C,
+  einstellbar) je Ableseintervall; Modell „Grundlast je Tag + Heizarbeit je Gradtag“ (kleinste Quadrate), getrennt
+  vor und nach dem Gerätetausch; Jahresverbrauch auf das Wetter der letzten 365 Tage umgerechnet. Grund: Der
+  bisherige Vergleich alt/neu hängt stark davon ab, wie kalt der jeweilige Winter war.
+- **PV und Wetter** (PV-Anlage): Erzeugung gegen Einstrahlung je Monat, Ertragsfaktor (kWh je kWp und kWh/m²),
+  Jahresvergleich getrennt nach Sonne und Anlage, auffällige Sonnentage (Hinweis auf Abregelung bei vollem Speicher).
+- **Überblick**: Satz zur Sonne im laufenden Monat gegenüber dem Vorjahreszeitraum.
+- Service Worker cacht `js/weather.js`; Open-Meteo geht wie Supabase immer direkt ins Netz.
+- Anleitung für Updates: `docs/ANLEITUNG_UPDATES.md`.
+- Tests: 62 Unit-Tests (neu `tests/v10.test.mjs`), `scripts/v10-check.mjs` 22 Prüfungen mit simuliertem Open-Meteo;
+  alle bisherigen Prüfungen unverändert bestanden. Der echte Abruf ließ sich in der Entwicklungsumgebung nicht
+  testen (Netzsperre), er läuft erstmals im Browser.

@@ -3,8 +3,9 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.9.0';
-import { parseNum } from './queue.js?v=0.9.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.10.0';
+import { parseNum } from './queue.js?v=0.10.0';
+import { geocode, fetchDays } from './weather.js?v=0.10.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -704,8 +705,8 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -746,6 +747,7 @@ export function startViews(){
     $("pb-cmp").addEventListener("change",e=>{ S.view.cmp=e.target.value; if(e.target.value==="custom"&&!S.view.cfrom){ const {P}=currentPeriods(); S.view.cfrom=shiftYear(P.from); S.view.cto=shiftYear(P.to); } persist(); rerender(); });
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
+    wireWeather();
     window.addEventListener("hashchange",route);
     if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>rerender());
   }
@@ -1133,4 +1135,99 @@ function renderEvHome() {
     + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause, ${nf(+e.pricePublic || 0, 2)} €/kWh öffentlich`);
   const hint = C.evAbschlagHint();
   $("ab-ev").innerHTML = hint ? flag(`E-Auto ab ${dde(hint.from)}: Es lädt über den Allgemeinstrom, voraussichtlich etwa ${kwh(hint.kwhMonth)} pro Monat aus dem Netz, rund ${eur(hint.eurMonth)} pro Monat mehr. Die Hochrechnung oben enthält das erst, wenn Zählerstände nach der Übergabe vorliegen – Abschlag rechtzeitig um diesen Betrag erhöhen.`) : "";
+}
+
+/* ---------- Wetter (v0.10) ---------- */
+const deg = (v, d = 1) => v == null ? "–" : nf(v, d) + " °C";
+let wxMsg = "", wxAutoDone = false, wxHits = [];
+function renderWxData() {
+  const c = S.wx || {}, w = S.weather || [];
+  if (document.activeElement !== $("wx-q")) $("wx-q").value = c.name || "";
+  [["wx-hl", "heatLimit", 15], ["wx-room", "room", 20]].forEach(([id, k, d]) => { if (document.activeElement !== $(id)) $(id).value = nf(c[k] ?? d, 1).replace(/,0$/, ""); });
+  $("wx-pick-wrap").hidden = !wxHits.length;
+  $("wx-status").innerHTML = (S.weatherError ? flag("Wetter-Tabelle fehlt noch in Supabase: bitte <b>docs/UPDATE_V10.sql</b> im SQL Editor ausführen. Bis dahin läuft die App ohne Wetter.") : "")
+    + `<p class="note">${c.lat != null ? `Standort: <b>${esc(c.name || "")}</b> (${nf(c.lat, 2)} / ${nf(c.lon, 2)}). ` : "Noch kein Standort gewählt. "}${w.length ? `${nf(w.length)} Wettertage gespeichert, ${dde(w[0].d)} bis ${dde(w[w.length - 1].d)}.` : "Noch keine Wetterdaten."}</p>`
+    + (wxMsg ? `<p class="note">${wxMsg}</p>` : "");
+}
+function wireWeather() {
+  $("wx-search").addEventListener("click", async () => {
+    const q = $("wx-q").value.trim(); if (!q) return;
+    try { wxHits = await geocode(q); wxMsg = wxHits.length ? "" : "Kein Ort gefunden."; }
+    catch (e) { wxHits = []; wxMsg = "Ortssuche fehlgeschlagen: " + esc(e.message); }
+    $("wx-pick").innerHTML = `<option value="">Bitte wählen …</option>` + wxHits.map((h, i) => `<option value="${i}">${esc(h.name)}</option>`).join("");
+    renderWxData();
+  });
+  $("wx-pick").addEventListener("change", e => { const h = wxHits[+e.target.value]; if (!h) return;
+    S.wx = { ...(S.wx || {}), name: h.name, lat: h.lat, lon: h.lon }; wxHits = []; persist(); rerender(); syncWeather(false); });
+  [["wx-hl", "heatLimit"], ["wx-room", "room"]].forEach(([id, k]) => $(id).addEventListener("change", e => {
+    const v = parseNum(e.target.value); S.wx = S.wx || {}; if (isFinite(v)) S.wx[k] = v; else delete S.wx[k]; persist(); rerender(); }));
+  $("wx-sync").addEventListener("click", () => syncWeather(false));
+}
+// Fehlende Tage seit dem frühesten Datum (Anker oder Zählerstand Wärmepumpe) bis gestern holen und speichern
+export async function syncWeather(auto) {
+  if (!S || !store?.saveWeather) return;
+  const c = S.wx || {}; if (c.lat == null || S.weatherError) return;
+  if (auto && wxAutoDone) return; wxAutoDone = true;
+  const today = iso(new Date()), yest = addDaysIso(today, -1);
+  const wpFirst = C.groupSeries("wp").first, first = [A.dates[0], wpFirst].filter(Boolean).sort()[0];
+  const have = new Set((S.weather || []).map(w => w.d)), recent = addDaysIso(today, -10);
+  let from = null; for (let d = first; d <= yest; d = addDaysIso(d, 1)) if (!have.has(d) || d >= recent) { from = d; break; }
+  if (!from) return;
+  wxMsg = "Wetter wird geladen …"; if (current === "p-data") renderWxData();
+  try {
+    const rows = await fetchDays(c.lat, c.lon, from, yest, today);
+    if (rows.length) await store.saveWeather(rows);
+    const map = new Map((S.weather || []).map(w => [w.d, w]));
+    rows.forEach(r => map.set(r.day, { d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }));
+    S.weather = [...map.values()].sort((a, b) => a.d.localeCompare(b.d));
+    wxMsg = `${nf(rows.length)} Tage aktualisiert (${dde(from)} bis ${dde(yest)}).`;
+    refreshCalc(); rerender();
+  } catch (e) { wxMsg = (e.message === "offline" ? "Offline – Wetter wird beim nächsten Öffnen ergänzt." : "Wetter konnte nicht geladen werden: " + esc(e.message)); if (current === "p-data") renderWxData(); }
+}
+const addDaysIso = (s, n) => new Date(Date.parse(s + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+const noWx = () => flag("Noch keine Wetterdaten: unter „Daten → Wetter“ den Standort wählen.", true);
+
+function renderWxWp() {
+  const r = C.wpWeather();
+  if (!r) { $("wx-wp").innerHTML = noWx(); $("wx-wp-tbl").innerHTML = ""; chart("wx-wp-chart", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const G = r.groups, lab = { alt: "Alte Wärmepumpe", neu: "Neue Wärmepumpe", alle: "Wärmepumpe" };
+  const kp = Object.entries(G).map(([k, g]) => g ? kpi(kwh(g.year), `${lab[k]}: Jahresverbrauch bei gleichem Wetter`, `Grundlast ${nf(g.base, 1)} kWh/Tag, ${nf(g.k, 2)} kWh je Gradtag, ${g.n} Intervalle${g.r2 != null ? `, R² ${nf(g.r2, 2)}` : ""}`)
+    : kpi("–", `${lab[k]}`, "Zu wenige Ableseintervalle mit Wetterdaten (mindestens 3 mit unterschiedlichem Wetter)")).join("");
+  const cmp = G.alt?.year && G.neu?.year ? kpi(`${G.neu.year < G.alt.year ? "−" : "+"}${pct(Math.abs(G.neu.year / G.alt.year - 1))}`, "Neu gegenüber alt, wetterbereinigt", `Heizarbeit je Gradtag ${G.neu.k < G.alt.k ? "−" : "+"}${pct(Math.abs(G.neu.k / G.alt.k - 1))}, Grundlast ${G.neu.base < G.alt.base ? "−" : "+"}${pct(Math.abs(G.neu.base / G.alt.base - 1))}`) : "";
+  $("wx-wp").innerHTML = `<div class="grid g3" style="margin-top:10px">${kp}${cmp}</div><p class="note">Bezugswetter: ${nf(r.ref.gt)} Gradtage vom ${dde(r.ref.from)} bis ${dde(r.ref.to)} (Heizgrenze ${nf(+r.cfg.heatLimit, 1)} °C, Raum ${nf(+r.cfg.room, 1)} °C).</p>`;
+  const iv = r.intervals.filter(x => x.ok);
+  chart("wx-wp-chart", { type: "bar", data: { labels: iv.map(x => dde(x.to)), datasets: [
+    { label: "Verbrauch kWh/Tag", data: iv.map(x => x.kwh / x.days), backgroundColor: css("--heat"), yAxisID: "y" },
+    { type: "line", label: "Gradtage je Tag", data: iv.map(x => x.gt / x.days), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y1" }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)}` } } }, scales: { y: { title: { display: true, text: "kWh/Tag" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Gradtage/Tag" } } } } });
+  const model = x => { const g = G[x.side] || G.alle; return g ? g.base * x.days + g.k * x.gt : null; };
+  $("wx-wp-tbl").innerHTML = `<thead><tr><th>Zeitraum</th><th>Tage</th><th>kWh</th><th>kWh/Tag</th><th>Gradtage</th><th>Ø Temperatur</th><th>Modell kWh</th><th class="l">Gerät</th></tr></thead><tbody>${
+    [...r.intervals].reverse().map(x => `<tr><td>${dde(x.from)} – ${dde(x.to)}</td><td>${nf(x.days)}</td><td>${nf(x.kwh)}</td><td>${nf(x.kwh / x.days, 1)}</td><td>${x.ok ? nf(x.gt) : "–"}</td><td>${x.ok ? deg(x.tMean) : "–"}</td><td>${x.ok && model(x) != null ? nf(model(x)) : "–"}</td><td class="l">${{ alt: "alt", neu: "neu", gemischt: "Tausch im Intervall", alle: "" }[x.side]}</td></tr>`).join("")}</tbody>`;
+}
+
+function renderWxPv() {
+  if (!S.weather?.length) { $("wx-pv").innerHTML = noWx(); $("wx-pv-odd").innerHTML = ""; chart("wx-pv-chart", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const { P } = currentPeriods(), r = C.pvWeather(P.from, P.to), n = C.weatherNote(), y = n?.yoy;
+  const sg = v => `${v < 0 ? "−" : "+"}${pct(Math.abs(v))}`;
+  $("wx-pv").innerHTML = `<div class="grid g3" style="margin-top:10px">`
+    + kpi(r.factor != null ? nf(r.factor, 2) : "–", "Ertragsfaktor im Zeitraum", `kWh je kWp (${nf(r.kwp, 2)}) und kWh/m² Einstrahlung, ${nf(r.days)} Tage`)
+    + (y ? kpi(sg(y.gen), "Erzeugung letzte 365 Tage ggü. Vorjahr", `Sonne ${sg(y.rad)}, Anlage (Ertragsfaktor) ${sg(y.f)}`) : kpi("–", "Jahresvergleich", "Braucht zwei volle Jahre mit Anker- und Wetterdaten"))
+    + kpi(nf(r.odd.length), "Auffällige Sonnentage", "Sonnig, aber Ertrag unter 75 % des Monatsüblichen")
+    + `</div>`;
+  const lab = r.months.map(m => monthLabel(m.k));
+  chart("wx-pv-chart", { type: "bar", data: { labels: lab, datasets: [
+    { label: "Erzeugung kWh", data: r.months.map(m => m.gen), backgroundColor: css("--sun"), yAxisID: "y" },
+    { type: "line", label: "Einstrahlung kWh/m²", data: r.months.map(m => m.rad), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y1" },
+    { type: "line", label: "Ertragsfaktor × 100", data: r.months.map(m => m.f * 100), borderColor: css("--batt"), backgroundColor: css("--batt"), borderDash: [5, 4], pointRadius: 2, yAxisID: "y1" }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, c.datasetIndex === 2 ? 0 : 1)}` } } }, scales: { y: { title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "kWh/m² bzw. Faktor × 100" } } } } });
+  const top = r.odd.slice(0, 8);
+  $("wx-pv-odd").innerHTML = top.length ? `<h2 style="margin-top:18px;font-size:15px">Auffällige Sonnentage</h2><div class="tbl-wrap"><table><thead><tr><th>Tag</th><th>Einstrahlung</th><th>Erzeugung</th><th>Erwartet</th><th>Fehlt</th><th class="l">Hinweis</th></tr></thead><tbody>${
+    top.map(x => `<tr><td>${dde(x.d)}</td><td>${nf(x.rad, 1)} kWh/m²</td><td>${kwh(x.gen, 1)}</td><td>${kwh(x.expected, 1)}</td><td>${kwh(x.lost, 1)}</td><td class="l">${x.full ? "Speicher voll – vermutlich Abregelung" : "Wolkenlücken, Verschattung oder Ausfall prüfen"}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+
+function renderOvWeather() {
+  const n = C.weatherNote(); if (!n || !n.cur.n) { $("ov-weather").textContent = ""; return; }
+  const m = monthLabel(n.month);
+  $("ov-weather").textContent = n.prev ? `${m} bis ${dde(A.dates[A.n - 1])}: ${n.cur.rad >= n.prev.rad ? pct(n.cur.rad / n.prev.rad - 1) + " mehr" : pct(1 - n.cur.rad / n.prev.rad) + " weniger"} Sonne als im Vorjahreszeitraum (${nf(n.cur.rad)} gegenüber ${nf(n.prev.rad)} kWh/m²), Ø ${deg(n.cur.t)} (Vorjahr ${deg(n.prev.t)}).`
+    : `${m}: ${nf(n.cur.rad)} kWh/m² Sonneneinstrahlung, Ø ${deg(n.cur.t)}.`;
 }

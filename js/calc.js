@@ -58,7 +58,10 @@ export function stateFromDb(db) {
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
-    tarif: s.tarif || {}, ausbau: s.ausbau || {},
+    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {},
+    weather: (db.weather_daily || []).map(r => ({ d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }))
+      .sort((a, b) => a.d.localeCompare(b.d)),
+    weatherError: db.weatherError || null,
   };
 }
 
@@ -76,7 +79,8 @@ export const toDb = {
   event: e => ({ id: e.id, day: e.d, grp: e.group || null, type: e.type || null, note: e.text || null }),
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
-    ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}) } }),
+    ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -586,6 +590,66 @@ export function createCalc(S) {
     }) };
   }
 
+  /* Wetter (v0.10): Tageswerte von Open-Meteo, Standort in settings.data.wx */
+  const W = Object.fromEntries((S.weather || []).map(w => [w.d, w]));
+  const wxCfg = () => ({ heatLimit: 15, room: 20, ...(S.wx || {}) });
+  // Gradtagzahl nach VDI 3807 (G20/15): Summe (Raum − Tagesmittel) über Heiztage (Tagesmittel < Heizgrenze).
+  // Intervall wie bei Zählerständen: from inklusive, to exklusive. missing = Tage ohne Wetterdaten.
+  function degreeDays(from, to) {
+    const { heatLimit, room } = wxCfg(); let gt = 0, n = 0, missing = 0, tSum = 0;
+    for (let d = from; d < to; d = addDays(d, 1)) { const w = W[d]; if (!w) { missing++; continue; } n++; tSum += w.t; if (w.t < +heatLimit) gt += +room - w.t; }
+    return { gt, days: n, missing, tMean: n ? tSum / n : null };
+  }
+  // Wärmepumpe: je Ableseintervall kWh, Gradtage; Modell kWh = Grundlast × Tage + k × Gradtage (kleinste Quadrate)
+  // getrennt vor und nach dem Gerätetausch. Normiert auf die Gradtage der letzten 365 Tage mit Wetterdaten.
+  function fit(iv) {
+    let sdd = 0, sdg = 0, sgg = 0, sdy = 0, sgy = 0;
+    for (const x of iv) { sdd += x.days * x.days; sdg += x.days * x.gt; sgg += x.gt * x.gt; sdy += x.days * x.kwh; sgy += x.gt * x.kwh; }
+    const det = sdd * sgg - sdg * sdg; if (iv.length < 3 || Math.abs(det) < 1e-9 * sdd * sgg) return null;
+    const base = (sdy * sgg - sgy * sdg) / det, k = (sgy * sdd - sdy * sdg) / det;
+    const ss = iv.reduce((a, x) => a + (x.kwh - base * x.days - k * x.gt) ** 2, 0), mean = iv.reduce((a, x) => a + x.kwh, 0) / iv.length;
+    const tot = iv.reduce((a, x) => a + (x.kwh - mean) ** 2, 0);
+    return { base, k, n: iv.length, r2: tot > 0 ? 1 - ss / tot : null };
+  }
+  function wpWeather() {
+    if (!S.weather?.length) return null;
+    const sw = (S.events.find(e => e.type === 'geraet' && e.group === 'wp') || {}).d || null;
+    const iv = groupSeries('wp').intervals.map(x => ({ ...x, ...degreeDays(x.from, x.to) })).map(x => ({ ...x, ok: x.missing === 0,
+      side: sw ? (x.to <= sw ? 'alt' : x.from >= sw ? 'neu' : 'gemischt') : 'alle' }));
+    const ok = iv.filter(x => x.ok), wl = S.weather[S.weather.length - 1].d, ref = degreeDays(addDays(wl, -364), addDays(wl, 1));
+    const groups = sw ? { alt: fit(ok.filter(x => x.side === 'alt')), neu: fit(ok.filter(x => x.side === 'neu')) } : { alle: fit(ok) };
+    const norm = f => (f ? f.base * 365 + f.k * ref.gt : null);
+    for (const g of Object.values(groups)) if (g) g.year = norm(g);
+    return { swap: sw, intervals: iv, groups, ref: { ...ref, from: addDays(wl, -364), to: wl }, cfg: wxCfg() };
+  }
+  // PV: Erzeugung gegen Globalstrahlung (horizontal). Faktor = kWh ÷ (kWp × kWh/m²), nur Tage mit Anker- und Wetterdaten.
+  function pvWeather(from, to) {
+    const kwp = +S.pv.kwp || 1, months = {}, days = [];
+    A.dates.forEach((d, i) => { if (d < from || d > to) return; const w = W[d]; if (!w || !(w.rad > 0)) return;
+      const k = monthKey(d), m = months[k] = months[k] || { gen: 0, rad: 0, n: 0, sun: 0 }, g = A.c.gen[i] || 0;
+      m.gen += g; m.rad += w.rad; m.n++; m.sun += w.sun || 0; days.push({ d, gen: g, rad: w.rad, f: g / (kwp * w.rad), full: (A.c.feed[i] || 0) >= (+S.battery.fullThresh || Infinity) }); });
+    const ks = Object.keys(months).sort(), rows = ks.map(k => ({ k, ...months[k], f: months[k].gen / (kwp * months[k].rad) }));
+    // auffällige Tage: sonnig (Strahlung ≥ Monatsmedian) und Faktor < 75 % des Monatsmedians
+    const med = a => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; }, byM = {};
+    days.forEach(x => (byM[monthKey(x.d)] = byM[monthKey(x.d)] || []).push(x));
+    const odd = [];
+    for (const arr of Object.values(byM)) { if (arr.length < 10) continue; const mr = med(arr.map(x => x.rad)), mf = med(arr.map(x => x.f));
+      for (const x of arr) if (x.rad >= mr && x.f < 0.75 * mf) odd.push({ ...x, expected: mf * kwp * x.rad, lost: mf * kwp * x.rad - x.gen }); }
+    odd.sort((a, b) => b.lost - a.lost);
+    return { kwp, months: rows, days: days.length, odd, factor: rows.length ? rows.reduce((a, r) => a + r.gen, 0) / (kwp * rows.reduce((a, r) => a + r.rad, 0)) : null };
+  }
+  // Jahresvergleich PV (letzte 365 Tage gegen die 365 davor, nur gemeinsame Tage mit Wetter) und Satz für den Überblick
+  function weatherNote() {
+    if (!S.weather?.length) return null;
+    const last = A.dates[A.n - 1], mk = monthKey(last), mFrom = `${mk}-01`, pFrom = shiftYear(mFrom), pTo = shiftYear(last);
+    const agg = (f, t) => { let r = 0, ts = 0, n = 0; for (let d = f; d <= t; d = addDays(d, 1)) { const w = W[d]; if (!w) continue; r += w.rad; ts += w.t; n++; } return { rad: r, t: n ? ts / n : null, n }; };
+    const cur = agg(mFrom, last), prev = agg(pFrom, pTo);
+    const y1 = pvWeather(addDays(last, -364), last), y0 = pvWeather(addDays(last, -729), addDays(last, -365));
+    const sum = (x, k) => x.months.reduce((a, r) => a + r[k], 0);
+    const yoy = y0.days >= 300 && y1.days >= 300 ? { gen: sum(y1, 'gen') / sum(y0, 'gen') - 1, rad: sum(y1, 'rad') / sum(y0, 'rad') - 1, f: y1.factor / y0.factor - 1 } : null;
+    return { month: mk, cur, prev: prev.n === cur.n && prev.n ? prev : null, yoy };
+  }
+
   // Hinweis Abschlag: E-Auto lädt ab Übergabe über den Allgemeinstrom, die Hochrechnung aus Zählerständen kennt das
   // erst nach einigen Wochen. Aktiv bis 90 Tage nach Übergabe über den letzten Zählerstand hinaus.
   function evAbschlagHint() {
@@ -613,6 +677,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
+    W, degreeDays, wpWeather, pvWeather, weatherNote,
   };
 }
 
