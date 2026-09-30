@@ -62,9 +62,14 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    Offline (`js/queue.js`): letzter Datenstand und Warteschlange je Nutzer im localStorage; Schreiben ohne Netz
    wird vorgemerkt und bei Netz in Reihenfolge gesendet; Serverfehler beim Nachsenden → verwerfen und melden.
    Prüfung: `scripts/offline-check.mjs` (21 Prüfungen). Icons: `icons/icon.svg` → `scripts/icons.mjs`.
-6. Später: Zahlungsbuch (Tabelle `payments` existiert), Tarifrechner (Fix vs. dynamisch, §14a Modul 1/3,
-   Kosten intelligentes Messsystem), Wetterbereinigung Wärmepumpe (DWD-Gradtagzahlen),
-   Einstrahlungsdaten zur Trennung Wetter vs. Abregelung, Ausbau-Szenarien (Speicher, Module, Wallbox).
+6. Erweiterungen
+   - ✅ v0.7: Zahlungsbuch (`payments`, Vorschlag aus Abschlagsplan, Abrechnung prüfen), Boni als Einzelposten
+     (`tariffs.boni_items`, schema v3 / `docs/UPDATE_V07.sql`), Gesamtbilanz Energie, Tarifrechner Stufe A
+     (Angebote, Wallbox §14a Modul 1/2/1+3, iMSys; Werte des Netzbetreibers als Eingabe, `settings.data.tarif`),
+     einheitlicher Break-even, Zähler-Linie im Überblick. Prüfung: `scripts/v07-check.mjs` (20 Prüfungen).
+   - Offen: Tarifrechner Stufe B (dynamischer Tarif, nur als Schätzung über Lastprofil – es gibt nur Tageswerte),
+     Wetterbereinigung Wärmepumpe (DWD-Gradtagzahlen), Einstrahlungsdaten zur Trennung Wetter vs. Abregelung,
+     Ausbau-Szenarien (Speicher, Module, Wallbox).
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
@@ -101,6 +106,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
   Zählertausch: Folgezähler mit Offset verketten (Endstand alt = Startstand neu am selben Tag).
 - **Stromkosten**: Tagesverbrauch × Arbeitspreis des an dem Tag gültigen Tarifs + Grundpreis/365 je Tag mit Zählerdaten.
   Tage ohne Tarif als „ohne Tarif“ ausweisen. Boni tagesanteilig über das erste Vertragsjahr.
+  Boni-Posten mit Mengenbedingung (`minKwh`, `amountBelow`): maßgeblich ist die Menge im ersten Vertragsjahr, im
+  laufenden Jahr die Prognose des Abschlag-Checks (v0.7; ohne Posten gilt die Summe wie in der Referenz).
   Erstattungen zu viel gezahlter Abschläge sind KEINE Kostensenkung (sonst Doppelzählung).
 - **Grundpreis**: enthalten in allen Stromkosten; NICHT in vermiedenen Netzkosten, Wert des Speichers, Amortisation,
   Ladekosten zu Hause (Grenzkosten = Arbeitspreis).
@@ -118,10 +125,16 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
 - **Amortisation**: monatlich ab erster Investition; Investitionslinie stufig zu den Kaufdaten (Verkäufe negativ);
   gemessene Ersparnis bis zum letzten Datenmonat (angefangener Monat hochgerechnet), danach Prognose aus den letzten
   12 Monaten je Kalendermonat mit Strompreissteigerung und Leistungsverlust. Kein Kalkulationszins.
+  Break-even überall (Überblick, Kosten & Ersparnisse, Amortisation) aus dieser Rechnung (v0.7).
+  Boni und Tarifwechsel gehören NICHT in die Amortisation (hätte es auch ohne PV gegeben) – nur in die
+  getrennte „Gesamtbilanz Energie“ (Tarifwechsel = Preise des Vorvertrags derselben Gruppe fortgeschrieben).
 - **Abschlag-Check** je laufendem Vertrag: gezahlt (12 Abschläge/Jahr, erster 1 Monat nach Lieferbeginn, Beträge aus
   `installments` nach Gültigkeit) vs. verbraucht bis heute; Rest des Abrechnungsjahres aus denselben Kalendertagen
   des Vorjahres; beim Allgemeinstrom E-Auto-Laden ab Übergabedatum (`cars.ev.start`) addieren; Ergebnis ohne und
   mit Boni; „passender Abschlag ab jetzt“ = (Jahreskosten − gezahlt) ÷ verbleibende Abschläge.
+  Abweichungen von der Referenz (v0.7, mit Philip abgestimmt): offene Abschläge mit dem Betrag, der an ihrem
+  Fälligkeitstag gilt (Referenz: Betrag vom Rechenstand, künftige Änderungen wurden ignoriert); „aktueller Abschlag“
+  zum Kalendertag; sind im Abrechnungsjahr Abschläge im Zahlungsbuch erfasst, zählen diese statt der Annahme.
 - **Auto-Vergleich**: Laufzeit je Fahrzeug, Leasing + Energie + Versicherung + Steuer + Sonstiges (optional aus
   Fahrzeugbuch der letzten 12 Monate) − THG-Prämie + Überführung. Spritpreis wählbar: manuell, Ø alle, Ø letzte N
   Tankvorgänge, jeweils nach Litern gewichtet. Verbrauch optional aus Volltank-Intervallen.

@@ -157,3 +157,7 @@ main{min-width:0}
   /* iOS zoomt bei Eingabefeldern unter 16px automatisch hinein */
   input[type=number],input[type=date],input[type=text],select{font-size:16px}
 }
+/* v0.7 */
+.quick-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
+@media (max-width:760px){ .quick-grid{grid-template-columns:1fr 1fr} }
+#boni-tbl input,#tr-offers input,#tr-offers select{padding:5px 7px}

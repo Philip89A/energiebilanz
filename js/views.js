@@ -3,8 +3,8 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb } from './calc.js?v=0.6.0';
-import { parseNum } from './queue.js?v=0.6.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote } from './calc.js?v=0.7.0';
+import { parseNum } from './queue.js?v=0.7.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -80,7 +80,7 @@ const currentPeriods = () => C.currentPeriods(S.view);
 const metrics = (f, t) => C.metrics(f, t);
 const ankerSeries = (keys, from, to, g) => { const s = C.ankerSeries(keys, from, to, g); return { ...s, labels: s.ks.map(k => bucketLabel(k, s.g)) }; };
 const amortTimeline = () => C.amortTimeline();
-const abschlagCheck = g => C.abschlagCheck(g);
+const abschlagCheck = g => C.abschlagCheck(g, today());
 const odoPoints = car => C.odoPoints(car);
 const kmDaily = car => C.kmDaily(car);
 const carCostItems = car => C.carCostItems(car);
@@ -88,6 +88,12 @@ const fuelStats = () => C.fuelStats();
 const fuelPrice = n => C.fuelPrice(n);
 const carCalc = () => C.carCalc(today());
 const finData = (f, t) => C.finData(f, t, today());
+// Break-even einheitlich aus der Amortisations-Rechnung (v0.7; vorher drei verschiedene Rechnungen)
+function breakEven() {
+  const tl = C.amortTimeline(); if (!tl.be) return null;
+  const yrsFrom = (a, b) => (new Date(b + "-01") - new Date(a + "-01")) / 864e5 / 365.25;
+  return { be: tl.be, total: yrsFrom(tl.startK, tl.be), rest: Math.max(0, yrsFrom(today().slice(0, 7), tl.be)) };
+}
 
 const DAY = 86400000;
 const toD = s => new Date(s+"T00:00:00Z");
@@ -271,26 +277,28 @@ function renderOverview(){
     kpiC(mm,cc,"gen","kwh",1,"PV-Erzeugung",`Genutzt ${kwh(m.use)}`) +
     kpiC(mm,cc,"sav","eur",1,"Vermiedene Netzkosten","Nur Arbeitspreis, ohne Grundpreis") +
     kpiC(mm,cc,"cost","eur",-1,"Stromkosten Haus", m.asEur!=null&&m.wpEur!=null?`Allgemein ${eur(m.asEur)}, Wärmepumpe ${eur(m.wpEur)}, inkl. Grundpreis, ohne Boni`:"Zählerdaten unvollständig") +
-    kpi(inv>0 ? nf(inv/sav12,1)+" Jahre" : "offen","Einfache Amortisation", inv>0?`Investition ${eur(inv)}, Basis letzte 12 Monate`:"Investitionskosten fehlen noch");
+    (()=>{ const b=inv>0?breakEven():null; return kpi(b?monthLabel(b.be):(inv>0?"–":"offen"),"Break-even", b?`noch ${nf(b.rest,1)} Jahre, ${nf(b.total,1)} Jahre nach der ersten Investition (wie Amortisation)`:(inv>0?"Nicht innerhalb der Betrachtungsdauer":"Investitionskosten fehlen noch")); })();
   const sr = ankerSeries(["gen","use","imp","feed"],from,to), is=IMPORT_START();
   chart("ov-month",{type:"bar",data:{labels:sr.labels,datasets:[
     {label:"Erzeugung",data:sr.rows.map(r=>r.gen),backgroundColor:css("--sun-soft"),borderColor:css("--sun"),borderWidth:1,order:3},
     {type:"line",label:"Genutzt",data:sr.rows.map(r=>r.use),borderColor:css("--sun"),backgroundColor:css("--sun"),pointRadius:0,tension:.3,order:1},
     {type:"line",label:"Netzbezug",data:sr.ks.map((k,j)=>(sr.g==="day"?k:monthKey(k))>=(sr.g==="day"?is:monthKey(is))?sr.rows[j].imp:null),borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,tension:.3,order:1},
-    {label:"Einspeisung",data:sr.rows.map(r=>r.feed),backgroundColor:css("--feed"),order:2}]},
+    {label:"Einspeisung",data:sr.rows.map(r=>r.feed),backgroundColor:css("--feed"),order:2},
+    {type:"line",label:"Netzbezug laut Zähler",data:meterGrid(sr,from,to),borderColor:css("--heat"),backgroundColor:css("--heat"),borderDash:[2,3],borderWidth:2,pointRadius:0,tension:.2,order:0}]},
     options:{plugins:{tooltip:numTip("kWh",1)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
   $("ov-mtitle").textContent = sr.g==="day" ? "Tagesbilanz PV-Messkreis" : "Monatsbilanz PV-Messkreis";
   $("ov-cmp-panel").hidden = !C;
+  $("ov-month-panel").style.gridColumn = C ? "" : "1 / -1";
   if(C){
     const g=gran(from,to), a=ankerSeries(["gen","use"],from,to,g), b=ankerSeries(["gen","use"],C.from,C.to,g);
     const n=Math.max(a.ks.length,b.ks.length);
     $("ov-cmp-note").textContent = `Erzeugung und genutzter Solarstrom je ${g==="day"?"Tag":"Monat"}, nach Position im Zeitraum ausgerichtet.`;
     chart("ov-cmp",{type:"bar",data:{labels:[...Array(n).keys()].map(i=>a.labels[i]||b.labels[i]),datasets:[
       {label:"Erzeugung "+P.label,data:a.rows.map(r=>r.gen),backgroundColor:css("--sun")},
-      {label:"Erzeugung Vergleich",data:b.rows.map(r=>r.gen),backgroundColor:css("--sun-soft")},
-      {type:"line",label:"Genutzt "+P.label,data:a.rows.map(r=>r.use),borderColor:css("--batt"),backgroundColor:css("--batt"),pointRadius:0,tension:.3},
-      {type:"line",label:"Genutzt Vergleich",data:b.rows.map(r=>r.use),borderColor:css("--batt"),borderDash:[4,3],backgroundColor:css("--batt"),pointRadius:0,tension:.3}]},
-      options:{plugins:{tooltip:numTip("kWh",1)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
+      {label:"Erzeugung "+C.label,data:b.rows.map(r=>r.gen),backgroundColor:css("--grid"),borderColor:css("--grid"),borderWidth:1},
+      {type:"line",label:"Genutzt "+P.label,data:a.rows.map(r=>r.use),borderColor:css("--batt"),backgroundColor:css("--batt"),pointRadius:2,borderWidth:2.5,tension:.3},
+      {type:"line",label:"Genutzt "+C.label,data:b.rows.map(r=>r.use),borderColor:css("--heat"),borderDash:[5,3],backgroundColor:css("--heat"),pointRadius:2,borderWidth:2.5,tension:.3}]},
+      options:{plugins:{tooltip:{callbacks:{title:c=>`${a.labels[c[0].dataIndex]||"–"} ↔ ${b.labels[c[0].dataIndex]||"–"}`,label:c=>`${c.dataset.label}: ${nf(c.parsed.y,1)} kWh`}}},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
   }
   $("ov-cmp-tbl").innerHTML = compareTable(m,c,P,C);
   const todo = [];
@@ -443,7 +451,8 @@ function renderAbschlag(){
     ${row("Vertrag",r=>`${esc(r.t.name)}${r.t.est?` <span class="pill">${esc(r.t.est)}</span>`:""}`)}
     ${row("Abrechnungsjahr",r=>`${dde(r.start)} – ${dde(r.end)}`)}
     ${row("Aktueller Abschlag",r=>eur(r.cur)+" / Monat")}
-    ${row("Bisher gezahlt",r=>`${eur(r.paid)} (${r.nPaid} Abschläge)`)}
+    ${row("Bisher gezahlt",r=>`${eur(r.paid)} (${r.nPaid} Abschläge, ${r.paidSource==="buch"?"laut Zahlungsbuch":"angenommen"})`)}
+    ${row("Nächster Abschlag",r=>r.nextDue?`${eur(C.abschlagAt(r.t.group,r.nextDue))} am ${dde(r.nextDue)}`:"–")}
     ${row("Bisher verbraucht",r=>`${eur(r.costSo)} (${kwh(r.kwhSo)} bis ${dde(r.today)})`)}
     ${row("Stand heute",r=>`<span style="color:${col(r.paid-r.costSo)};font-weight:600">${r.paid-r.costSo>=0?"+":"−"}${eur(Math.abs(r.paid-r.costSo))}</span>`)}
     ${row("Prognose restliches Jahr",r=>`${eur(r.costRest)} (${kwh(r.kwhRest)})${r.fb?` <span class="pill">${r.fb} Tage geschätzt</span>`:""}`)}
@@ -490,15 +499,17 @@ function renderCosts(){
     kpiC(mm,cc,"sav","eur",1,"Vermiedene Netzkosten durch PV",`${kwh(m.use)} Solarstrom genutzt, nur Arbeitspreis`) +
     kpiC(mm,cc,"noPV","eur",-1,"Allgemeinstrom ohne PV","Was du ohne Anlage gezahlt hättest");
   const g=gran(P.from,P.to), mA={}, mW={};
-  const add=(grp,out)=>{ const s=groupSeries(grp); for(const [d,k] of Object.entries(s.daily)){ if(d<P.from||d>P.to) continue; const t=tariffAt(grp,d); if(!t) continue; const key=bucketOf(d,g); out[key]=(out[key]||0)+k*t.ap/100+t.gp/365; } };
+  const det={as:{},wp:{}};   // je Monat: kWh, Arbeitspreis-, Grundpreisanteil
+  const add=(grp,out)=>{ const s=groupSeries(grp); for(const [d,k] of Object.entries(s.daily)){ if(d<P.from||d>P.to) continue; const t=tariffAt(grp,d); if(!t) continue; const key=bucketOf(d,g); out[key]=(out[key]||0)+k*t.ap/100+t.gp/365;
+    const o=det[grp][key]=det[grp][key]||{k:0,ap:0,gp:0,days:0}; o.k+=k; o.ap+=k*t.ap/100; o.gp+=t.gp/365; o.days++; } };
   add("as",mA); add("wp",mW);
   const ks=[...new Set([...Object.keys(mA),...Object.keys(mW)])].sort();
   chart("ct-month",{type:"bar",data:{labels:ks.map(k=>bucketLabel(k,g)),datasets:[
     {label:"Allgemeinstrom",data:ks.map(k=>mA[k]||0),backgroundColor:css("--grid"),stack:"s"},
     {label:"Wärmepumpe",data:ks.map(k=>mW[k]||0),backgroundColor:css("--heat"),stack:"s"}]},
-    options:{plugins:{tooltip:numTip("€",2)},scales:{x:{stacked:true,ticks:{maxTicksLimit:14}},y:{stacked:true,title:{display:true,text:"€ ohne Boni"}}}}});
+    options:{plugins:{tooltip:{callbacks:{label:c=>{ const o=det[c.datasetIndex===0?"as":"wp"][ks[c.dataIndex]]; return o?`${c.dataset.label}: ${eur(c.parsed.y,2)} = ${kwh(o.k,0)} × Arbeitspreis (${eur(o.ap,2)}) + Grundpreis ${o.days} Tage (${eur(o.gp,2)})`:`${c.dataset.label}: –`; }}}},scales:{x:{stacked:true,ticks:{maxTicksLimit:14}},y:{stacked:true,title:{display:true,text:"€ ohne Boni"}}}}});
   $("ct-mtitle").textContent = g==="day" ? "Tägliche Kosten" : "Monatliche Kosten";
-  renderAbschlag();
+  renderAbschlag(); renderPayments(); renderBilling(); renderBoni();
   const f=(t,k,type="text",st="")=>`<input type="${type}" ${st} value="${esc(t[k])}" data-tf="${t.id}" data-k="${k}">`;
   $("tf-tbl").innerHTML = `<thead><tr><th>Name</th><th class="l">Zählpunkt</th><th class="l">Von</th><th class="l">Bis</th><th>ct/kWh brutto</th><th>Grundpreis €/Jahr</th><th>Boni €</th><th class="l">Hinweis</th><th></th></tr></thead><tbody>${
     S.tariffs.map(t=>`<tr><td>${f(t,"name")}</td><td class="l"><select data-tf="${t.id}" data-k="group"><option value="as" ${t.group==="as"?"selected":""}>Allgemein</option><option value="wp" ${t.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td>${f(t,"from","date")}</td><td>${f(t,"to","date")}</td><td>${f(t,"ap","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"gp","number",'step="0.01" style="width:90px"')}</td><td>${f(t,"boni","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"est")}</td><td><button class="x" data-del-tf="${t.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
@@ -555,13 +566,14 @@ function renderFinance(){
     ${yr("Ersparnis direkt verbraucht",d=>d.direct)}${yr("Ersparnis über den Speicher",d=>d.battVal)}${yr("Ersparnis gesamt",d=>d.sav)}${yr("Allgemeinstrom ohne PV",d=>d.noPV)}
     ${yr("Cupra Leon gesamt",d=>d.mob.leon)}</tbody>`;
   $("fin-years").insertAdjacentHTML("afterend", "");
+  renderBalance(P, C);
   // Investition
   const inv=S.invest.reduce((x,y)=>x+(+y.cost||0),0), realized=pvSavings(A.dates[0],A.dates[A.n-1]).eur, r12=last12(), base=pvSavings(r12.from,r12.to).eur;
   const items=[...S.invest].sort((x,y)=>(x.date||"9").localeCompare(y.date||"9"));
   const invTbl = `<div class="tbl-wrap"><table><thead><tr><th>Datum</th><th class="l">Position</th><th>Betrag</th></tr></thead><tbody>${
     items.map(x=>`<tr><td>${dde(x.date)}</td><td class="l" style="white-space:normal">${esc(x.name)}</td><td style="color:${+x.cost<0?"var(--ok)":"inherit"}">${eur(+x.cost||0,2)}</td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td>${eur(inv,2)}</td></tr></tfoot></table></div><p class="note">Bearbeiten unter „Amortisation“. Verkäufe mindern die Investition.</p>`;
   $("fin-inv").innerHTML = invTbl + (inv>0
-    ? `<div class="grid g3" style="margin-top:10px">${kpi(eur(inv),"Investition PV")}${kpi(eur(realized),"Bereits erwirtschaftet",pct(realized/inv)+" der Investition")}${kpi(realized>=inv?"erreicht":nf((inv-realized)/base,1)+" Jahre","Bis zum Break-even",realized>=inv?"":`Noch ${eur(inv-realized)} bei ${eur(base)} pro Jahr`)}</div>`
+    ? `<div class="grid g3" style="margin-top:10px">${kpi(eur(inv),"Investition PV")}${kpi(eur(realized),"Bereits erwirtschaftet",pct(realized/inv)+" der Investition")}${(()=>{ const b=breakEven(); return kpi(realized>=inv?"erreicht":b?monthLabel(b.be):"–","Break-even",realized>=inv?"":b?`noch ${nf(b.rest,1)} Jahre bis dahin (Rechnung wie „Amortisation“: Preissteigerung und Leistungsverlust berücksichtigt); aktuell ${eur(base)} Ersparnis pro Jahr`:"Nicht innerhalb der Betrachtungsdauer"); })()}</div>`
     : flag("Investitionskosten fehlen noch. Unter „Amortisation“ eintragen, dann erscheint hier der Stand bis zum Break-even.",true)+`<p class="note">Bereits erwirtschaftet seit ${dde(A.dates[0])}: ${eur(realized)}.</p>`);
 }
 
@@ -674,7 +686,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -690,7 +702,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts,
+    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -751,6 +763,13 @@ function wireEditing(){
     else if(t.dataset.delCh!==undefined) del("delCh","charge",S.charges);
     else if(t.dataset.delInv!==undefined) del("delInv","investment",S.invest);
     else if(t.dataset.delCl!==undefined) del("delCl","carlog",S.carlog);
+    else if(t.dataset.delPay!==undefined){ if(confirm("Zahlung löschen?")){ const x=S.payments.find(p=>p.id===t.dataset.delPay); S.payments=S.payments.filter(p=>p!==x); remove("payment",x); rerender(); } }
+    else if(t.dataset.boniParse!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.boniParse); const its=parseBoniNote(tf.boniNote);
+      if(!its.length){ tf.boniItems=[{name:"Bonus",amount:+tf.boni||0}]; } else tf.boniItems=its;
+      tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
+    else if(t.dataset.biAdd!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biAdd); tf.boniItems=[...(tf.boniItems||[]),{name:"Bonus",amount:0}]; write("tariff",tf); rerender(); }
+    else if(t.dataset.biDel!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biDel); tf.boniItems=tf.boniItems.filter((_,i)=>i!==+t.dataset.i); tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
+    else if(t.dataset.troDel!==undefined){ S.tarif.offers.splice(+t.dataset.troDel,1); persist(); rerender(); }
     else if(t.dataset.delAb!==undefined){ if(confirm("Abschlag löschen?")){ const x=S.abschlaege.find(x=>x.id===t.dataset.delAb); S.abschlaege=S.abschlaege.filter(y=>y!==x); remove("installment",x); rerender(); } }
     else if(t.dataset.delTf!==undefined){ if(confirm("Tarif löschen?")){ const x=S.tariffs.find(x=>x.id===t.dataset.delTf); S.tariffs=S.tariffs.filter(y=>y!==x); remove("tariff",x); rerender(); } }
   });
@@ -761,6 +780,11 @@ function wireEditing(){
     else if(d.inv!==undefined){ const x=S.invest[+d.inv]; x[d.k]=d.k==="cost"?+el.value:el.value; write("investment",x); rerender(); }
     else if(d.ab){ const a=S.abschlaege.find(x=>x.id===d.ab); a[d.k]=d.k==="amount"?+el.value:el.value; write("installment",a); rerender(); }
     else if(d.ev!==undefined){ const x=S.events[+d.ev]; x[d.k]=el.value; write("event",x); }
+    else if(d.bi){ const tf=S.tariffs.find(x=>x.id===d.bi), it=tf.boniItems[+d.i];
+      if(d.k==="name") it.name=el.value; else { const v=parseNum(el.value); if(isFinite(v)) it[d.k]=v; else delete it[d.k]; }
+      tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
+    else if(d.tr){ S.tarif=S.tarif||{}; const v=parseNum(el.value); if(isFinite(v)) S.tarif[d.tr]=v; else delete S.tarif[d.tr]; persist(); rerender(); }
+    else if(d.tro!==undefined){ const o=S.tarif.offers[+d.tro]; o[d.k]=["name","grp"].includes(d.k)?el.value:parseNum(el.value); persist(); rerender(); }
   });
   $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
     if(!d||!isFinite(v)){ alert("Datum und Stand angeben."); return; }
@@ -777,6 +801,17 @@ function wireEditing(){
     if(!x.d || (!x.km && !x.e)){ alert("Datum und Kilometerstand oder Betrag angeben."); return; }
     S.carlog.push(x); ["cl-km","cl-e","cl-n"].forEach(i=>$(i).value=""); write("carlog",x); rerender(); });
   $("ab-add").addEventListener("click",()=>{ const x={group:"as",from:iso(new Date()),amount:0,note:""}; S.abschlaege.push(x); write("installment",x); rerender(); });
+  $("pay-g").addEventListener("change",renderPayments); $("pay-k").addEventListener("change",renderPayments);
+  $("pay-d").value=today;
+  $("pay-add").addEventListener("click",()=>{ const k=$("pay-k").value; let a=parseNum($("pay-a").value); if(!isFinite(a)&&k==="abschlag") a=parseNum($("pay-a").placeholder);
+    const d=$("pay-d").value; if(!d||!(a>0)){ alert("Datum und Betrag angeben."); return; }
+    const note=k==="bonus"?[$("pay-bonus").value,$("pay-n").value].filter(Boolean).join(" – "):$("pay-n").value;
+    const x={group:$("pay-g").value,d,amount:a,kind:k,note}; (S.payments=S.payments||[]).push(x); ["pay-a","pay-n"].forEach(i=>$(i).value=""); write("payment",x); rerender(); });
+  $("pay-suggest").addEventListener("click",()=>{ const sug=C.paymentSuggestions(iso(new Date())); if(!sug.length) return;
+    if(!confirm(`${sug.length} Abschläge laut Abschlagsplan anlegen (${sug.map(x=>dde(x.d)).slice(0,3).join(", ")}${sug.length>3?" …":""})? Abweichungen danach einzeln korrigieren.`)) return;
+    for(const x of sug){ (S.payments=S.payments||[]).push(x); write("payment",x); } rerender(); });
+  $("tr-withev").addEventListener("change",e=>{ S.tarif=S.tarif||{}; S.tarif.withEv=e.target.checked; persist(); rerender(); });
+  $("tr-add").addEventListener("click",()=>{ S.tarif=S.tarif||{}; (S.tarif.offers=S.tarif.offers||[]).push({name:"Neues Angebot",grp:"as",ap:30,gp:150,boni:0}); persist(); rerender(); });
   $("tf-add").addEventListener("click",()=>{ const x={group:"as",name:"Neuer Tarif",from:iso(new Date()),to:"",ap:30,gp:150,boni:0,boniNote:"",est:""}; S.tariffs.push(x); write("tariff",x); rerender(); });
 }
 
@@ -789,6 +824,7 @@ const Q_KINDS = {
   fuel: { title: "Tankvorgang", btn: "Tanken" },
   charge: { title: "Ladevorgang", btn: "Laden" },
   carlog: { title: "Fahrzeugbuch", btn: "Fahrzeugbuch" },
+  payment: { title: "Zahlung", btn: "Zahlung" },
 };
 const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* egal */ } };
@@ -801,6 +837,7 @@ function quickSub(kind) {
     return r ? `${esc(mm?.name || m)}: ${nf(r.v)} kWh am ${dde(r.d)}` : "Noch kein Stand"; }
   if (kind === "fuel") { const f = [...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0]; return f ? `Zuletzt ${dde(f.d)} · ${nf(f.km)} km` : "Noch kein Tankvorgang"; }
   if (kind === "charge") { const c = [...S.charges].sort((a, b) => b.d.localeCompare(a.d))[0]; return c ? `Zuletzt ${dde(c.d)} · ${nf(c.k, 1)} kWh` : "Noch kein Ladevorgang"; }
+  if (kind === "payment") { const q = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d))[0]; return q ? `Zuletzt ${dde(q.d)} · ${KIND_LABEL[q.kind]} ${eur(q.amount, 2)}` : "Abschlag, Erstattung, Bonus"; }
   const l = [...S.carlog].sort((a, b) => b.d.localeCompare(a.d))[0]; return l ? `Zuletzt ${dde(l.d)} · ${esc(l.cat)}` : "Noch kein Eintrag";
 }
 function renderQuick() {
@@ -831,6 +868,8 @@ function openQuick(kind) {
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("kWh", num("q-k", "z. B. 42,5"))
       + fld("Betrag in € (optional)", num("q-e")) + fld("Kilometerstand (optional)", num("q-km", "", "numeric"))
       + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`);
+  } else if (kind === "payment") {
+    body = quickPaymentFields(today);
   } else {
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`)
       + fld("Fahrzeug", `<select id="q-car">${Object.entries(CARS).map(([k, v]) => `<option value="${k}" ${k === S.ui.logCar ? "selected" : ""}>${v}</option>`).join("")}</select>`)
@@ -862,6 +901,7 @@ function quickHint(kind) {
   if (kind === "charge") { const k = parseNum($("q-k").value), e = parseNum($("q-e").value), o = lastOdo("tavascan", d);
     const parts = []; if (o) parts.push(`Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}.`);
     if (isFinite(k) && isFinite(e) && k > 0) parts.push(`${nf(e / k, 3)} €/kWh.`); return parts.join(" "); }
+  if (kind === "payment") { const g = $("q-pg").value, a = C.abschlagAt(g, d || today()); if ($("q-pk").value === "abschlag" && !$("q-pa").value) $("q-pa").placeholder = String(a || ""); return $("q-pk").value === "abschlag" ? `Laut Abschlagsplan: ${eur(a, 2)} pro Monat.` : ""; }
   const o = lastOdo($("q-car").value, d); return o ? `Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}.` : "";
 }
 async function saveQuick(kind) {
@@ -889,6 +929,11 @@ async function saveQuick(kind) {
     if (!(k > 0)) return err("kWh angeben.");
     obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o: $("q-o").value }; S.charges.push(obj);
     label = `Ladevorgang ${nf(k, 1)} kWh`;
+  } else if (kind === "payment") {
+    let a = parseNum($("q-pa").value); if (!isFinite(a) && $("q-pk").value === "abschlag") a = parseNum($("q-pa").placeholder);
+    if (!(a > 0)) return err("Betrag angeben.");
+    obj = { group: $("q-pg").value, d, amount: a, kind: $("q-pk").value, note: $("q-pn").value }; (S.payments = S.payments || []).push(obj);
+    label = `${KIND_LABEL[obj.kind]} ${GRP_LABEL[obj.group]} ${nf(a, 2)} €`;
   } else {
     const km = parseNum($("q-km").value), e = parseNum($("q-e").value);
     if (!(km > 0) && !isFinite(e)) return err("Kilometerstand oder Betrag angeben.");
@@ -900,4 +945,103 @@ async function saveQuick(kind) {
   $("q-form").hidden = true;
   $("q-msg").innerHTML = r === "error" ? "" : flag(r === "queued" ? `Offline gespeichert: ${label}. Wird gesendet, sobald wieder Netz da ist.` : `Gespeichert: ${label}.`, true);
   renderQuick();
+}
+
+/* ---------- v0.7: Zahlungsbuch, Abrechnung prüfen, Boni-Posten, Gesamtbilanz, Tarifrechner, Zähler-Linie ---------- */
+const KIND_LABEL = { abschlag: "Abschlag", erstattung: "Erstattung", bonus: "Bonus", nachzahlung: "Nachzahlung" };
+const GRP_LABEL = { as: "Allgemeinstrom", wp: "Wärmepumpe" };
+
+// Netzbezug laut Allgemeinstrom-Zähler je Balken der Überblick-Grafik (Tageswerte aus den Ablesungen, siehe Zählerlogik)
+function meterGrid(sr, from, to) {
+  const out = {}; let any = false;
+  for (const [d, k] of Object.entries(C.groupSeries("as").daily)) { if (d < from || d > to) continue; const key = bucketOf(d, sr.g); out[key] = (out[key] || 0) + k; any = true; }
+  return sr.ks.map(k => (any && out[k] != null ? out[k] : null));
+}
+
+function bonusOptions(g) {
+  return S.tariffs.filter(t => t.group === g).flatMap(t => { const its = C.boniInfo(t).items; return (its.length ? its : [{ name: "Bonus" }]).map(i => `${t.name}: ${i.name}`); });
+}
+function renderPayments() {
+  const g = $("pay-g").value || "as", k = $("pay-k").value;
+  $("pay-bonus").innerHTML = bonusOptions(g).map(o => `<option>${esc(o)}</option>`).join("");
+  $("pay-bonus-wrap").hidden = k !== "bonus";
+  $("pay-a").placeholder = k === "abschlag" ? String(C.abschlagAt(g, today()) || "") : "";
+  const rows = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d));
+  $("pay-tbl").innerHTML = rows.length
+    ? `<thead><tr><th>Datum</th><th class="l">Zählpunkt</th><th class="l">Art</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
+      rows.map(p => `<tr><td>${dde(p.d)}</td><td class="l">${GRP_LABEL[p.group] || esc(p.group)}</td><td class="l">${KIND_LABEL[p.kind] || esc(p.kind)}</td><td>${eur(p.amount, 2)}</td><td class="l">${esc(p.note || "")}</td><td><button class="x" data-del-pay="${p.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Zahlungen. „Vorschlag übernehmen“ legt die geplanten Abschläge aus dem Abschlagsplan an; danach nur Abweichungen korrigieren.</td></tr></tbody>`;
+  const sug = C.paymentSuggestions(today());
+  $("pay-suggest").textContent = sug.length ? `Vorschlag übernehmen (${sug.length} Abschläge, ${eur(sug.reduce((a, x) => a + x.amount, 0))})` : "Keine offenen Vorschläge";
+  $("pay-suggest").disabled = !sug.length;
+}
+function renderBilling() {
+  const t0 = today(), rows = [];
+  for (const g of ["as", "wp"]) for (const P of C.billingPeriods(g, t0)) rows.push({ g, P });
+  const res = P => {
+    if (P.settled) { const d = P.diff; return Math.abs(d) < 5 ? `<span class="ok">passt (${d >= 0 ? "+" : "−"}${eur(Math.abs(d), 2)})</span>` : `<span class="warn">${eur(Math.abs(d), 2)} ${d > 0 ? "mehr gezahlt" : "weniger gezahlt"} als berechnet</span>`; }
+    if (!P.closed) return "läuft";
+    if (!P.nAbschlag) return "Zahlungen fehlen";
+    return `erwartet: ${P.expectedSettlement >= 0 ? "Erstattung" : "Nachzahlung"} ${eur(Math.abs(P.expectedSettlement))}`;
+  };
+  $("bill-tbl").innerHTML = rows.length ? `<thead><tr><th>Abrechnungsjahr</th><th class="l">Vertrag</th><th>kWh</th><th>Kosten</th><th>Boni</th><th>Kosten netto</th><th>Abschläge</th><th>Erstattung</th><th>Nachzahlung</th><th>Boni erhalten</th><th class="l">Ergebnis</th></tr></thead><tbody>${
+    rows.map(({ g, P }) => `<tr><td>${dde(P.from)} – ${dde(P.to)}</td><td class="l">${GRP_LABEL[g]}: ${esc(P.t.name)}</td><td>${nf(P.kwh)}</td><td>${eur(P.cost)}</td><td>−${eur(P.boniContract)}</td><td>${eur(P.netCost)}</td><td>${eur(P.abschlag)} (${P.nAbschlag})</td><td>${P.erstattung ? eur(P.erstattung) : "–"}</td><td>${P.nachzahlung ? eur(P.nachzahlung) : "–"}</td><td>${P.bonus ? eur(P.bonus) : "–"}</td><td class="l">${res(P)}</td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Tarife hinterlegt.</td></tr></tbody>`;
+}
+function renderBoni() {
+  const ts = [...S.tariffs].sort((a, b) => a.group.localeCompare(b.group) || a.from.localeCompare(b.from));
+  const got = (t, i) => (S.payments || []).filter(p => p.kind === "bonus" && p.group === t.group && (p.note || "").startsWith(`${t.name}: ${i.name}`));
+  const inp = (t, k, key, v, w, mode = "decimal", ph = "") => `<input type="text" inputmode="${mode}" value="${esc(v ?? "")}" data-bi="${t.id}" data-i="${k}" data-k="${key}" style="width:${w}px" placeholder="${ph}">`;
+  $("boni-tbl").innerHTML = `<thead><tr><th class="l">Vertrag</th><th class="l">Bonus</th><th>Betrag €</th><th class="l">Bedingung im 1. Vertragsjahr</th><th>Wirksam</th><th class="l">Erhalten</th><th></th></tr></thead><tbody>${ts.map(t => {
+    const bi = C.boniInfo(t);
+    if (!bi.items.length) return `<tr><td class="l">${esc(t.name)}</td><td class="l" style="white-space:normal">${esc(t.boniNote || "–")}</td><td>${eur(+t.boni || 0, 2)}</td><td class="l">–</td><td>${eur(bi.effective, 2)}</td><td class="l">–</td><td><button type="button" class="ghost" data-boni-parse="${t.id}">In Posten aufteilen</button></td></tr>`;
+    return bi.items.map((i, k) => { const r = got(t, i), sum = r.reduce((a, p) => a + p.amount, 0);
+      return `<tr><td class="l">${k === 0 ? esc(t.name) : ""}</td><td class="l"><input type="text" value="${esc(i.name)}" data-bi="${t.id}" data-i="${k}" data-k="name" style="min-width:150px"></td><td>${inp(t, k, "amount", i.amount, 80)}</td>
+        <td class="l">ab ${inp(t, k, "minKwh", i.minKwh || "", 70, "numeric", "–")} kWh, sonst ${inp(t, k, "amountBelow", i.amountBelow ?? "", 60, "decimal", "–")} €${i.cond ? ` <span class="pill">${i.met ? "erfüllt" : "nicht erfüllt"}: ${nf(bi.kwh)} kWh</span>` : ""}</td>
+        <td>${eur(i.effective, 2)}</td><td class="l">${r.length ? `${eur(sum, 2)} am ${r.map(p => dde(p.d)).join(", ")}` : "offen"}</td><td><button type="button" class="x" data-bi-del="${t.id}" data-i="${k}" aria-label="Löschen">×</button></td></tr>`; }).join("")
+      + `<tr><td></td><td class="l" colspan="6"><button type="button" class="ghost" data-bi-add="${t.id}">Posten hinzufügen</button> <span class="note">Summe ${eur(bi.total, 2)}, wirksam ${eur(bi.effective, 2)}</span></td></tr>`;
+  }).join("")}</tbody>`;
+}
+function renderBalance(P, Cp) {
+  const a = C.energyBalance(P.from, P.to), b = Cp ? C.energyBalance(Cp.from, Cp.to) : null;
+  const rows = [["Ersparnis durch PV (vermiedene Netzkosten)", "pv"], ["Tarifwechsel Allgemeinstrom (ggü. Vorvertrag)", "switchAs"], ["Tarifwechsel Wärmepumpe (ggü. Vorvertrag)", "switchWp"],
+    ["Boni Allgemeinstrom (anteilig)", "boniAs"], ["Boni Wärmepumpe (anteilig)", "boniWp"], ["Gesamt", "total"]];
+  $("bal-tbl").innerHTML = `<thead><tr><th>Position</th><th>${esc(P.label)}</th>${b ? `<th>${esc(Cp.label)}</th>` : ""}</tr></thead><tbody>${
+    rows.map(([l, k]) => `<tr${k === "total" ? ' style="font-weight:700"' : ""}><td>${l}</td><td>${fmtM(a[k], "eur")}</td>${b ? `<td>${fmtM(b[k], "eur")}</td>` : ""}</tr>`).join("")}</tbody>`;
+}
+
+const TR_FIELDS = [["m1Eur", "Modul 1: Pauschale €/Jahr"], ["neAp", "Netzentgelt Arbeitspreis ct/kWh (Modul 2)"], ["m2MeterEur", "Modul 2: Kosten eigener Zähler €/Jahr"],
+  ["neHt", "Modul 3: Netzentgelt Hochtarif ct/kWh"], ["neSt", "Modul 3: Standardtarif ct/kWh"], ["neNt", "Modul 3: Niedertarif ct/kWh"],
+  ["shNt", "Anteil Laden im Niedertarif %"], ["shHt", "Anteil Laden im Hochtarif %"], ["imsysNew", "Intelligentes Messsystem €/Jahr"], ["imsysOld", "Bisheriger Zähler €/Jahr"]];
+function renderTarif() {
+  const p = S.tarif = S.tarif || {}; if (p.withEv === undefined) p.withEv = true; p.offers = p.offers || [];
+  const base = C.tariffBase(), cur = { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, r = tarifRechner(base, cur, p), ev = S.cars.ev || {};
+  $("tr-base").innerHTML = kpi(kwh(base.asKwh), "Allgemeinstrom aus dem Netz", base.to ? `365 Tage bis ${dde(base.to)}` : "")
+    + kpi(kwh(base.wpKwh), "Wärmepumpe", "365 Tage laut Zähler")
+    + kpi(kwh(base.evGrid), "E-Auto zu Hause aus dem Netz", `aus „Auto-Vergleich“: ${kwh(base.evYear)} im Jahr, ${nf(+ev.shHome || 0)} % zu Hause, davon ${nf(+ev.shPV || 0)} % aus PV`);
+  $("tr-withev").checked = !!p.withEv;
+  const row = (g, o, isCur) => `<tr><td class="l">${isCur ? `<b>${esc(o.name)}</b> <span class="pill">aktuell</span>` : `<input type="text" value="${esc(o.name || "")}" data-tro="${o.idx}" data-k="name" style="min-width:150px">`}</td>
+    <td class="l">${isCur ? GRP_LABEL[g] : `<select data-tro="${o.idx}" data-k="grp"><option value="as" ${g === "as" ? "selected" : ""}>Allgemeinstrom</option><option value="wp" ${g === "wp" ? "selected" : ""}>Wärmepumpe</option></select>`}</td>
+    ${["ap", "gp", "boni"].map(k => `<td>${isCur ? nf(+cur[g][k] || 0, 2) : `<input type="text" inputmode="decimal" value="${esc(o[k] ?? "")}" data-tro="${o.idx}" data-k="${k}" style="width:80px">`}</td>`).join("")}
+    <td>${eur(o.y1)}</td><td>${eur(o.y2)}</td><td>${isCur ? "–" : `<span style="color:${o.diffY2 < 0 ? "var(--ok)" : "var(--warn)"}">${o.diffY2 < 0 ? "−" : "+"}${eur(Math.abs(o.diffY2))}</span>`}</td>
+    <td>${isCur ? "" : `<button type="button" class="x" data-tro-del="${o.idx}" aria-label="Löschen">×</button>`}</td></tr>`;
+  $("tr-offers").innerHTML = `<thead><tr><th class="l">Tarif</th><th class="l">Zählpunkt</th><th>ct/kWh</th><th>Grundpreis €/Jahr</th><th>Boni €</th><th>Jahr 1 (mit Boni)</th><th>ab Jahr 2</th><th>ggü. aktuell ab Jahr 2</th><th></th></tr></thead><tbody>${
+    ["as", "wp"].map(g => { const G = r.groups[g]; return (G.current ? row(g, { ...G.current, idx: -1 }, true) : "") + G.offers.map(o => row(g, o, false)).join(""); }).join("")}</tbody>`;
+  $("tr-note").textContent = `Verbrauchsbasis: Allgemeinstrom ${kwh(r.kwh.as)}${p.withEv ? " inkl. E-Auto" : ""}, Wärmepumpe ${kwh(r.kwh.wp)} pro Jahr. Boni zählen nur im ersten Jahr.`;
+  if (!$("tr-params").children.length) $("tr-params").innerHTML = TR_FIELDS.map(([k, l]) => `<label class="f">${l}<input type="text" inputmode="decimal" data-tr="${k}"></label>`).join("");
+  $("tr-params").querySelectorAll("[data-tr]").forEach(el => { if (document.activeElement !== el) el.value = p[el.dataset.tr] ?? ""; });
+  $("tr-wallbox").innerHTML = `<thead><tr><th class="l">Variante</th><th>Kosten Laden €/Jahr</th><th>ggü. ohne §14a</th><th class="l">Hinweis</th></tr></thead><tbody>${
+    r.wallbox.map(w => `<tr${w.key === r.best.key ? ' style="font-weight:700"' : ""}><td class="l">${w.name}${w.key === r.best.key ? ' <span class="pill">günstigste</span>' : ""}</td><td>${eur(w.eur)}</td><td>${w.key === "none" ? "–" : Math.abs(w.vsNone) < 0.5 ? "±0 €" : `${w.vsNone < 0 ? "−" : "+"}${eur(Math.abs(w.vsNone))}`}</td><td class="l" style="white-space:normal">${w.note}</td></tr>`).join("")}</tbody>`;
+  const missing = ["m1Eur", "neAp", "neSt", "neNt"].some(k => !+p[k]);
+  $("tr-hint").innerHTML = (missing ? flag("Für ein belastbares Ergebnis die Werte deines Netzbetreibers eintragen (Preisblatt „Netzentgelte“, Abschnitt steuerbare Verbrauchseinrichtungen nach §14a EnWG). Solange Felder leer sind, zählen sie als 0.", true) : "")
+    + (r.imsysBreakEven != null ? `<p class="note">Das intelligente Messsystem kostet ${eur(r.imsysExtra)} pro Jahr mehr; Modul 3 spart durch zeitvariable Netzentgelte ${eur(r.m3Shift)} pro Jahr.</p>` : "");
+}
+
+/* Zahlung auf der Seite „Erfassen“ */
+function quickPaymentFields(today) {
+  return `<label class="f">Zählpunkt<select id="q-pg"><option value="as">Allgemeinstrom</option><option value="wp">Wärmepumpe</option></select></label>`
+    + `<label class="f">Art<select id="q-pk">${Object.entries(KIND_LABEL).map(([k, l]) => `<option value="${k}">${l}</option>`).join("")}</select></label>`
+    + `<label class="f">Datum<input type="date" id="q-d" value="${today}"></label>`
+    + `<label class="f">Betrag in €<input type="text" inputmode="decimal" autocomplete="off" id="q-pa"></label>`
+    + `<label class="f wide">Notiz<input type="text" id="q-pn"></label>`;
 }

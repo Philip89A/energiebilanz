@@ -37,7 +37,7 @@ const ready = () => p.waitForSelector('#loading[hidden]', { state: 'attached' })
 
 // 1 Start als installierte App (#quick), Manifest und Service Worker
 await p.goto('http://localhost:8000/#quick'); await ready();
-ok(await p.isVisible('#p-quick') && (await p.locator('.qbtn').count()) === 4, 'Seite „Erfassen“ mit 4 Knöpfen');
+ok(await p.isVisible('#p-quick') && (await p.locator('.qbtn').count()) === 5, 'Seite „Erfassen“ mit 5 Knöpfen');
 const man = await p.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
 ok(man.start_url === './#quick' && man.icons.length === 3 && man.display === 'standalone', 'Manifest gültig');
 await p.evaluate(() => navigator.serviceWorker.ready); await p.waitForTimeout(500);

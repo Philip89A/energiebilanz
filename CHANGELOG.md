@@ -87,3 +87,29 @@
 - iOS: Eingabefelder mit 16 px Schrift (sonst zoomt Safari beim Antippen hinein).
 - `scripts/offline-check.mjs`: 21 Prüfungen (Service Worker, Erfassen, offline vormerken, Neustart offline,
   Senden bei Netz, Serverfehler, Offline-Start ohne Sitzung) grün.
+
+## v0.7.0 – Zahlungsbuch, Tarifrechner, Korrekturen
+- **Zahlungsbuch** (Stromkosten und „Erfassen“): Abschläge, Erstattungen, Boni, Nachzahlungen; „Vorschlag übernehmen“
+  legt die geplanten Abschläge aus dem Abschlagsplan an. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme.
+- **Abrechnung prüfen**: je Abrechnungsjahr Kosten laut Verbrauch × Tarif (abzüglich Boni) gegen den netto
+  geflossenen Betrag; Erstattung/Nachzahlung gehört zum zuletzt beendeten Jahr.
+- **Boni als Einzelposten** je Vertrag, optional mit Mengenbedingung (z. B. voller Neukundenbonus erst ab einer
+  Jahresmenge); „In Posten aufteilen“ übernimmt die bisherige Notiz. Erhaltene Boni aus dem Zahlungsbuch.
+  Braucht das Datenbank-Update `docs/UPDATE_V07.sql`.
+- **Korrektur Abschlag-Check** (Abweichung von der Referenz): Offene Abschläge zählen mit dem Betrag, der an ihrem
+  Fälligkeitstag gilt. Vorher wurde ein ab einem späteren Datum geänderter Abschlag ignoriert und das erwartete
+  Ergebnis zu hoch ausgewiesen. Neue Zeilen „Nächster Abschlag“ und Quelle „laut Zahlungsbuch“/„angenommen“.
+- **Break-even einheitlich**: Überblick und Kosten & Ersparnisse zeigen denselben Monat wie die Amortisation
+  (vorher: Investition ÷ Jahresersparnis bzw. lineare Restlaufzeit – drei verschiedene Zahlen).
+- **Gesamtbilanz Energie** (Kosten & Ersparnisse): PV-Ersparnis, Tarifwechsel gegenüber dem Vorvertrag und Boni
+  getrennt – bewusst nicht in der Amortisation, weil Boni und Tarifwechsel auch ohne PV angefallen wären.
+- **Tarifrechner** (neue Seite): Angebote mit dem Verbrauch der letzten 365 Tage (optional inkl. E-Auto), Jahr 1 mit
+  Boni und ab Jahr 2; Wallbox nach §14a EnWG (ohne, Modul 1, Modul 2, Modul 1+3) und intelligentes Messsystem.
+  Werte des Netzbetreibers als Eingabe, keine geschätzten Standardwerte.
+- **Überblick**: Monatsgrafik ohne Vergleich über die volle Breite; gepunktete Linie „Netzbezug laut Zähler“ auch vor
+  dem Smart Meter (Genauigkeit hängt an der Zahl der Ablesungen); Vergleichsgrafik mit kräftigeren Farben,
+  Zeitraum in der Legende und beiden Zeiträumen im Tooltip.
+- **Stromkosten**: Erklärung der monatlichen Kosten; Tooltip mit kWh, Arbeitspreis- und Grundpreisanteil.
+- „Erfassen“: fünfter Knopf „Zahlung“ (Betrag aus dem Abschlagsplan vorausgefüllt).
+- Tests: 39 Unit-Tests; `scripts/v07-check.mjs` 20 Prüfungen; Seitenvergleich zählt Diagramme jetzt als gleich,
+  wenn alle Datenreihen der Referenz unverändert enthalten sind (zusätzliche Reihen erlaubt).

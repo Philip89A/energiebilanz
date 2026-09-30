@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.6.0">
-<link rel="stylesheet" href="css/style.css?v=0.6.0">
+<meta name="app-version" content="0.7.0">
+<link rel="stylesheet" href="css/style.css?v=0.7.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -96,7 +96,7 @@
   </div>
   <div class="grid g4" style="margin-top:16px" id="ov-kpis"></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel"><h2 id="ov-mtitle">Monatsbilanz PV-Messkreis</h2><p class="note">Erzeugung, genutzter Solarstrom, Netzbezug und Einspeisung laut Anker.</p><div class="chart"><canvas id="ov-month"></canvas></div></div>
+    <div class="panel" id="ov-month-panel"><h2 id="ov-mtitle">Monatsbilanz PV-Messkreis</h2><p class="note">Erzeugung, genutzter Solarstrom, Netzbezug und Einspeisung laut Anker. Gepunktet: Netzbezug laut Allgemeinstrom-Zähler (ganzer Allgemeinstrom, zwischen zwei Ablesungen verteilt – je mehr Stände, desto genauer).</p><div class="chart"><canvas id="ov-month"></canvas></div></div>
     <div class="panel" id="ov-cmp-panel"><h2>Erzeugung im Vergleich</h2><p class="note" id="ov-cmp-note"></p><div class="chart"><canvas id="ov-cmp"></canvas></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kennzahlen im Zeitraum</h2><p class="note">Grün: besser als der Vergleich, orange: schlechter. Pp. = Prozentpunkte.</p><div id="ov-cmp-tbl"></div></div>
@@ -114,6 +114,7 @@
   <div class="panel" style="margin-top:16px"><h2>Aufstellung</h2><div class="tbl-wrap"><table id="fin-tbl"></table></div>
     <p class="note">Ersparnisse nur zum Arbeitspreis (der Grundpreis fällt ohnehin an). Boni sind die vertraglichen Boni (Sofort-, Neukunden-, Treuebonus), tagesanteilig über das erste Vertragsjahr verteilt. Erstattungen zu viel gezahlter Abschläge sind nicht enthalten: Sie sind Rückzahlung eigenen Geldes, keine Kostensenkung, und die Kosten werden hier direkt aus Verbrauch mal Tarif berechnet. Tavascan-Werte sind eine Hochrechnung aus dem Auto-Vergleich.</p></div>
   <div class="panel" style="margin-top:16px"><h2>Nach Kalenderjahren</h2><p class="note">Unabhängig vom oben gewählten Zeitraum. Angefangene Jahre enthalten nur die Tage mit Daten.</p><div class="tbl-wrap"><table id="fin-years"></table></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Gesamtbilanz Energie</h2><p class="note">Getrennt von der Amortisation: PV-Ersparnis, Ersparnis durch Tarifwechsel (Preise des jeweils vorherigen Vertrags fortgeschrieben) und vertragliche Boni. Tarifwechsel und Boni hätte es auch ohne PV-Anlage gegeben, deshalb zählen sie nicht zur Amortisation.</p><div class="tbl-wrap"><table id="bal-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px"><h2>Investition PV-Anlage und Speicher</h2><div id="fin-inv"></div></div>
 </section>
 
@@ -187,9 +188,49 @@
     <div class="tbl-wrap"><table id="ab-edit"></table></div>
     <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="ab-add">Abschlag hinzufügen</button></div>
   </div>
+  <div class="panel" style="margin-top:16px"><h2>Zahlungsbuch</h2>
+    <p class="note">Tatsächliche Geldflüsse. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme „12 Abschläge ab einem Monat nach Lieferbeginn“. Erstattungen und Nachzahlungen sind Geldflüsse, keine Kostensenkung.</p>
+    <div class="form" style="margin-top:10px">
+      <label class="f">Zählpunkt<select id="pay-g"><option value="as">Allgemeinstrom</option><option value="wp">Wärmepumpe</option></select></label>
+      <label class="f">Art<select id="pay-k"><option value="abschlag">Abschlag</option><option value="erstattung">Erstattung</option><option value="bonus">Bonus</option><option value="nachzahlung">Nachzahlung</option></select></label>
+      <label class="f">Datum<input type="date" id="pay-d"></label>
+      <label class="f">Betrag in €<input type="text" inputmode="decimal" id="pay-a"></label>
+      <label class="f" id="pay-bonus-wrap" hidden>Bonus<select id="pay-bonus"></select></label>
+      <label class="f">Notiz<input type="text" id="pay-n"></label>
+      <button type="button" id="pay-add">Zahlung speichern</button>
+    </div>
+    <div class="row" style="margin-top:10px"><button type="button" class="ghost" id="pay-suggest">Vorschlag übernehmen</button></div>
+    <div class="tbl-wrap"><table id="pay-tbl"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Abrechnung prüfen</h2>
+    <p class="note">Je Abrechnungsjahr: Kosten laut Verbrauch × Tarif abzüglich Boni gegen das, was netto geflossen ist (Abschläge + Nachzahlung − Erstattung − separat erhaltene Boni). Erstattung bzw. Nachzahlung wird dem zuletzt beendeten Jahr zugeordnet.</p>
+    <div class="tbl-wrap"><table id="bill-tbl"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Boni je Vertrag</h2>
+    <p class="note">Einzelne Posten mit optionaler Mengenbedingung (z. B. voller Neukundenbonus erst ab einer Jahresmenge). Für das laufende Vertragsjahr zählt die Prognose aus dem Abschlag-Check. „Erhalten“ kommt aus dem Zahlungsbuch (Art „Bonus“).</p>
+    <div class="tbl-wrap"><table id="boni-tbl"></table></div>
+  </div>
   <div class="panel" style="margin-top:16px"><h2>Kosten je Tarifperiode</h2><div class="tbl-wrap"><table id="ct-tbl"></table></div><div id="ct-flags"></div></div>
-  <div class="panel" style="margin-top:16px"><h2 id="ct-mtitle">Monatliche Kosten</h2><div class="chart"><canvas id="ct-month"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2 id="ct-mtitle">Monatliche Kosten</h2><p class="note">Je Balken: Verbrauch laut Zähler × Arbeitspreis des an dem Tag gültigen Tarifs plus Grundpreis ÷ 365 je Tag, getrennt nach Allgemeinstrom und Wärmepumpe, ohne Boni. Tage ohne hinterlegten Tarif fehlen. Details im Tooltip.</p><div class="chart"><canvas id="ct-month"></canvas></div></div>
   <div class="panel" style="margin-top:16px"><h2>Tarife</h2><p class="note">Geschätzte Daten sind in der Spalte „Hinweis“ markiert. Bitte korrigieren, sobald bekannt.</p><div class="tbl-wrap"><table id="tf-tbl"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="tf-add">Tarif hinzufügen</button></div></div>
+</section>
+
+<section id="p-tarif" data-title="Tarifrechner" hidden>
+  <h1>Tarifrechner</h1>
+  <p class="lead">Angebote mit deinem Verbrauch der letzten 365 Tage durchrechnen und die Wallbox nach §14a EnWG bewerten. Alle Preise brutto. Werte des Netzbetreibers stehen im Preisblatt „Netzentgelte“.</p>
+  <div class="grid g3" id="tr-base"></div>
+  <div class="panel" style="margin-top:16px"><h2>Angebote vergleichen</h2>
+    <label class="f check" style="margin-top:8px"><input type="checkbox" id="tr-withev"> E-Auto-Laden zu Hause beim Allgemeinstrom einrechnen</label>
+    <div class="tbl-wrap"><table id="tr-offers"></table></div>
+    <p class="note" id="tr-note"></p>
+    <div class="row" style="margin-top:10px"><button type="button" class="ghost" id="tr-add">Angebot hinzufügen</button></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Wallbox und §14a EnWG</h2>
+    <p class="note">Modul 1: pauschale Reduzierung des Netzentgelts. Modul 2: Netzentgelt-Arbeitspreis −60 % mit eigenem Zähler. Modul 3: zeitvariable Netzentgelte zusätzlich zu Modul 1, braucht ein intelligentes Messsystem. Laden zu Hause wird mit dem Arbeitspreis bewertet (Grundpreis fällt ohnehin an).</p>
+    <div class="form" style="margin-top:10px" id="tr-params"></div>
+    <div id="tr-hint"></div>
+    <div class="tbl-wrap"><table id="tr-wallbox"></table></div>
+  </div>
 </section>
 
 <section id="p-amort" data-title="Amortisation" hidden>
@@ -303,8 +344,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.6.0"></script>
-<script src="vendor/chart.umd.js?v=0.6.0"></script>
-<script type="module" src="js/app.js?v=0.6.0"></script>
+<script src="vendor/supabase.js?v=0.7.0"></script>
+<script src="vendor/chart.umd.js?v=0.7.0"></script>
+<script type="module" src="js/app.js?v=0.7.0"></script>
 </body>
 </html>

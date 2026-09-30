@@ -1,8 +1,8 @@
 // Seitenvergleich: reference/energiebilanz_v0.14.html gegen die App (http://localhost:8000, Supabase simuliert mit
 // data/seed_state.json). Verglichen werden angezeigte Texte (Kennzahlen, Tabellen, Hinweise) und die Daten aller
 // Diagramme für 9 Seiten × 6 Ansichten. Bericht: data/compare-report.json (privat).
-// Gewollte Abweichungen (v0.4): neutralisierte Textstellen in #ov-todo, #mt-wp, #mt-rec, #ct-flags und die
-// ausgeblendeten Löschen-Kreuze in #rd-tbl.
+// Gewollte Abweichungen: neutralisierte Textstellen in #ov-todo, #mt-wp, #mt-rec, #ct-flags (v0.4);
+// einheitlicher Break-even in #ov-kpis und #fin-inv, Quelle und nächster Abschlag in #ab-tbl (v0.7).
 // Aufruf:  python3 -m http.server 8000 &   dann   npx -y -p playwright node scripts/compare.mjs
 // Optional: CHROMIUM_PATH=/pfad/zu/chrome, CHROMIUM_ARGS="--flag1 --flag2"
 import { chromium } from 'playwright';
@@ -80,15 +80,25 @@ async function runApp(v, page) {
   const r = await grab(p); await ctx.close(); return { ...r, errs };
 }
 
-const report = []; let nText = 0, nChart = 0;
+const report = []; let nText = 0, nChart = 0, extraSeries = 0;
 const norm = x => JSON.stringify(x, (k, v) => typeof v === 'number' ? Math.round(v * 1e6) / 1e6 : v);
 for (const v of VIEWS) for (const page of PAGES) {
   const [R, P] = await Promise.all([runRef(v, page), runApp(v, page)]);
   if (R.errs.length || P.errs.length) report.push({ v: v.name, page, errs: { ref: R.errs, app: P.errs } });
   for (const s of SEL) { if (!(s in R.t)) continue; nText++; if (R.t[s] !== P.t[s]) report.push({ v: v.name, page, sel: s, ref: R.t[s], app: P.t[s] }); }
-  for (const id of Object.keys(R.c)) { nChart++; if (norm(R.c[id]) !== norm(P.c[id])) report.push({ v: v.name, page, chart: id, ref: norm(R.c[id]).slice(0, 300), app: norm(P.c[id] || null).slice(0, 300) }); }
+  // Diagramme: gleiche x-Achse, und jede Datenreihe der Referenz kommt unverändert vor (Beschriftung/Farbe egal).
+  // Zusätzliche Reihen der App (z. B. Netzbezug laut Zähler ab v0.7) sind erlaubt und werden gezählt.
+  for (const id of Object.keys(R.c)) {
+    nChart++;
+    const r = R.c[id], a = P.c[id];
+    if (!a) { report.push({ v: v.name, page, chart: id, problem: 'fehlt in der App' }); continue; }
+    const appData = a.ds.map(d => norm(d.data));
+    const lost = r.ds.filter(d => !appData.includes(norm(d.data))).map(d => d.label);
+    if (norm(r.labels) !== norm(a.labels) || lost.length) report.push({ v: v.name, page, chart: id, problem: lost.length ? 'Datenreihe verändert: ' + lost.join(', ') : 'x-Achse verschieden' });
+    extraSeries += a.ds.length - r.ds.length;
+  }
 }
 writeFileSync(base + '/data/compare-report.json', JSON.stringify(report, null, 1));
-console.log('verglichen:', nText, 'Textblöcke,', nChart, 'Diagramme; Abweichungen:', report.length);
+console.log('verglichen:', nText, 'Textblöcke,', nChart, 'Diagramme; Abweichungen:', report.length, '| zusätzliche Datenreihen der App:', extraSeries);
 const bySel = {}; report.forEach(r => { const k = r.sel || r.chart || 'errs'; bySel[k] = (bySel[k] || 0) + 1; }); console.log(bySel);
 await b.close();
