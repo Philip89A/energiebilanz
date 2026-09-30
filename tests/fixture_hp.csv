@@ -1,0 +1,10 @@
+;;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;ProduzierteWärme;VerbrauchteEnergie;VerbrauchteEnergie;VerbrauchteEnergie;VerbrauchteEnergie;VerbrauchteEnergie;VerbrauchteEnergie;VerbrauchteEnergie;Sensoren;Sensoren;Sensoren;
+;;Gesamt;Heizung;Kühlung;Warmwasser;Gesamt;Heizung;Kühlung;Warmwasser;Gesamt;Heizung;Kühlung;Warmwasser;Gesamt;Heizung;Warmwasser;;;;
+Kategorie;Zeitstempel;Wärmepumpe(kWh);Wärmepumpe(kWh);Wärmepumpe(kWh);Wärmepumpe(kWh);Umgebung(kWh);Umgebung(kWh);Umgebung(kWh);Umgebung(kWh);Wärmepumpe(kWh);Wärmepumpe(kWh);Wärmepumpe(kWh);Wärmepumpe(kWh);ElektrischerZuheizer(kWh);ElektrischerZuheizer(kWh);ElektrischerZuheizer(kWh);Außentemperatur(C);Vorlauftemperatur(C);Warmwassertemperatur(C);
+Stunde;2025-01-02T01:00;0,6;0;0;0,6;0,7;-;0;0,7;0,6;0;0;0,6;0;0;0;5,5;35;52,2;
+Stunde;2025-01-02T02:00;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;
+Tag;2025-01-01;10;6;0;4;20;12;0;8;10;6;0;4;0;0;0;2;35;50;
+Tag;2025-01-02;12,5;7;0;5;22;13;0;9;11,5;6;0;5;1;1;0;1,5;36;51;
+Monat;2024-12;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;-;
+Monat;2025-01;300;180;0;120;600;400;0;200;298;180;0;118;2;0;2;3;35;50;
+Monat;2025-02;250;150;5;95;500;330;10;170;250;150;5;95;0;0;0;4;34;50;

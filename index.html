@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.10.0">
-<link rel="stylesheet" href="css/style.css?v=0.10.0">
+<meta name="app-version" content="0.11.0">
+<link rel="stylesheet" href="css/style.css?v=0.11.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -131,7 +131,7 @@
     <div class="panel"><h2>Erzeugung je Strang</h2><p class="note">Hilft, verschattete oder ausgefallene Module zu erkennen.</p><div class="chart"><canvas id="pv-str"></canvas></div></div>
     <div class="panel"><h2>Solarstrom nach Verwendung</h2><p class="note">Direkt verbraucht, in den Speicher geladen oder eingespeist.</p><div class="chart"><canvas id="pv-use"></canvas></div></div>
   </div>
-  <div class="panel" style="margin-top:16px" id="wx-pv-panel"><h2>PV und Wetter</h2>
+  <div class="panel" style="margin-top:16px" id="wx-pv-panel"><h2>PV und Wetter <span id="wx-pv-gran">je Monat</span></h2>
     <p class="note">Erzeugung gegen Globalstrahlung (horizontal gemessen, Open-Meteo). Der Ertragsfaktor (kWh je kWp und kWh/m²) zeigt, wie gut die Anlage die Sonne nutzt – unabhängig davon, wie sonnig es war. Sinkt er, liegt es an der Anlage (Abregelung, voller Speicher, Verschattung, Ausfall), nicht am Wetter. Nach dem Ausbau die installierte Leistung oben anpassen.</p>
     <div id="wx-pv"></div><div class="chart tall"><canvas id="wx-pv-chart"></canvas></div><div id="wx-pv-odd"></div></div>
 </section>
@@ -160,6 +160,14 @@
     <div class="panel"><h2>Verbrauch pro Tag zwischen den Ablesungen</h2><div class="chart tall"><canvas id="mt-rate"></canvas></div></div>
     <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="hp-panel"><h2>Wärmepumpe laut Gerät</h2>
+    <p class="note">Aus dem Energie-Export der Wärmepumpen-App (Import unter „Daten“): Strom getrennt nach Heizung, Warmwasser und Kühlung, erzeugte Wärme und Arbeitszahl (Wärme ÷ Strom, ohne Kühlung). Der Zähler misst dasselbe Gerät; die Linie „Zähler“ zeigt den Monatsverbrauch laut Ablesungen (zwischen zwei Ständen gleichmäßig verteilt).</p>
+    <div id="hp-flags"></div><div class="grid g4" id="hp-kpis" style="margin-top:10px"></div>
+    <div class="grid g2" style="margin-top:16px">
+      <div><h2 style="font-size:15px">Strom je Monat</h2><div class="chart"><canvas id="hp-month"></canvas></div></div>
+      <div><h2 style="font-size:15px">Strom je Tag <span class="note" id="hp-day-note"></span></h2><div class="chart"><canvas id="hp-day"></canvas></div></div>
+    </div>
+    <div class="tbl-wrap"><table id="hp-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px" id="wx-wp-panel"><h2>Wärmepumpe wetterbereinigt</h2>
     <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar.</p>
     <div id="wx-wp"></div><div class="chart"><canvas id="wx-wp-chart"></canvas></div><div class="tbl-wrap"><table id="wx-wp-tbl"></table></div></div>
@@ -347,6 +355,11 @@
       <div id="csv-result"></div></div>
     <div class="panel"><h2>Datenstand</h2><div id="status">Lade …</div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="hp-import"><h2>Wärmepumpe: App-Export importieren</h2>
+    <p class="note">Energie-Export der Wärmepumpen-App als CSV (Stunden der letzten Tage, Tage der letzten Monate, Monate seit Inbetriebnahme). Vorhandene Zeitpunkte werden überschrieben, nichts wird gelöscht – regelmäßig exportieren und hochladen, damit Stunden und Tage lückenlos bleiben.</p>
+    <div class="form" style="margin-top:10px"><label class="f">CSV-Datei<input type="file" id="hp-file" accept=".csv,text/csv"></label></div>
+    <div id="hp-result" style="margin-top:10px"></div>
+  </div>
   <div class="panel" style="margin-top:16px" id="wx-panel"><h2>Wetter</h2>
     <p class="note">Tageswerte von Open-Meteo (Temperatur, Globalstrahlung, Sonnenstunden) für die Wetterbereinigung der Wärmepumpe und den Ertragsvergleich der PV. Der Standort wird auf etwa 1 km gerundet und nur in deinen Einstellungen gespeichert; Open-Meteo sieht bei jedem Abruf Koordinaten und IP-Adresse. Fehlende Tage werden beim Öffnen automatisch ergänzt.</p>
     <div class="form" style="margin-top:10px">
@@ -381,8 +394,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.10.0"></script>
-<script src="vendor/chart.umd.js?v=0.10.0"></script>
-<script type="module" src="js/app.js?v=0.10.0"></script>
+<script src="vendor/supabase.js?v=0.11.0"></script>
+<script src="vendor/chart.umd.js?v=0.11.0"></script>
+<script type="module" src="js/app.js?v=0.11.0"></script>
 </body>
 </html>

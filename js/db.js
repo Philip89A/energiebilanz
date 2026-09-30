@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.10.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.10.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.11.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.11.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -146,6 +146,8 @@ export async function loadAll() {
   tables.forEach((t, i) => { db[t] = rest[i]; });
   // Wetter (schema v5): fehlt die Tabelle noch, läuft die App ohne Wetter weiter
   try { db.weather_daily = await fetchAll('weather_daily', { order: 'day' }); } catch (e) { db.weather_daily = []; db.weatherError = e.message; }
+  // Wärmepumpen-App (schema v6), ebenso tolerant
+  try { db.hp_energy = await fetchAll('hp_energy'); } catch (e) { db.hp_energy = []; db.hpError = e.message; }
   return db;
 }
 
@@ -174,4 +176,9 @@ export async function saveSettings(data) {
 // Wettertage speichern (Upsert je Tag); nur online, nicht über die Offline-Warteschlange
 export async function saveWeather(rows) {
   await upsertRows('weather_daily', rows, 'user_id,day');
+}
+
+// Wärmepumpen-Export speichern (Upsert je Auflösung und Zeitpunkt)
+export async function saveHp(rows, onProgress) {
+  await upsertRows('hp_energy', rows, 'user_id,grain,ts', onProgress);
 }

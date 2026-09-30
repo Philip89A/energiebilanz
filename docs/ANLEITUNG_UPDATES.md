@@ -20,3 +20,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 2. Die App lädt die Wetterdaten automatisch (einige Sekunden). Danach erscheinen die Auswertungen unter
    „Zähler & Wärmepumpe“ und „PV-Anlage“.
 3. Klappt der Abruf nicht: Screenshot der Meldung unter „Wetter“ an Claude.
+
+# Update v0.11 (Wärmepumpe laut Gerät)
+1. Supabase SQL Editor → New query → Inhalt von `docs/UPDATE_V11.sql` einfügen → **Run**.
+   Die Warnung „destructive operations“ bestätigen: Sie betrifft nur Regel und Trigger der neuen Tabelle.
+   Kontrolle: `hp_energy | true`.
+2. Pull Request mergen, App neu laden (Version v0.11.0 in der Seitenleiste).
+3. Daten → „Wärmepumpe: App-Export importieren“ → CSV aus der Wärmepumpen-App wählen → Zeilen speichern.
+   Regelmäßig (z. B. monatlich) wiederholen: Die App exportiert Stunden nur für wenige Tage und Tage nur für
+   wenige Monate.

@@ -172,6 +172,19 @@ create table if not exists weather_daily (   -- v5 (App v0.10): Wetter-Tageswert
   primary key (user_id, day)
 );
 
+create table if not exists hp_energy (       -- v6 (App v0.11): Energie-Export der Wärmepumpen-App
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  grain text not null check (grain in ('hour','day','month')),
+  ts text not null,                  -- 2026-09-28T01:00 | 2026-09-28 | 2026-09
+  el_hp numeric, el_heat numeric, el_cool numeric, el_dhw numeric,      -- Strom Wärmepumpe kWh
+  el_aux numeric, el_aux_heat numeric, el_aux_dhw numeric,              -- Strom Zuheizer kWh
+  heat_heat numeric, heat_dhw numeric, heat_cool numeric,               -- erzeugte Wärme bzw. Kälte kWh
+  t_out numeric, t_flow numeric, t_dhw numeric,                         -- Sensoren °C
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, grain, ts)
+);
+
 -- v3 (App v0.7): Boni als Einzelposten je Tarif, z. B.
 -- [{"name":"Sofortbonus","amount":100},{"name":"Neukundenbonus","amount":80,"minKwh":2000,"amountBelow":50}]
 alter table tariffs add column if not exists boni_items jsonb;
@@ -202,7 +215,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['anker_daily','meters','meter_readings','events','tariffs','installments',
-                           'payments','investments','fuel_log','charge_log','car_log','settings','weather_daily']
+                           'payments','investments','fuel_log','charge_log','car_log','settings','weather_daily','hp_energy']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists own_rows on %I', t);
@@ -216,5 +229,5 @@ begin
   end loop;
 end $$;
 
--- Kontrolle 1: muss 13 Zeilen zeigen, alle rowsecurity = true
+-- Kontrolle 1: muss 14 Zeilen zeigen, alle rowsecurity = true
 select tablename, rowsecurity from pg_tables where schemaname = 'public' order by 1;

@@ -7,3 +7,4 @@ seed_state*.json
 .env
 .DS_Store
 node_modules/
+!tests/fixture_*.csv
