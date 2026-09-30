@@ -74,6 +74,11 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      kalibriert auf den gemessenen genutzten Solarstrom; E-Auto ab Übergabe; Alternative öffentlich/Steckdose;
      §14a an/aus (eigener Betrag oder Modul aus dem Tarifrechner). Kosten ohne Vorgabewerte.
      Prüfung: `tests/ausbau.test.mjs`, `scripts/v08-check.mjs` (24 Prüfungen).
+   - ✅ v0.9: Investitionen mit Kategorie (`investments.category`, schema v4 / `docs/UPDATE_V09.sql`); Amortisation
+     mit Wallbox-Ersparnis aus dem Ladebuch (Ort „zu Hause“) ab erster Wallbox-Investition, Prognose ab Übergabe;
+     E-Auto zu Hause in Stromkosten, Abschlag-Hinweis ab Übergabe, Tarifbasis ohne Doppelzählung.
+     Prüfung: `tests/v09.test.mjs`, `scripts/v09-check.mjs` (13 Prüfungen).
+     Offen: Import der Wallbox-Daten aus dem Anker-Export, sobald ein Beispiel vorliegt.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

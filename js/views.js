@@ -3,8 +3,8 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.8.0';
-import { parseNum } from './queue.js?v=0.8.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.9.0';
+import { parseNum } from './queue.js?v=0.9.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -590,13 +590,15 @@ function renderAmort(first){
   const {from,to}=last12(), base=pvSavings(from,to).eur, am=S.amort;
   const realized = pvSavings(A.dates[0], to).eur, tl=amortTimeline();
   const beYears = tl.be ? (diffDays(`${tl.startK}-01`,`${tl.be}-01`)/365.25) : null;
+  const wb12 = tl.wbFrom ? C.homeCharging([from,tl.wbFrom].sort()[1], to).saving : 0, wbAll = tl.wbFrom ? C.homeCharging(tl.wbFrom, to).saving : 0;
   $("am-kpis").innerHTML =
     kpi(eur(inv,2),"Investition gesamt", `${S.invest.length} Positionen, Verkäufe abgezogen`) +
-    kpi(eur(base),"Ersparnis letzte 12 Monate","Nur Arbeitspreis") +
+    kpi(eur(base+wb12),"Ersparnis letzte 12 Monate", tl.wbFrom ? `PV ${eur(base)} zum Arbeitspreis, Wallbox ${eur(wb12)} gegenüber öffentlichem Laden` : "Nur Arbeitspreis") +
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
-    kpi(eur(realized),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct(realized/inv)} der Investition`:""}`);
-  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
-    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:320px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td>${eur(inv,2)}</td><td></td></tr></tfoot>`;
+    kpi(eur(realized+wbAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}`);
+  $("am-wb-note").innerHTML = tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "";
+  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
+    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr></tfoot>`;
   if(first){
     const h=$("am-sl"); h.innerHTML="";
     slider(h,am,"priceInc","Strompreissteigerung pro Jahr",0,8,0.5,"%");
@@ -702,7 +704,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -1106,7 +1108,7 @@ function renderAusbau() {
   if (v("s14a") && v("s14aMod") !== "manual" && !(m14a[v("s14aMod")] > 0)) fl.push(flag("§14a: Im Tarifrechner fehlen die Werte deines Netzbetreibers, deshalb zählt das Modul mit 0 €. Werte dort eintragen oder „Eigener Betrag“ wählen."));
   if (v("s14a") && v("s14aMod") === "manual") fl.push(flag("§14a mit eigenem Betrag: Schätzwert, bis die Werte des Netzbetreibers im Tarifrechner stehen.", true));
   if (v("alt") === "socket") fl.push(flag("Alternative Steckdose: Laden zu Hause wäre auch ohne Wallbox möglich, der Wallbox-Anteil bringt dann nur noch §14a. Die Kosten der Steckdose sind von der Wallbox-Investition abgezogen.", true));
-  fl.push(flag("Der „Auto-Vergleich“ rechnet bereits mit Laden zu Hause. Wer beide Seiten zusammenzählt, zählt den Wallbox-Vorteil doppelt: Die Wallbox gehört entweder hierher oder in die Autokosten.", true));
+  fl.push(flag("Nach dem Einbau verfolgt die Seite „Amortisation“ die echten Werte: Rechnungen dort mit Kategorie PV/Speicher bzw. Wallbox eintragen, Laden zu Hause unter „Erfassen → Laden“ (Ort „zu Hause“).", true));
   $("wb-flags").innerHTML = fl.join("");
   const lab = r.months.map(m => monthLabel(m.d.slice(0, 7)));
   const line = (label, data, c, dash, w = 2) => ({ label, data, borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: w, ...(dash ? { borderDash: [5, 4] } : {}) });
@@ -1119,4 +1121,16 @@ function renderAusbau() {
     Solarstrom geht zuerst ins Haus, dann in die Klimaanlage (Juni–August), dann ins Auto, dann in den Speicher (Wirkungsgrad ${pct(r.eta)} aus den Anker-Daten), der Rest wird eingespeist.
     PV-Erzeugung skaliert mit Faktor ${nf(r.scale, 2)}, nutzbarer Speicher ${nf(r.usable, 1)} kWh. Das Modell der heutigen Anlage liegt um ${pct(Math.abs(1 - r.K))} ${r.K < 1 ? "über" : "unter"} dem gemessenen genutzten Solarstrom; alle Mehrwerte sind damit korrigiert (Faktor ${nf(r.K, 2)}).</p>
     <p class="note">Nicht abgebildet: Stundenverläufe (es gibt nur Tageswerte), Abregelung bei hoher Leistung, negative Börsenpreise (Solarspitzengesetz: keine Vergütung, ohne Smart Meter Einspeisung auf 60 % begrenzt), Alterung des Speichers, Ladeverluste. Die Wallbox braucht einphasiges Laden bzw. Phasenumschaltung, damit der Speicher mit seiner begrenzten Ausgangsleistung das Auto nennenswert laden kann. THG-Prämie nicht enthalten.</p>`;
+}
+
+/* ---------- E-Auto zu Hause und Abschlag-Hinweis (v0.9) ---------- */
+const INV_CATS = [["pv", "PV/Speicher"], ["wallbox", "Wallbox"], ["other", "Sonstiges"]];
+function renderEvHome() {
+  const tb = C.tariffBase(), e = S.cars.ev || {}, h = tb.to ? C.homeCharging(tb.from, tb.to) : { kwh: 0, saving: 0 }, all = C.homeCharging("0000", "9999");
+  $("evh-kpis").innerHTML = kpi(kwh(h.kwh), "Geladen zu Hause", tb.to ? `365 Tage bis ${dde(tb.to)}, laut Ladebuch` : "")
+    + kpi(kwh(tb.homeGrid), "davon aus dem Netz (geschätzt)", `PV-Anteil ${nf(+e.shPV || 0)} % laut Auto-Vergleich`)
+    + kpi(kwh(tb.asKwh), "Allgemeinstrom ohne E-Auto", `Zähler ${kwh(tb.asMeter)} minus Netzanteil Auto`)
+    + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause, ${nf(+e.pricePublic || 0, 2)} €/kWh öffentlich`);
+  const hint = C.evAbschlagHint();
+  $("ab-ev").innerHTML = hint ? flag(`E-Auto ab ${dde(hint.from)}: Es lädt über den Allgemeinstrom, voraussichtlich etwa ${kwh(hint.kwhMonth)} pro Monat aus dem Netz, rund ${eur(hint.eurMonth)} pro Monat mehr. Die Hochrechnung oben enthält das erst, wenn Zählerstände nach der Übergabe vorliegen – Abschlag rechtzeitig um diesen Betrag erhöhen.`) : "";
 }

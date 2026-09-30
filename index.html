@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.8.0">
-<link rel="stylesheet" href="css/style.css?v=0.8.0">
+<meta name="app-version" content="0.9.0">
+<link rel="stylesheet" href="css/style.css?v=0.9.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -182,11 +182,15 @@
   <div class="grid g4" id="ct-kpis"></div>
   <div class="panel" style="margin-top:16px"><h2>Abschlag-Check: zahle ich zu viel?</h2>
     <p class="note">Je laufendem Vertrag: bisher gezahlte Abschläge gegen die bisher verbrauchten Kosten, dazu eine Prognose bis zum Ende des Abrechnungsjahres. Der restliche Verbrauch wird aus denselben Kalendertagen des Vorjahres geschätzt, damit Winter und Sommer richtig eingehen. Unabhängig vom oben gewählten Zeitraum.</p>
-    <div id="ab-flags"></div><div class="tbl-wrap"><table id="ab-tbl"></table></div>
+    <div id="ab-flags"></div><div id="ab-ev"></div><div class="tbl-wrap"><table id="ab-tbl"></table></div>
     <h2 style="margin-top:18px;font-size:15px">Abschläge</h2>
     <p class="note edit-only">Jede Änderung des Abschlags als neue Zeile mit dem Datum, ab dem er gilt.</p>
     <div class="tbl-wrap"><table id="ab-edit"></table></div>
     <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="ab-add">Abschlag hinzufügen</button></div>
+  </div>
+  <div class="panel" style="margin-top:16px" id="evh-panel"><h2>E-Auto zu Hause</h2>
+    <p class="note">Laden zu Hause läuft über den Allgemeinstrom-Zähler. Grundlage sind die Ladevorgänge mit Ort „zu Hause“ (kWh aus der Anker-App unter „Erfassen → Laden“ eintragen, je Ladung oder als Monatssumme). Der Netzanteil wird mit dem PV-Anteil aus dem Auto-Vergleich geschätzt.</p>
+    <div class="grid g4" id="evh-kpis" style="margin-top:10px"></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Zahlungsbuch</h2>
     <p class="note">Tatsächliche Geldflüsse. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme „12 Abschläge ab einem Monat nach Lieferbeginn“. Erstattungen und Nachzahlungen sind Geldflüsse, keine Kostensenkung.</p>
@@ -236,9 +240,9 @@
 <section id="p-amort" data-title="Amortisation" hidden>
   <h1>Amortisation</h1>
   <p class="lead">Wert einer selbst genutzten Solar-kWh ist der Arbeitspreis des Allgemeinstroms. Der Grundpreis fällt ohnehin an und zählt nicht als Ersparnis; mit umgelegtem Grundpreis sähe die Amortisation deutlich zu gut aus.</p>
-  <div class="grid g4" id="am-kpis"></div>
+  <div class="grid g4" id="am-kpis"></div><div id="am-wb-note"></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel"><h2>Investition</h2><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
+    <div class="panel" style="grid-column:1/-1"><h2>Investition</h2><p class="note">Kategorie „Wallbox“: ab dieser Investition zählt Laden zu Hause (Ort „zu Hause“ im Ladebuch) als Ersparnis gegenüber öffentlichem Laden.</p><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
     <div class="panel"><h2>Annahmen</h2><div class="grid g2" id="am-sl" style="margin-top:10px"></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
@@ -359,8 +363,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.8.0"></script>
-<script src="vendor/chart.umd.js?v=0.8.0"></script>
-<script type="module" src="js/app.js?v=0.8.0"></script>
+<script src="vendor/supabase.js?v=0.9.0"></script>
+<script src="vendor/chart.umd.js?v=0.9.0"></script>
+<script type="module" src="js/app.js?v=0.9.0"></script>
 </body>
 </html>

@@ -52,7 +52,7 @@ export function stateFromDb(db) {
       ap: +t.ap_ct, gp: +t.gp_eur_year, boni: +t.boni_eur || 0, boniNote: t.boni_note || '', est: t.estimate_note || '',
       ...(Array.isArray(t.boni_items) ? { boniItems: t.boni_items } : {}) })),
     abschlaege: (db.installments || []).map(a => ({ id: a.id, group: a.grp, from: a.valid_from, amount: +a.amount, note: a.note || '' })),
-    invest: (db.investments || []).map(x => ({ id: x.id, name: x.name, date: x.day || '', cost: +x.cost })),
+    invest: (db.investments || []).map(x => ({ id: x.id, name: x.name, date: x.day || '', cost: +x.cost, ...(x.category ? { cat: x.category } : {}) })),
     fuel: (db.fuel_log || []).map(x => ({ id: x.id, d: x.day, km: +x.odometer, l: +x.liters, e: +x.amount, s: x.fuel_type, full: x.full_tank })),
     charges: (db.charge_log || []).map(x => ({ id: x.id, d: x.day, km: x.odometer == null ? null : +x.odometer, k: +x.kwh, e: x.amount == null ? 0 : +x.amount, o: x.location })),
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
@@ -69,7 +69,7 @@ export const toDb = {
     gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null,
     ...(Array.isArray(t.boniItems) ? { boni_items: t.boniItems } : {}) }),   // Spalte erst ab schema v3, nur senden wenn genutzt
   installment: a => ({ id: a.id, grp: a.group, valid_from: a.from, amount: +a.amount, note: a.note || null }),
-  investment: x => ({ id: x.id, day: x.date || null, name: x.name, cost: +x.cost || 0 }),
+  investment: x => ({ id: x.id, day: x.date || null, name: x.name, cost: +x.cost || 0, ...(x.cat ? { category: x.cat } : {}) }),   // Spalte erst ab schema v4
   fuel: x => ({ id: x.id, day: x.d, odometer: +x.km, liters: +x.l, amount: +x.e, fuel_type: x.s || null, full_tank: !!x.full }),
   charge: x => ({ id: x.id, day: x.d, odometer: x.km ? +x.km : null, kwh: +x.k, amount: x.e == null ? null : +x.e, location: x.o || null }),
   carlog: x => ({ id: x.id, day: x.d, car: x.car, category: x.cat, odometer: x.km ? +x.km : null, amount: +x.e || 0, note: x.note || null }),
@@ -166,6 +166,17 @@ export function createCalc(S) {
     let e = 0, k = 0; A.dates.forEach((d, i) => { if (d < from || d > to) return; const t = tariffAt('as', d) || currentTariff('as'); const u = A.c.use[i]; k += u; e += u * t.ap / 100; });
     return { kwh: k, eur: e + feedValue(from, to) };
   }
+
+  /* E-Auto zu Hause (Ladebuch, Ort „zu Hause“): läuft über den Allgemeinstrom-Zähler */
+  const isHome = c => /zu hause/i.test(c.o || '');
+  function homeCharging(from, to) {
+    let kwh = 0, eur = 0; const e = S.cars.ev || {}, pub = +e.pricePublic || 0;
+    for (const c of S.charges) { if (!isHome(c) || c.d < from || c.d > to) continue; const t = tariffAt('as', c.d) || currentTariff('as');
+      kwh += +c.k || 0; eur += (+c.k || 0) * (pub - (t ? t.ap : 0) / 100); }
+    return { kwh, saving: eur };     // saving: gegenüber öffentlichem Laden
+  }
+  // Beginn der Wallbox-Wirkung: erste Investition der Kategorie „wallbox“
+  const wallboxFrom = () => S.invest.filter(x => x.cat === 'wallbox').map(x => x.date || A.dates[0]).sort()[0] || null;
 
   /* Zeiträume */
   const MON = ['Jan', 'Feb', 'Mär', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Dez'];
@@ -274,24 +285,32 @@ export function createCalc(S) {
     });
     const lastD = A.dates[A.n - 1], lastK = monthKey(lastD), dim = +monthEnd(lastK).slice(8, 10), have = +lastD.slice(8, 10);
     if (have < dim) act[lastK] = act[lastK] * dim / have;           // angefangenen Monat hochrechnen
+    // Wallbox (v0.9): gemessen = Laden zu Hause laut Ladebuch × (öffentlicher Preis − Arbeitspreis), ab erster
+    // Wallbox-Investition; Prognose aus dem Auto-Vergleich (kWh zu Hause pro Jahr) ab Übergabe des E-Autos
+    const wbFrom = wallboxFrom(), ev = S.cars.ev || {}, wbK = {};
+    if (wbFrom) for (const c of S.charges) { if (!isHome(c) || c.d < wbFrom || monthKey(c.d) > lastK) continue;
+      const t = tariffAt('as', c.d) || currentTariff('as'); wbK[monthKey(c.d)] = (wbK[monthKey(c.d)] || 0) + (+c.k || 0) * ((+ev.pricePublic || 0) - (t ? t.ap : 0) / 100); }
+    const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100;
+    const wbYear = tb ? tb.evHome * ((+ev.pricePublic || 0) - apNow) : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
     const prof = {}, profFeed = {}; let k = lastK;
     for (let j = 0; j < 12; j++) { const cm = k.slice(5, 7); if (prof[cm] === undefined) { prof[cm] = act[k] || 0; profFeed[cm] = feedK[k] || 0; } const y = +k.slice(0, 4), m = +k.slice(5, 7); k = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; }
     const labels = [], cumS = [], cumI = [], proj = []; let cs = 0, be = null; k = startK;
     const total = am.years * 12; let idxLast = null;
     for (let j = 0; j < total; j++) {
       let v;
-      if (k <= lastK) { v = act[k] || 0; if (k === lastK) idxLast = j; }
+      if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0); if (k === lastK) idxLast = j; }
       else {
         const yrs = (j - (idxLast ?? j)) / 12, cm = k.slice(5, 7);
         v = (prof[cm] || 0) * Math.pow(1 + am.priceInc / 100, yrs) * Math.pow(1 - am.degr / 100, yrs);
         const fd = `${k}-15`; if (am.feedin && (!am.feedinFrom || fd >= am.feedinFrom)) v += (profFeed[cm] || 0) * am.feedin / 100;
+        if (wbStartK && k >= wbStartK) v += wbYear / 12 * Math.pow(1 + am.priceInc / 100, yrs);
       }
       cs += v; const me = monthEnd(k), ci = items.filter(x => x.date <= me).reduce((s, x) => s + (+x.cost || 0), 0);
       labels.push(k); cumS.push(cs); cumI.push(ci); proj.push(k > lastK);
       if (be === null && ci > 0 && cs >= ci && j > 0) be = k;
       k = nextMonth(k);
     }
-    return { labels, cumS, cumI, proj, be, startK, lastK };
+    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear };
   }
   function investTotal() { return S.invest.reduce((a, b) => a + (+b.cost || 0), 0); }
 
@@ -434,7 +453,9 @@ export function createCalc(S) {
     const as = last365Cost('as'), wp = last365Cost('wp'), e = S.cars.ev || {};
     const evYear = (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100);
     const evHome = evYear * (+e.shHome || 0) / 100, evGrid = evHome * (1 - (+e.shPV || 0) / 100);
-    return { asKwh: as ? as.kwh : 0, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid };
+    // Laden zu Hause steckt ab v0.9 schon im Zählerwert: Netzanteil abziehen, damit „inkl. E-Auto“ nicht doppelt zählt
+    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) : 0;
+    return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid };
   }
 
   /* Fahrzeuge */
@@ -565,6 +586,16 @@ export function createCalc(S) {
     }) };
   }
 
+  // Hinweis Abschlag: E-Auto lädt ab Übergabe über den Allgemeinstrom, die Hochrechnung aus Zählerständen kennt das
+  // erst nach einigen Wochen. Aktiv bis 90 Tage nach Übergabe über den letzten Zählerstand hinaus.
+  function evAbschlagHint() {
+    const e = S.cars.ev || {}; if (!e.start) return null;
+    const s = groupSeries('as'); if (!s.last || addDays(e.start, 90) < s.last) return null;
+    const tb = tariffBase(), t = currentTariff('as'); if (!t || !(tb.evGrid > 0)) return null;
+    const perMonth = tb.evGrid / 12;
+    return { from: e.start, kwhMonth: perMonth, eurMonth: perMonth * t.ap / 100, measured: homeCharging(e.start, '9999-12-31').kwh };
+  }
+
   // Ausbau-Szenario: Tageswerte der letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler) und Rahmenwerte
   function ausbauBase() {
     const r = last12(), as = groupSeries('as').daily, days = [];
@@ -581,7 +612,7 @@ export function createCalc(S) {
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
-    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase,
+    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
   };
 }
 
@@ -614,8 +645,8 @@ export function tarifRechner(base, cur, p = {}) {
   return { kwh, ev, groups, wallbox, best, m3Shift, imsysExtra, imsysBreakEven: m3Shift > 0 ? imsysExtra / m3Shift : null };
 }
 
-// Boni-Notiz in Posten zerlegen, z. B. „Sofortbonus 157 € + Neukundenbonus 149 € (bei unter 2.500 kWh evtl. nur 100 €)“
-// → [{name:'Sofortbonus',amount:157},{name:'Neukundenbonus',amount:149,minKwh:2500,amountBelow:100}]
+// Boni-Notiz in Posten zerlegen, z. B. „Sofortbonus 100 € + Neukundenbonus 80 € (bei unter 2.000 kWh evtl. nur 50 €)“
+// → [{name:'Sofortbonus',amount:100},{name:'Neukundenbonus',amount:80,minKwh:2000,amountBelow:50}]
 export function parseBoniNote(note) {
   const num = t => +String(t).replace(/\./g, '').replace(',', '.');
   const items = [];

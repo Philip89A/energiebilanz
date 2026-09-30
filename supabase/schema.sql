@@ -162,9 +162,14 @@ create table if not exists settings (       -- Parameter als JSON: battery, pv, 
 );
 
 -- v3 (App v0.7): Boni als Einzelposten je Tarif, z. B.
--- [{"name":"Sofortbonus","amount":157},{"name":"Neukundenbonus","amount":149,"minKwh":2500,"amountBelow":100}]
+-- [{"name":"Sofortbonus","amount":100},{"name":"Neukundenbonus","amount":80,"minKwh":2000,"amountBelow":50}]
 alter table tariffs add column if not exists boni_items jsonb;
 create index if not exists payments_day on payments (user_id, grp, day);
+
+-- v4 (App v0.9): Kategorie je Investition für die Amortisation (leer = PV/Speicher)
+alter table investments add column if not exists category text;
+alter table investments drop constraint if exists investments_category_check;
+alter table investments add constraint investments_category_check check (category in ('pv','wallbox','other'));
 
 -- Indizes für Abfragen nach Zeitraum
 create index if not exists meter_readings_day on meter_readings (user_id, meter_id, day);

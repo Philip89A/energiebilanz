@@ -132,3 +132,24 @@
 - THG-Prämie nicht enthalten (gehört zum Auto, fällt mit jeder Lademöglichkeit an).
 - Tests: 49 Unit-Tests (neu `tests/ausbau.test.mjs`), `scripts/v08-check.mjs` 24 Prüfungen; Seitenvergleich,
   Bearbeiten, Offline und v0.7 unverändert bestanden.
+
+## v0.9.0 – Investition verfolgen (Wallbox, E-Auto zu Hause)
+- **Schema v4** (`docs/UPDATE_V09.sql`, vor dem ersten Speichern einer Kategorie ausführen): `investments.category`
+  (PV/Speicher, Wallbox, Sonstiges; leer = PV/Speicher). Ohne gesetzte Kategorie wird die Spalte nicht gesendet.
+- **Amortisation**: Kategorie je Investition. Ab der ersten Wallbox-Investition zählt Laden zu Hause (Ladebuch, Ort
+  „zu Hause“) als Ersparnis gegenüber öffentlichem Laden: kWh × (öffentlicher Preis − Arbeitspreis). Prognose
+  ab Übergabe des E-Autos aus dem Auto-Vergleich (kWh zu Hause pro Jahr). Solarstrom im Auto steckt schon in der
+  PV-Ersparnis (Anker „genutzt“) und wird nicht doppelt gezählt. Grund: Die Wallbox ist mehr als die Hälfte des
+  Nutzens des Ausbaus; ohne sie sähe die Amortisation nach dem Einbau deutlich zu schlecht aus.
+  Ohne Wallbox-Investition bleibt alles wie in der Referenz (Break-even in Überblick und Kosten & Ersparnisse
+  rechnet mit, weil alle drei dieselbe Zeitleiste nutzen).
+- **Stromkosten**: Block „E-Auto zu Hause“ (geladen zu Hause, geschätzter Netzanteil, Allgemeinstrom ohne E-Auto,
+  Ersparnis gegenüber öffentlich) und Hinweis zum Abschlag ab Übergabe des E-Autos (erwartete kWh und € pro Monat),
+  weil die Hochrechnung aus Zählerständen den neuen Verbrauch erst nach einigen Wochen kennt.
+- **Tarifrechner**: Der Netzanteil des Ladens zu Hause wird aus dem Allgemeinstrom herausgerechnet, damit
+  „inkl. E-Auto“ nicht doppelt zählt.
+- **Ausbau (Weg B)**: Hinweis auf Doppelzählung mit dem Auto-Vergleich entfernt (der Auto-Vergleich ist ein
+  allgemeiner Vergleich E-Auto gegen Verbrenner), stattdessen Verweis auf die Amortisation.
+- Beispielwerte in Kommentaren (Boni-Posten) durch neutrale Zahlen ersetzt.
+- Tests: 55 Unit-Tests (neu `tests/v09.test.mjs`), `scripts/v09-check.mjs` 13 Prüfungen; Seitenvergleich,
+  Bearbeiten, Offline, v0.7 und v0.8 unverändert bestanden.
