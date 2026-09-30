@@ -163,3 +163,30 @@ test('Smart-Meter-Start ohne Ereignis: erster Tag mit gemessenem Netzbezug oder 
   assert.equal(createCalc(state()).IMPORT_START(), '2025-01-06');
   assert.equal(createCalc(state({ events: [] })).IMPORT_START(), '2025-01-06');
 });
+
+test('toDb ist die Umkehrung von stateFromDb (Rundlauf für alle bearbeitbaren Datensätze)', async () => {
+  const { toDb } = await import('../js/calc.js');
+  const db = {
+    anker_daily: [{ day: '2025-01-01', erzeugung: 1 }],
+    meter_readings: [{ meter_id: 'w', day: '2025-01-01', value: 5, source: 'Eingabe' }],
+    tariffs: [{ id: 't', grp: 'as', name: 'T', valid_from: '2025-01-01', valid_to: null, ap_ct: 30, gp_eur_year: 100, boni_eur: 0, boni_note: null, estimate_note: 'geschätzt' }],
+    installments: [{ id: 'a', grp: 'wp', valid_from: '2025-02-01', amount: 50, note: null }],
+    investments: [{ id: 'i', day: null, name: 'X', cost: -5 }],
+    fuel_log: [{ id: 'f', day: '2025-01-02', odometer: 100, liters: 40, amount: 70, fuel_type: 'Super E10', full_tank: false }],
+    charge_log: [{ id: 'c', day: '2025-01-03', odometer: null, kwh: 20, amount: null, location: 'zu Hause' }],
+    car_log: [{ id: 'l', day: '2025-01-04', car: 'leon', category: 'Pflege', odometer: null, amount: 12, note: null }],
+    events: [{ id: 'e', day: '2025-01-05', grp: 'pv', type: 'daten', note: 'Start' }],
+    settings: { data: { battery: { capGross: 1 }, pv: { kwp: 1 }, amort: { priceInc: 3 }, cars: { ice: {}, ev: {} } } },
+  };
+  const s = stateFromDb(db);
+  assert.deepEqual(s.readings.map(toDb.reading), db.meter_readings);
+  assert.deepEqual(s.tariffs.map(toDb.tariff), db.tariffs);
+  assert.deepEqual(s.abschlaege.map(toDb.installment), db.installments);
+  assert.deepEqual(s.invest.map(toDb.investment), db.investments);
+  assert.deepEqual(s.fuel.map(toDb.fuel), db.fuel_log);
+  assert.deepEqual(s.carlog.map(toDb.carlog), db.car_log);
+  assert.deepEqual(s.events.map(toDb.event), db.events);
+  assert.deepEqual(toDb.settings(s).data, { schema_version: 2, ...db.settings.data });
+  const c = toDb.charge(s.charges[0]);
+  assert.equal(c.kwh, 20); assert.equal(c.odometer, null); assert.equal(c.location, 'zu Hause');
+});

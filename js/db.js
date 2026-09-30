@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.4.1';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.4.1';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.5.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.5.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -145,4 +145,26 @@ export async function loadAll() {
   const db = { anker_daily: anker, settings: settings[0] || null };
   tables.forEach((t, i) => { db[t] = rest[i]; });
   return db;
+}
+
+// Einzelne Datensätze schreiben/löschen (Bearbeiten in den Seiten). kind -> [Tabelle, Konfliktschlüssel]
+const KINDS = {
+  reading: ['meter_readings', 'user_id,meter_id,day'], tariff: ['tariffs', 'id'], installment: ['installments', 'id'],
+  investment: ['investments', 'id'], fuel: ['fuel_log', 'id'], charge: ['charge_log', 'id'], carlog: ['car_log', 'id'],
+  event: ['events', 'id'],
+};
+export async function saveRow(kind, row) {
+  const [table, conflict] = KINDS[kind];
+  await upsertRows(table, [row], conflict);
+}
+export async function deleteRow(kind, row) {
+  const [table] = KINDS[kind];
+  const user_id = await uid();
+  let q = client.from(table).delete().eq('user_id', user_id);
+  q = kind === 'reading' ? q.eq('meter_id', row.meter_id).eq('day', row.day) : q.eq('id', row.id);
+  const { error } = await q;
+  check(error, `Löschen ${table}`);
+}
+export async function saveSettings(data) {
+  await upsertRows('settings', [data], 'user_id');
 }

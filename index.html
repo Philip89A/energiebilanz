@@ -6,8 +6,8 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#18212B">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.4.1">
-<link rel="stylesheet" href="css/style.css?v=0.4.1">
+<meta name="app-version" content="0.5.0">
+<link rel="stylesheet" href="css/style.css?v=0.5.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -24,7 +24,7 @@
   window.addEventListener('unhandledrejection', function (e) { ebError((e.reason && e.reason.message) || e.reason); });
 </script>
 </head>
-<body class="ro">
+<body>
 
 <section id="auth-screen" class="screen" hidden>
   <form id="login-form" class="panel narrow">
@@ -51,7 +51,8 @@
 <div class="app">
 <nav class="side" id="snav" aria-label="Bereiche">
   <div class="brand">Energiebilanz</div>
-  <div class="brand-sub" id="brand-sub">Nur Anzeige</div>
+  <div class="brand-sub" id="brand-sub"></div>
+  <div class="save-state" id="save-state"></div>
 </nav>
 <main id="main">
 <p class="loading" id="loading">Lade Daten …</p>
@@ -285,8 +286,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.4.1"></script>
-<script src="vendor/chart.umd.js?v=0.4.1"></script>
-<script type="module" src="js/app.js?v=0.4.1"></script>
+<script src="vendor/supabase.js?v=0.5.0"></script>
+<script src="vendor/chart.umd.js?v=0.5.0"></script>
+<script type="module" src="js/app.js?v=0.5.0"></script>
 </body>
 </html>

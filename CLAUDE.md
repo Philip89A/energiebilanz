@@ -50,8 +50,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ 4a Anzeige (v0.4): `js/views.js` enthält die render*-Funktionen der Referenz, verbunden mit calc.js;
      Eingaben gesperrt (`body.ro`, `.edit-only`). `scripts/compare.mjs` vergleicht Referenz und App (Texte und
      Diagrammdaten, 9 Seiten × 6 Ansichten); gewollte Abweichungen stehen im Kopf des Skripts.
-   - 4b Bearbeiten: Zählerstände, Tarife, Abschläge, Investitionen, Tanken, Laden, Fahrzeugbuch, Ereignisse,
-     Parameter (Batterie, Amortisation, Autos, PV-Offset) mit Schreiben nach Supabase.
+   - ✅ 4b Bearbeiten (v0.5): Handler der Referenz; jede Änderung schreibt genau einen Datensatz (`toDb` in
+     calc.js, `saveRow`/`deleteRow` in db.js), Parameter (battery, pv, amort, cars) verzögert als `settings`.
+     Danach neues Rechenmodell (`refreshCalc`). Bei Fehlern Hinweis und Neuladen aus Supabase.
+     Prüfung: `scripts/edit-check.mjs` (25 Prüfungen) und `scripts/compare.mjs`.
    - Texte ohne private Details (Anbieter, Daten, Geräteaufbau): aus den Daten füllen (`data-sm` = Smart-Meter-
      Datum aus `events`) oder neutral formulieren.
 5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy

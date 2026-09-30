@@ -2,8 +2,8 @@
 // (zweiter <script>-Block), die Rechenfunktionen kommen aus calc.js. Geändert gegenüber der Referenz:
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
-//  - v0.4: nur Anzeige – Eingabefelder gesperrt, Bearbeiten folgt in 4b
-import { createCalc, shiftYear, weekKey, carBucket } from './calc.js?v=0.4.1';
+//  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
+import { createCalc, shiftYear, weekKey, carBucket, toDb } from './calc.js?v=0.5.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -14,14 +14,44 @@ function loadView() {
   try { v = JSON.parse(localStorage.getItem(VIEW_KEY) || '{}'); } catch (e) { v = {}; }
   return { view: { ...VIEW_DEFAULTS.view, ...(v.view || {}) }, ui: { ...VIEW_DEFAULTS.ui, ...(v.ui || {}) } };
 }
-// Referenz: persist() speicherte alles; hier nur die Ansicht (Daten schreibt db.js)
-function persist() { try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: S.view, ui: S.ui })); } catch (e) { /* privat/voll */ } }
+// Referenz: persist() speicherte alles. Hier: Ansicht je Gerät in localStorage, Parameter (battery, pv, amort, cars)
+// verzögert nach Supabase, Rechenmodell neu aufbauen. Einzelne Datensätze schreibt write()/remove().
+let store = null;              // { saveRow, deleteRow, saveSettings, reload } aus app.js
+export function setStore(s) { store = s; }
+let settingsJson = null, settingsTimer = null;
+function persist() {
+  try { localStorage.setItem(VIEW_KEY, JSON.stringify({ view: S.view, ui: S.ui })); } catch (e) { /* privat/voll */ }
+  refreshCalc();
+  const data = toDb.settings(S), json = JSON.stringify(data);
+  if (json !== settingsJson) {
+    settingsJson = json;
+    clearTimeout(settingsTimer);
+    setSaveState('Änderung …');
+    settingsTimer = setTimeout(() => track(store.saveSettings(data)), 700);
+  }
+}
+function refreshCalc() { C = createCalc(S); A = C.A; }
+function setSaveState(t) { const e = document.getElementById('save-state'); if (e) e.textContent = t; }
+let pending = 0;
+async function track(promise) {
+  pending++; setSaveState('Speichert …');
+  try { await promise; if (--pending === 0) setSaveState('Gespeichert'); }
+  catch (err) {
+    pending--; setSaveState('Fehler');
+    $("main").insertAdjacentHTML("afterbegin", flag("Speichern fehlgeschlagen: " + esc(err.message) + " Der Stand aus der Datenbank wird neu geladen."));
+    store.reload();
+  }
+}
+// Einzelnen Datensatz schreiben bzw. löschen (kind wie in db.js), danach neu rechnen
+function write(kind, obj) { if (!obj.id && kind !== 'reading') obj.id = crypto.randomUUID(); refreshCalc(); track(store.saveRow(kind, toDb[kind](obj))); }
+function remove(kind, obj) { refreshCalc(); track(store.deleteRow(kind, toDb[kind](obj))); }
 
 export function setModel(state) {
   const v = loadView();
   S = { ...state, view: v.view, ui: v.ui };
   C = createCalc(S);
   A = C.A;
+  settingsJson = JSON.stringify(toDb.settings(S));
 }
 export const hasModel = () => !!C;
 
@@ -664,7 +694,7 @@ function route(){ const h=location.hash.slice(1)||"overview"; const id="p-"+h; s
 /* ---------- Daten-Seite: Ereignisse (nur Anzeige) ---------- */
 function renderData(){
   $("ev-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Bereich</th><th class="l">Ereignis</th></tr></thead><tbody>${
-    [...S.events].sort((a,b)=>a.d.localeCompare(b.d)).map(e=>`<tr><td>${dde(e.d)}</td><td class="l">${{wp:"Wärmepumpe",as:"Allgemeinstrom",pv:"PV",car:"Auto"}[e.group]||esc(e.group)}</td><td class="l">${esc(e.text)}</td></tr>`).join("")}</tbody>`;
+    S.events.map((e,i)=>`<tr><td><input type="date" value="${e.d}" data-ev="${i}" data-k="d"></td><td class="l">${{wp:"Wärmepumpe",as:"Allgemeinstrom",pv:"PV",car:"Auto"}[e.group]||esc(e.group)}</td><td class="l"><input type="text" value="${esc(e.text)}" data-ev="${i}" data-k="text"></td></tr>`).join("")}</tbody>`;
 }
 
 /* ---------- Nach jedem Rendern ---------- */
@@ -695,6 +725,7 @@ export function startViews(){
     $("pb-key").addEventListener("change",e=>pbSet("key",e.target.value));
     $("pb-cmp").addEventListener("change",e=>{ S.view.cmp=e.target.value; if(e.target.value==="custom"&&!S.view.cfrom){ const {P}=currentPeriods(); S.view.cfrom=shiftYear(P.from); S.view.cto=shiftYear(P.to); } persist(); rerender(); });
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
+    wireEditing();
     window.addEventListener("hashchange",route);
     if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>rerender());
   }
@@ -702,6 +733,46 @@ export function startViews(){
   route();
 }
 export { route, rerender };
+
+/* ---------- Bearbeiten (Referenz: Ereignisse-Block), Schreiben nach Supabase ---------- */
+function wireEditing(){
+  const today=iso(new Date()); ["rd-d","fu-d","ch-d","cl-d"].forEach(i=>$(i).value=today);
+  document.addEventListener("click",e=>{
+    const t=e.target.closest("#main button"); if(!t) return;
+    const del=(key,kind,arr)=>{ const i=+t.dataset[key]; if(confirm("Eintrag löschen?")){ const [x]=arr.splice(i,1); remove(kind,x); rerender(); } };
+    if(t.dataset.delRd!==undefined) del("delRd","reading",S.readings);
+    else if(t.dataset.delFu!==undefined) del("delFu","fuel",S.fuel);
+    else if(t.dataset.delCh!==undefined) del("delCh","charge",S.charges);
+    else if(t.dataset.delInv!==undefined) del("delInv","investment",S.invest);
+    else if(t.dataset.delCl!==undefined) del("delCl","carlog",S.carlog);
+    else if(t.dataset.delAb!==undefined){ if(confirm("Abschlag löschen?")){ const x=S.abschlaege.find(x=>x.id===t.dataset.delAb); S.abschlaege=S.abschlaege.filter(y=>y!==x); remove("installment",x); rerender(); } }
+    else if(t.dataset.delTf!==undefined){ if(confirm("Tarif löschen?")){ const x=S.tariffs.find(x=>x.id===t.dataset.delTf); S.tariffs=S.tariffs.filter(y=>y!==x); remove("tariff",x); rerender(); } }
+  });
+  document.addEventListener("change",e=>{
+    const el=e.target, d=el.dataset;
+    if(!el.closest("#main")) return;
+    if(d.tf){ const t=S.tariffs.find(x=>x.id===d.tf); t[d.k]=el.type==="number"?+el.value:el.value; write("tariff",t); rerender(); }
+    else if(d.inv!==undefined){ const x=S.invest[+d.inv]; x[d.k]=d.k==="cost"?+el.value:el.value; write("investment",x); rerender(); }
+    else if(d.ab){ const a=S.abschlaege.find(x=>x.id===d.ab); a[d.k]=d.k==="amount"?+el.value:el.value; write("installment",a); rerender(); }
+    else if(d.ev!==undefined){ const x=S.events[+d.ev]; x[d.k]=el.value; write("event",x); }
+  });
+  $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
+    if(!d||!isFinite(v)){ alert("Datum und Stand angeben."); return; }
+    let r=S.readings.find(r=>r.m===m&&r.d===d); if(r) r.v=v; else { r={m,d,v,src:"Eingabe"}; S.readings.push(r); }
+    $("rd-v").value=""; write("reading",r); rerender(); });
+  $("fu-add").addEventListener("click",()=>{ const x={d:$("fu-d").value,km:+$("fu-km").value,l:+$("fu-l").value,e:+$("fu-e").value,s:$("fu-s").value,full:$("fu-full").checked};
+    if(!x.d||!x.km||!x.l||!x.e){ alert("Datum, Kilometerstand, Liter und Betrag angeben."); return; }
+    S.fuel.push(x); ["fu-km","fu-l","fu-e"].forEach(i=>$(i).value=""); write("fuel",x); rerender(); });
+  $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value};
+    if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
+    S.charges.push(x); ["ch-km","ch-k","ch-e"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+  $("am-add").addEventListener("click",()=>{ const x={name:"Neue Position",date:"",cost:0}; S.invest.push(x); write("investment",x); rerender(); });
+  $("cl-add").addEventListener("click",()=>{ const x={d:$("cl-d").value, car:$("cl-car").value, cat:$("cl-cat").value, km:+$("cl-km").value||null, e:+$("cl-e").value||0, note:$("cl-n").value};
+    if(!x.d || (!x.km && !x.e)){ alert("Datum und Kilometerstand oder Betrag angeben."); return; }
+    S.carlog.push(x); ["cl-km","cl-e","cl-n"].forEach(i=>$(i).value=""); write("carlog",x); rerender(); });
+  $("ab-add").addEventListener("click",()=>{ const x={group:"as",from:iso(new Date()),amount:0,note:""}; S.abschlaege.push(x); write("installment",x); rerender(); });
+  $("tf-add").addEventListener("click",()=>{ const x={group:"as",name:"Neuer Tarif",from:iso(new Date()),to:"",ap:30,gp:150,boni:0,boniNote:"",est:""}; S.tariffs.push(x); write("tariff",x); rerender(); });
+}
 
 // Für den Seitenvergleich im Test (tests/…/compare): Diagrammdaten lesbar machen
 window.__ebCharts = charts;
