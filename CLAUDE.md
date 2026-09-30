@@ -32,6 +32,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
   Keine echten Zahlen in Testdateien, Doku oder Commit-Texten.
 - Zählerstand eines Tages gilt als Stand am Tagesanfang (Verbrauch des Ablesetags gehört zum Folgeintervall).
 - Versionen mit Changelog (`CHANGELOG.md`, vX.Y), jede Änderung kurz begründet.
+- Vor jedem Release `node scripts/set-version.mjs X.Y.Z` ausführen: setzt `?v=` in index.html und allen Imports,
+  sonst mischen Browser nach einem Update alte und neue Dateien (GitHub Pages cacht bis zu 10 Minuten).
 
 ## Phasen
 1. ✅ Supabase-Projekt, `schema.sql` v2, RLS, Login per E-Mail + Passwort (v0.1).

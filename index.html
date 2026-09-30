@@ -6,7 +6,23 @@
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#18212B">
 <title>Energiebilanz</title>
-<link rel="stylesheet" href="css/style.css">
+<meta name="app-version" content="0.4.1">
+<link rel="stylesheet" href="css/style.css?v=0.4.1">
+<script>
+  // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
+  function ebError(msg) {
+    var d = document.getElementById('eb-error');
+    if (!d) {
+      d = document.createElement('div'); d.id = 'eb-error';
+      d.style.cssText = 'position:fixed;left:12px;right:12px;bottom:12px;z-index:99;background:#B4532A;color:#fff;padding:12px 14px;border-radius:10px;font:14px/1.4 system-ui,sans-serif';
+      (document.body || document.documentElement).appendChild(d);
+    }
+    d.innerHTML = 'Fehler beim Laden: ' + String(msg).replace(/[<>&]/g, '') +
+      '<br>Bitte die Seite neu laden (Strg + Umschalt + R bzw. am iPhone Seite neu laden). Bleibt der Fehler, Screenshot an Claude.';
+  }
+  window.addEventListener('error', function (e) { ebError(e.message || (e.target && (e.target.src || e.target.href)) || 'unbekannt'); }, true);
+  window.addEventListener('unhandledrejection', function (e) { ebError((e.reason && e.reason.message) || e.reason); });
+</script>
 </head>
 <body class="ro">
 
@@ -35,7 +51,7 @@
 <div class="app">
 <nav class="side" id="snav" aria-label="Bereiche">
   <div class="brand">Energiebilanz</div>
-  <div class="brand-sub" id="brand-sub">Nur Anzeige (v0.4)</div>
+  <div class="brand-sub" id="brand-sub">Nur Anzeige</div>
 </nav>
 <main id="main">
 <p class="loading" id="loading">Lade Daten …</p>
@@ -269,8 +285,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js"></script>
-<script src="vendor/chart.umd.js"></script>
-<script type="module" src="js/app.js"></script>
+<script src="vendor/supabase.js?v=0.4.1"></script>
+<script src="vendor/chart.umd.js?v=0.4.1"></script>
+<script type="module" src="js/app.js?v=0.4.1"></script>
 </body>
 </html>

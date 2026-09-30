@@ -3,7 +3,7 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - v0.4: nur Anzeige – Eingabefelder gesperrt, Bearbeiten folgt in 4b
-import { createCalc, shiftYear, weekKey, carBucket } from './calc.js';
+import { createCalc, shiftYear, weekKey, carBucket } from './calc.js?v=0.4.1';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';

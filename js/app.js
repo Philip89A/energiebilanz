@@ -1,8 +1,8 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js) und Importe.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll } from './db.js';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js';
-import { stateFromDb } from './calc.js';
-import { setModel, startViews } from './views.js';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll } from './db.js?v=0.4.1';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.4.1';
+import { stateFromDb } from './calc.js?v=0.4.1';
+import { setModel, startViews } from './views.js?v=0.4.1';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -55,6 +55,7 @@ async function loadModel() {
       addLogout();
     } else {
       setModel(stateFromDb(db));
+      $('brand-sub').textContent = `Nur Anzeige · v${document.querySelector('meta[name=app-version]').content}`;
       startViews();
       addLogout();
     }
