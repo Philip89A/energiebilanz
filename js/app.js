@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings } from './db.js?v=0.7.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.7.0';
-import { stateFromDb } from './calc.js?v=0.7.0';
-import { setModel, startViews, setStore } from './views.js?v=0.7.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.7.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather } from './db.js?v=0.10.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.10.0';
+import { stateFromDb } from './calc.js?v=0.10.0';
+import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.10.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.10.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,7 +52,8 @@ setStore({
   saveRow: (kind, row) => send({ op: 'save', kind, row }),
   deleteRow: (kind, row) => send({ op: 'delete', kind, row }),
   saveSettings: data => send({ op: 'settings', data }),
-  reload: () => { shownJson = null; loadModel(); },   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
+  reload: () => { shownJson = null; loadModel(); },
+  saveWeather: rows => (online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
 });
 
 let flushing = false;
@@ -155,6 +156,7 @@ async function loadModel() {
     $('loading').hidden = true;
     refreshStatus();
     flushQueue();
+    syncWeather(true);
   } catch (err) {
     $('loading').hidden = true;
     if (snap && (err.message === 'offline' || isNetworkError(err, navigator.onLine))) setOfflineBanner(true, snap.savedAt);

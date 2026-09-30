@@ -3,8 +3,9 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote } from './calc.js?v=0.7.0';
-import { parseNum } from './queue.js?v=0.7.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.10.0';
+import { parseNum } from './queue.js?v=0.10.0';
+import { geocode, fetchDays } from './weather.js?v=0.10.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -590,13 +591,15 @@ function renderAmort(first){
   const {from,to}=last12(), base=pvSavings(from,to).eur, am=S.amort;
   const realized = pvSavings(A.dates[0], to).eur, tl=amortTimeline();
   const beYears = tl.be ? (diffDays(`${tl.startK}-01`,`${tl.be}-01`)/365.25) : null;
+  const wb12 = tl.wbFrom ? C.homeCharging([from,tl.wbFrom].sort()[1], to).saving : 0, wbAll = tl.wbFrom ? C.homeCharging(tl.wbFrom, to).saving : 0;
   $("am-kpis").innerHTML =
     kpi(eur(inv,2),"Investition gesamt", `${S.invest.length} Positionen, Verkäufe abgezogen`) +
-    kpi(eur(base),"Ersparnis letzte 12 Monate","Nur Arbeitspreis") +
+    kpi(eur(base+wb12),"Ersparnis letzte 12 Monate", tl.wbFrom ? `PV ${eur(base)} zum Arbeitspreis, Wallbox ${eur(wb12)} gegenüber öffentlichem Laden` : "Nur Arbeitspreis") +
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
-    kpi(eur(realized),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct(realized/inv)} der Investition`:""}`);
-  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
-    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:320px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td>${eur(inv,2)}</td><td></td></tr></tfoot>`;
+    kpi(eur(realized+wbAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}`);
+  $("am-wb-note").innerHTML = tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "";
+  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
+    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr></tfoot>`;
   if(first){
     const h=$("am-sl"); h.innerHTML="";
     slider(h,am,"priceInc","Strompreissteigerung pro Jahr",0,8,0.5,"%");
@@ -686,7 +689,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -702,8 +705,8 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -744,6 +747,7 @@ export function startViews(){
     $("pb-cmp").addEventListener("change",e=>{ S.view.cmp=e.target.value; if(e.target.value==="custom"&&!S.view.cfrom){ const {P}=currentPeriods(); S.view.cfrom=shiftYear(P.from); S.view.cto=shiftYear(P.to); } persist(); rerender(); });
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
+    wireWeather();
     window.addEventListener("hashchange",route);
     if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>rerender());
   }
@@ -784,6 +788,10 @@ function wireEditing(){
       if(d.k==="name") it.name=el.value; else { const v=parseNum(el.value); if(isFinite(v)) it[d.k]=v; else delete it[d.k]; }
       tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
     else if(d.tr){ S.tarif=S.tarif||{}; const v=parseNum(el.value); if(isFinite(v)) S.tarif[d.tr]=v; else delete S.tarif[d.tr]; persist(); rerender(); }
+    else if(d.wb){ S.ausbau=S.ausbau||{}; const k=d.wb;
+      if(el.type==="checkbox") S.ausbau[k]=el.checked; else if(el.tagName==="SELECT"||el.type==="date") S.ausbau[k]=el.value;
+      else { const v=parseNum(el.value); if(el.value.trim()==="") delete S.ausbau[k]; else if(isFinite(v)) S.ausbau[k]=v; }
+      persist(); rerender(); }
     else if(d.tro!==undefined){ const o=S.tarif.offers[+d.tro]; o[d.k]=["name","grp"].includes(d.k)?el.value:parseNum(el.value); persist(); rerender(); }
   });
   $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
@@ -1044,4 +1052,182 @@ function quickPaymentFields(today) {
     + `<label class="f">Datum<input type="date" id="q-d" value="${today}"></label>`
     + `<label class="f">Betrag in €<input type="text" inputmode="decimal" autocomplete="off" id="q-pa"></label>`
     + `<label class="f wide">Notiz<input type="text" id="q-pn"></label>`;
+}
+
+/* ---------- Ausbau-Szenario „Weg B“ (v0.8) ---------- */
+const WB_FIELDS = {
+  "wb-cost": [["hwTotal", "Hardware gesamt € (inkl. Wallbox)"], ["hwWallbox", "davon Wallbox €"], ["craftPv", "Handwerker PV/Speicher €"],
+    ["craftWallbox", "Handwerker Wallbox inkl. Anmeldung €"], ["start", "Inbetriebnahme", "date"],
+    ["alt", "Alternative ohne Wallbox", [["public", "Öffentlich laden"], ["socket", "Steckdose in der Garage"]]], ["socketEur", "Kosten Steckdose € (nur Alternative Steckdose)"]],
+  "wb-plant": [["pvAddWp", "Zusätzliche PV-Leistung Wp"], ["yieldPct", "Ertrag neue Module % (Ausrichtung)"], ["storeAddKwh", "Zusätzlicher Speicher kWh"],
+    ["storeUsablePct", "Davon nutzbar %"]],
+  "wb-use": [["acKwh", "Klimaanlage kWh pro Sommer (Jun–Aug)"], ["feedCt", "Einspeisevergütung ct/kWh"],
+    ["apPvCt", "Wert Solarstrom im Haus ct/kWh (leer = aktueller Arbeitspreis)"], ["apEvCt", "Preis Laden zu Hause ct/kWh (leer = aktueller Arbeitspreis; dynamisch: Ø der Ladestunden)"],
+    ["evDayPct", "Auto tagsüber zu Hause: Anteil Laden aus Überschuss %"], ["battEv", "Auto abends aus dem Speicher laden (Phasenumschaltung, Speicher-Steuerung)", "check"],
+    ["dayLoadPct", "Anteil Hauslast tagsüber %"], ["years", "Betrachtungsdauer Jahre"]],
+  "wb-14a": [["s14a", "§14a einrechnen", "check"], ["s14aMod", "Quelle", [["manual", "Eigener Betrag"], ["m1", "Modul 1 aus Tarifrechner"], ["m2", "Modul 2 aus Tarifrechner"], ["m3", "Modul 1 + 3 aus Tarifrechner"]]],
+    ["s14aEur", "Eigener Betrag €/Jahr"]],
+};
+function renderAusbau() {
+  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
+  for (const [host, fields] of Object.entries(WB_FIELDS)) {
+    const h = $(host);
+    if (!h.children.length) h.innerHTML = fields.map(([k, l, t]) => t === "check" ? `<label class="f check wide"><input type="checkbox" data-wb="${k}"> ${l}</label>`
+      : Array.isArray(t) ? `<label class="f">${l}<select data-wb="${k}">${t.map(([o, ol]) => `<option value="${o}">${ol}</option>`).join("")}</select></label>`
+      : `<label class="f">${l}<input type="${t === "date" ? "date" : "text"}" ${t === "date" ? "" : 'inputmode="decimal"'} data-wb="${k}"></label>`).join("");
+    h.querySelectorAll("[data-wb]").forEach(el => { if (document.activeElement === el) return; const k = el.dataset.wb;
+      if (el.type === "checkbox") el.checked = !!v(k); else if (el.type === "date") el.value = v(k) || today;
+      else if (el.tagName === "SELECT") el.value = v(k); else { const x = v(k); el.value = x === "" || x == null ? "" : nf(+x, +x % 1 ? 2 : 0).replace(/\./g, ""); } });
+  }
+  $("wb-cost").querySelector('[data-wb="socketEur"]').closest("label").hidden = v("alt") !== "socket";
+  $("wb-14a").querySelectorAll('[data-wb="s14aMod"],[data-wb="s14aEur"]').forEach(el => el.closest("label").hidden = !v("s14a"));
+  $("wb-14a").querySelector('[data-wb="s14aEur"]').closest("label").hidden = !v("s14a") || v("s14aMod") !== "manual";
+  // §14a-Ersparnis je Modul mit dem Netzladen des Szenarios (Werte des Netzbetreibers aus dem Tarifrechner)
+  const r0 = ausbauRechner(base, p, today);
+  const tr = tarifRechner({ ...C.tariffBase(), evGrid: r0.kwh.evGrid }, { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, S.tarif || {});
+  const m14a = Object.fromEntries(tr.wallbox.filter(w => w.key !== "none").map(w => [w.key, -w.vsNone]));
+  const r = ausbauRechner(base, p, today, m14a), y = r.year, nc = r.noCar, N = +v("years") || 20;
+  const pb = (h, inv) => h ? `${nf(h.years, 1)} Jahre` : "–";
+  const pbSub = (h, inv) => h ? `${monthLabel(h.date.slice(0, 7))}, Investition ${eur(inv)}` : `nicht innerhalb von ${N} Jahren (Investition ${eur(inv)})`;
+  $("wb-kpis").innerHTML = kpi(pb(r.payback.total), "Paket amortisiert nach", pbSub(r.payback.total, r.invest.total))
+    + kpi(eur(y.total), "Vorteil pro Jahr mit E-Auto", `vor Übergabe des Autos ${eur(nc.total)} pro Jahr`)
+    + kpi(pb(r.payback.pv), "Anteil PV und Speicher", pbSub(r.payback.pv, r.invest.pv))
+    + kpi(pb(r.payback.wallbox), "Anteil Wallbox", pbSub(r.payback.wallbox, r.invest.wallbox));
+  const alt = v("alt") === "public" ? "öffentlich" : "per Steckdose";
+  const rows = [
+    ["Solarstrom im Haus (inkl. Klimaanlage)", r.kwh.house, nc.houseKwh, nc.house, y.house],
+    ["E-Auto lädt Solarstrom", r.kwh.pvEv, null, null, y.carPv],
+    [`Wallbox: zu Hause statt ${alt} laden`, r.kwh.evHome, null, null, y.wallbox],
+    ["§14a Netzentgelt-Reduzierung", null, null, null, y.s14a],
+    ["Mehr Einspeisung", r.kwh.feed, nc.feedKwh, nc.feed, y.feed],
+  ];
+  const k0 = x => x == null ? "–" : kwh(x);
+  $("wb-tbl").innerHTML = `<thead><tr><th>Posten</th><th>kWh/Jahr mit Auto</th><th>vor Übergabe Auto</th><th>mit E-Auto</th></tr></thead><tbody>${
+    rows.map(([l, k, , a, b]) => `<tr><td>${l}</td><td>${k0(k)}</td><td>${a == null ? "–" : eur(a)}</td><td>${eur(b)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Gesamt</td><td></td><td>${eur(nc.total)}</td><td>${eur(y.total)}</td></tr></tfoot>`;
+  const fl = [];
+  if (!(r.invest.total > 0)) fl.push(flag("Noch keine Kosten eingetragen: unten unter „Kosten“ Hardware und Handwerker aus dem Angebot eintragen, sonst ist die Amortisation 0 Jahre."));
+  if (v("s14a") && v("s14aMod") !== "manual" && !(m14a[v("s14aMod")] > 0)) fl.push(flag("§14a: Im Tarifrechner fehlen die Werte deines Netzbetreibers, deshalb zählt das Modul mit 0 €. Werte dort eintragen oder „Eigener Betrag“ wählen."));
+  if (v("s14a") && v("s14aMod") === "manual") fl.push(flag("§14a mit eigenem Betrag: Schätzwert, bis die Werte des Netzbetreibers im Tarifrechner stehen.", true));
+  if (v("alt") === "socket") fl.push(flag("Alternative Steckdose: Laden zu Hause wäre auch ohne Wallbox möglich, der Wallbox-Anteil bringt dann nur noch §14a. Die Kosten der Steckdose sind von der Wallbox-Investition abgezogen.", true));
+  fl.push(flag("Nach dem Einbau verfolgt die Seite „Amortisation“ die echten Werte: Rechnungen dort mit Kategorie PV/Speicher bzw. Wallbox eintragen, Laden zu Hause unter „Erfassen → Laden“ (Ort „zu Hause“).", true));
+  $("wb-flags").innerHTML = fl.join("");
+  const lab = r.months.map(m => monthLabel(m.d.slice(0, 7)));
+  const line = (label, data, c, dash, w = 2) => ({ label, data, borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: w, ...(dash ? { borderDash: [5, 4] } : {}) });
+  chart("wb-chart", { type: "line", data: { labels: lab, datasets: [
+    line("Vorteil Paket", r.months.map(m => m.cum), "--sun", false, 2.5), line("Investition Paket", lab.map(() => r.invest.total), "--ink", false, 1.5),
+    line("Vorteil PV/Speicher", r.months.map(m => m.cumPv), "--batt", false), line("Investition PV/Speicher", lab.map(() => r.invest.pv), "--batt", true, 1.5),
+    line("Vorteil Wallbox", r.months.map(m => m.cumWb), "--grid", false), line("Investition Wallbox", lab.map(() => r.invest.wallbox), "--grid", true, 1.5)] },
+    options: { plugins: { tooltip: numTip("€") }, scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { title: { display: true, text: "€" } } } } });
+  $("wb-method").innerHTML = `<p class="note">Grundlage: ${dde(base.from)} bis ${dde(base.to)}. Tageslast = genutzter Solarstrom + Netzbezug Allgemeinstrom laut Zähler; ${nf(+v("dayLoadPct"))} % davon tagsüber, der Rest abends und nachts.
+    Solarstrom geht zuerst ins Haus, dann in die Klimaanlage (Juni–August), dann ins Auto, dann in den Speicher (Wirkungsgrad ${pct(r.eta)} aus den Anker-Daten), der Rest wird eingespeist.
+    PV-Erzeugung skaliert mit Faktor ${nf(r.scale, 2)}, nutzbarer Speicher ${nf(r.usable, 1)} kWh. Das Modell der heutigen Anlage liegt um ${pct(Math.abs(1 - r.K))} ${r.K < 1 ? "über" : "unter"} dem gemessenen genutzten Solarstrom; alle Mehrwerte sind damit korrigiert (Faktor ${nf(r.K, 2)}).</p>
+    <p class="note">Nicht abgebildet: Stundenverläufe (es gibt nur Tageswerte), Abregelung bei hoher Leistung, negative Börsenpreise (Solarspitzengesetz: keine Vergütung, ohne Smart Meter Einspeisung auf 60 % begrenzt), Alterung des Speichers, Ladeverluste. Die Wallbox braucht einphasiges Laden bzw. Phasenumschaltung, damit der Speicher mit seiner begrenzten Ausgangsleistung das Auto nennenswert laden kann. THG-Prämie nicht enthalten.</p>`;
+}
+
+/* ---------- E-Auto zu Hause und Abschlag-Hinweis (v0.9) ---------- */
+const INV_CATS = [["pv", "PV/Speicher"], ["wallbox", "Wallbox"], ["other", "Sonstiges"]];
+function renderEvHome() {
+  const tb = C.tariffBase(), e = S.cars.ev || {}, h = tb.to ? C.homeCharging(tb.from, tb.to) : { kwh: 0, saving: 0 }, all = C.homeCharging("0000", "9999");
+  $("evh-kpis").innerHTML = kpi(kwh(h.kwh), "Geladen zu Hause", tb.to ? `365 Tage bis ${dde(tb.to)}, laut Ladebuch` : "")
+    + kpi(kwh(tb.homeGrid), "davon aus dem Netz (geschätzt)", `PV-Anteil ${nf(+e.shPV || 0)} % laut Auto-Vergleich`)
+    + kpi(kwh(tb.asKwh), "Allgemeinstrom ohne E-Auto", `Zähler ${kwh(tb.asMeter)} minus Netzanteil Auto`)
+    + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause, ${nf(+e.pricePublic || 0, 2)} €/kWh öffentlich`);
+  const hint = C.evAbschlagHint();
+  $("ab-ev").innerHTML = hint ? flag(`E-Auto ab ${dde(hint.from)}: Es lädt über den Allgemeinstrom, voraussichtlich etwa ${kwh(hint.kwhMonth)} pro Monat aus dem Netz, rund ${eur(hint.eurMonth)} pro Monat mehr. Die Hochrechnung oben enthält das erst, wenn Zählerstände nach der Übergabe vorliegen – Abschlag rechtzeitig um diesen Betrag erhöhen.`) : "";
+}
+
+/* ---------- Wetter (v0.10) ---------- */
+const deg = (v, d = 1) => v == null ? "–" : nf(v, d) + " °C";
+let wxMsg = "", wxAutoDone = false, wxHits = [];
+function renderWxData() {
+  const c = S.wx || {}, w = S.weather || [];
+  if (document.activeElement !== $("wx-q")) $("wx-q").value = c.name || "";
+  [["wx-hl", "heatLimit", 15], ["wx-room", "room", 20]].forEach(([id, k, d]) => { if (document.activeElement !== $(id)) $(id).value = nf(c[k] ?? d, 1).replace(/,0$/, ""); });
+  $("wx-pick-wrap").hidden = !wxHits.length;
+  $("wx-status").innerHTML = (S.weatherError ? flag("Wetter-Tabelle fehlt noch in Supabase: bitte <b>docs/UPDATE_V10.sql</b> im SQL Editor ausführen. Bis dahin läuft die App ohne Wetter.") : "")
+    + `<p class="note">${c.lat != null ? `Standort: <b>${esc(c.name || "")}</b> (${nf(c.lat, 2)} / ${nf(c.lon, 2)}). ` : "Noch kein Standort gewählt. "}${w.length ? `${nf(w.length)} Wettertage gespeichert, ${dde(w[0].d)} bis ${dde(w[w.length - 1].d)}.` : "Noch keine Wetterdaten."}</p>`
+    + (wxMsg ? `<p class="note">${wxMsg}</p>` : "");
+}
+function wireWeather() {
+  $("wx-search").addEventListener("click", async () => {
+    const q = $("wx-q").value.trim(); if (!q) return;
+    try { wxHits = await geocode(q); wxMsg = wxHits.length ? "" : "Kein Ort gefunden."; }
+    catch (e) { wxHits = []; wxMsg = "Ortssuche fehlgeschlagen: " + esc(e.message); }
+    $("wx-pick").innerHTML = `<option value="">Bitte wählen …</option>` + wxHits.map((h, i) => `<option value="${i}">${esc(h.name)}</option>`).join("");
+    renderWxData();
+  });
+  $("wx-pick").addEventListener("change", e => { const h = wxHits[+e.target.value]; if (!h) return;
+    S.wx = { ...(S.wx || {}), name: h.name, lat: h.lat, lon: h.lon }; wxHits = []; persist(); rerender(); syncWeather(false); });
+  [["wx-hl", "heatLimit"], ["wx-room", "room"]].forEach(([id, k]) => $(id).addEventListener("change", e => {
+    const v = parseNum(e.target.value); S.wx = S.wx || {}; if (isFinite(v)) S.wx[k] = v; else delete S.wx[k]; persist(); rerender(); }));
+  $("wx-sync").addEventListener("click", () => syncWeather(false));
+}
+// Fehlende Tage seit dem frühesten Datum (Anker oder Zählerstand Wärmepumpe) bis gestern holen und speichern
+export async function syncWeather(auto) {
+  if (!S || !store?.saveWeather) return;
+  const c = S.wx || {}; if (c.lat == null || S.weatherError) return;
+  if (auto && wxAutoDone) return; wxAutoDone = true;
+  const today = iso(new Date()), yest = addDaysIso(today, -1);
+  const wpFirst = C.groupSeries("wp").first, first = [A.dates[0], wpFirst].filter(Boolean).sort()[0];
+  const have = new Set((S.weather || []).map(w => w.d)), recent = addDaysIso(today, -10);
+  let from = null; for (let d = first; d <= yest; d = addDaysIso(d, 1)) if (!have.has(d) || d >= recent) { from = d; break; }
+  if (!from) return;
+  wxMsg = "Wetter wird geladen …"; if (current === "p-data") renderWxData();
+  try {
+    const rows = await fetchDays(c.lat, c.lon, from, yest, today);
+    if (rows.length) await store.saveWeather(rows);
+    const map = new Map((S.weather || []).map(w => [w.d, w]));
+    rows.forEach(r => map.set(r.day, { d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }));
+    S.weather = [...map.values()].sort((a, b) => a.d.localeCompare(b.d));
+    wxMsg = `${nf(rows.length)} Tage aktualisiert (${dde(from)} bis ${dde(yest)}).`;
+    refreshCalc(); rerender();
+  } catch (e) { wxMsg = (e.message === "offline" ? "Offline – Wetter wird beim nächsten Öffnen ergänzt." : "Wetter konnte nicht geladen werden: " + esc(e.message)); if (current === "p-data") renderWxData(); }
+}
+const addDaysIso = (s, n) => new Date(Date.parse(s + "T00:00:00Z") + n * 864e5).toISOString().slice(0, 10);
+const noWx = () => flag("Noch keine Wetterdaten: unter „Daten → Wetter“ den Standort wählen.", true);
+
+function renderWxWp() {
+  const r = C.wpWeather();
+  if (!r) { $("wx-wp").innerHTML = noWx(); $("wx-wp-tbl").innerHTML = ""; chart("wx-wp-chart", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const G = r.groups, lab = { alt: "Alte Wärmepumpe", neu: "Neue Wärmepumpe", alle: "Wärmepumpe" };
+  const kp = Object.entries(G).map(([k, g]) => g ? kpi(kwh(g.year), `${lab[k]}: Jahresverbrauch bei gleichem Wetter`, `Grundlast ${nf(g.base, 1)} kWh/Tag, ${nf(g.k, 2)} kWh je Gradtag, ${g.n} Intervalle${g.r2 != null ? `, R² ${nf(g.r2, 2)}` : ""}`)
+    : kpi("–", `${lab[k]}`, "Zu wenige Ableseintervalle mit Wetterdaten (mindestens 3 mit unterschiedlichem Wetter)")).join("");
+  const cmp = G.alt?.year && G.neu?.year ? kpi(`${G.neu.year < G.alt.year ? "−" : "+"}${pct(Math.abs(G.neu.year / G.alt.year - 1))}`, "Neu gegenüber alt, wetterbereinigt", `Heizarbeit je Gradtag ${G.neu.k < G.alt.k ? "−" : "+"}${pct(Math.abs(G.neu.k / G.alt.k - 1))}, Grundlast ${G.neu.base < G.alt.base ? "−" : "+"}${pct(Math.abs(G.neu.base / G.alt.base - 1))}`) : "";
+  $("wx-wp").innerHTML = `<div class="grid g3" style="margin-top:10px">${kp}${cmp}</div><p class="note">Bezugswetter: ${nf(r.ref.gt)} Gradtage vom ${dde(r.ref.from)} bis ${dde(r.ref.to)} (Heizgrenze ${nf(+r.cfg.heatLimit, 1)} °C, Raum ${nf(+r.cfg.room, 1)} °C).</p>`;
+  const iv = r.intervals.filter(x => x.ok);
+  chart("wx-wp-chart", { type: "bar", data: { labels: iv.map(x => dde(x.to)), datasets: [
+    { label: "Verbrauch kWh/Tag", data: iv.map(x => x.kwh / x.days), backgroundColor: css("--heat"), yAxisID: "y" },
+    { type: "line", label: "Gradtage je Tag", data: iv.map(x => x.gt / x.days), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y1" }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)}` } } }, scales: { y: { title: { display: true, text: "kWh/Tag" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Gradtage/Tag" } } } } });
+  const model = x => { const g = G[x.side] || G.alle; return g ? g.base * x.days + g.k * x.gt : null; };
+  $("wx-wp-tbl").innerHTML = `<thead><tr><th>Zeitraum</th><th>Tage</th><th>kWh</th><th>kWh/Tag</th><th>Gradtage</th><th>Ø Temperatur</th><th>Modell kWh</th><th class="l">Gerät</th></tr></thead><tbody>${
+    [...r.intervals].reverse().map(x => `<tr><td>${dde(x.from)} – ${dde(x.to)}</td><td>${nf(x.days)}</td><td>${nf(x.kwh)}</td><td>${nf(x.kwh / x.days, 1)}</td><td>${x.ok ? nf(x.gt) : "–"}</td><td>${x.ok ? deg(x.tMean) : "–"}</td><td>${x.ok && model(x) != null ? nf(model(x)) : "–"}</td><td class="l">${{ alt: "alt", neu: "neu", gemischt: "Tausch im Intervall", alle: "" }[x.side]}</td></tr>`).join("")}</tbody>`;
+}
+
+function renderWxPv() {
+  if (!S.weather?.length) { $("wx-pv").innerHTML = noWx(); $("wx-pv-odd").innerHTML = ""; chart("wx-pv-chart", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const { P } = currentPeriods(), r = C.pvWeather(P.from, P.to), n = C.weatherNote(), y = n?.yoy;
+  const sg = v => `${v < 0 ? "−" : "+"}${pct(Math.abs(v))}`;
+  $("wx-pv").innerHTML = `<div class="grid g3" style="margin-top:10px">`
+    + kpi(r.factor != null ? nf(r.factor, 2) : "–", "Ertragsfaktor im Zeitraum", `kWh je kWp (${nf(r.kwp, 2)}) und kWh/m² Einstrahlung, ${nf(r.days)} Tage`)
+    + (y ? kpi(sg(y.gen), "Erzeugung letzte 365 Tage ggü. Vorjahr", `Sonne ${sg(y.rad)}, Anlage (Ertragsfaktor) ${sg(y.f)}`) : kpi("–", "Jahresvergleich", "Braucht zwei volle Jahre mit Anker- und Wetterdaten"))
+    + kpi(nf(r.odd.length), "Auffällige Sonnentage", "Sonnig, aber Ertrag unter 75 % des Monatsüblichen")
+    + `</div>`;
+  const lab = r.months.map(m => monthLabel(m.k));
+  chart("wx-pv-chart", { type: "bar", data: { labels: lab, datasets: [
+    { label: "Erzeugung kWh", data: r.months.map(m => m.gen), backgroundColor: css("--sun"), yAxisID: "y" },
+    { type: "line", label: "Einstrahlung kWh/m²", data: r.months.map(m => m.rad), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y1" },
+    { type: "line", label: "Ertragsfaktor × 100", data: r.months.map(m => m.f * 100), borderColor: css("--batt"), backgroundColor: css("--batt"), borderDash: [5, 4], pointRadius: 2, yAxisID: "y1" }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, c.datasetIndex === 2 ? 0 : 1)}` } } }, scales: { y: { title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "kWh/m² bzw. Faktor × 100" } } } } });
+  const top = r.odd.slice(0, 8);
+  $("wx-pv-odd").innerHTML = top.length ? `<h2 style="margin-top:18px;font-size:15px">Auffällige Sonnentage</h2><div class="tbl-wrap"><table><thead><tr><th>Tag</th><th>Einstrahlung</th><th>Erzeugung</th><th>Erwartet</th><th>Fehlt</th><th class="l">Hinweis</th></tr></thead><tbody>${
+    top.map(x => `<tr><td>${dde(x.d)}</td><td>${nf(x.rad, 1)} kWh/m²</td><td>${kwh(x.gen, 1)}</td><td>${kwh(x.expected, 1)}</td><td>${kwh(x.lost, 1)}</td><td class="l">${x.full ? "Speicher voll – vermutlich Abregelung" : "Wolkenlücken, Verschattung oder Ausfall prüfen"}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+
+function renderOvWeather() {
+  const n = C.weatherNote(); if (!n || !n.cur.n) { $("ov-weather").textContent = ""; return; }
+  const m = monthLabel(n.month);
+  $("ov-weather").textContent = n.prev ? `${m} bis ${dde(A.dates[A.n - 1])}: ${n.cur.rad >= n.prev.rad ? pct(n.cur.rad / n.prev.rad - 1) + " mehr" : pct(1 - n.cur.rad / n.prev.rad) + " weniger"} Sonne als im Vorjahreszeitraum (${nf(n.cur.rad)} gegenüber ${nf(n.prev.rad)} kWh/m²), Ø ${deg(n.cur.t)} (Vorjahr ${deg(n.prev.t)}).`
+    : `${m}: ${nf(n.cur.rad)} kWh/m² Sonneneinstrahlung, Ø ${deg(n.cur.t)}.`;
 }

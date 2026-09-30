@@ -161,3 +161,5 @@ main{min-width:0}
 .quick-grid{grid-template-columns:repeat(5,minmax(0,1fr))}
 @media (max-width:760px){ .quick-grid{grid-template-columns:1fr 1fr} }
 #boni-tbl input,#tr-offers input,#tr-offers select{padding:5px 7px}
+.form .wide{grid-column:1/-1}
+#wb-tbl td:first-child{white-space:normal;min-width:150px}

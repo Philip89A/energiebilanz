@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.7.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.7.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.10.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.10.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -144,6 +144,8 @@ export async function loadAll() {
   ]);
   const db = { anker_daily: anker, settings: settings[0] || null };
   tables.forEach((t, i) => { db[t] = rest[i]; });
+  // Wetter (schema v5): fehlt die Tabelle noch, läuft die App ohne Wetter weiter
+  try { db.weather_daily = await fetchAll('weather_daily', { order: 'day' }); } catch (e) { db.weather_daily = []; db.weatherError = e.message; }
   return db;
 }
 
@@ -167,4 +169,9 @@ export async function deleteRow(kind, row) {
 }
 export async function saveSettings(data) {
   await upsertRows('settings', [data], 'user_id');
+}
+
+// Wettertage speichern (Upsert je Tag); nur online, nicht über die Offline-Warteschlange
+export async function saveWeather(rows) {
+  await upsertRows('weather_daily', rows, 'user_id,day');
 }

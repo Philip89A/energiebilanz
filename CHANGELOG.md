@@ -113,3 +113,62 @@
 - „Erfassen“: fünfter Knopf „Zahlung“ (Betrag aus dem Abschlagsplan vorausgefüllt).
 - Tests: 39 Unit-Tests; `scripts/v07-check.mjs` 20 Prüfungen; Seitenvergleich zählt Diagramme jetzt als gleich,
   wenn alle Datenreihen der Referenz unverändert enthalten sind (zusätzliche Reihen erlaubt).
+
+## v0.8.0 – Ausbau-Szenario „Weg B“
+- **Neue Seite „Ausbau (Weg B)“**: grobe Amortisation für PV-Erweiterung, Zusatzspeicher und Wallbox gegenüber der
+  heutigen Anlage, mit dem E-Auto ausdrücklich eingerechnet. Grund: Wallbox und PV-Erweiterung werden für das Auto
+  angeschafft, eine Rechnung ohne Auto unterschätzt den Nutzen.
+- Tagesmodell über die letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler), Reihenfolge Haus →
+  Klimaanlage → Auto → Speicher → Einspeisung, optional abends Speicher → Auto. Kalibriert auf den gemessenen
+  genutzten Solarstrom der heutigen Anlage (Faktor wird angezeigt).
+- Ergebnis getrennt nach Paket, Anteil PV/Speicher und Anteil Wallbox; Auto-Anteile erst ab Übergabe des E-Autos
+  (Startdatum aus dem Auto-Vergleich). Alternative ohne Wallbox umschaltbar: öffentlich laden oder Steckdose
+  (deren Kosten mindern dann die Wallbox-Investition).
+- **§14a EnWG an/aus**: eigener Betrag oder Modul 1, 2 bzw. 1+3 aus dem Tarifrechner (mit dem Netzladen des Szenarios).
+- Kosten ohne Vorgabewerte (Angebotswerte gehören nicht ins öffentliche Repo); Hinweis, solange sie fehlen.
+  Parameter in `settings.data.ausbau`, kein Schema-Update nötig.
+- Bewusst unverändert: Der Auto-Vergleich bleibt wie in der Referenz. Die Seite weist darauf hin, dass der
+  Wallbox-Vorteil nicht zusätzlich zum Auto-Vergleich gezählt werden darf.
+- THG-Prämie nicht enthalten (gehört zum Auto, fällt mit jeder Lademöglichkeit an).
+- Tests: 49 Unit-Tests (neu `tests/ausbau.test.mjs`), `scripts/v08-check.mjs` 24 Prüfungen; Seitenvergleich,
+  Bearbeiten, Offline und v0.7 unverändert bestanden.
+
+## v0.9.0 – Investition verfolgen (Wallbox, E-Auto zu Hause)
+- **Schema v4** (`docs/UPDATE_V09.sql`, vor dem ersten Speichern einer Kategorie ausführen): `investments.category`
+  (PV/Speicher, Wallbox, Sonstiges; leer = PV/Speicher). Ohne gesetzte Kategorie wird die Spalte nicht gesendet.
+- **Amortisation**: Kategorie je Investition. Ab der ersten Wallbox-Investition zählt Laden zu Hause (Ladebuch, Ort
+  „zu Hause“) als Ersparnis gegenüber öffentlichem Laden: kWh × (öffentlicher Preis − Arbeitspreis). Prognose
+  ab Übergabe des E-Autos aus dem Auto-Vergleich (kWh zu Hause pro Jahr). Solarstrom im Auto steckt schon in der
+  PV-Ersparnis (Anker „genutzt“) und wird nicht doppelt gezählt. Grund: Die Wallbox ist mehr als die Hälfte des
+  Nutzens des Ausbaus; ohne sie sähe die Amortisation nach dem Einbau deutlich zu schlecht aus.
+  Ohne Wallbox-Investition bleibt alles wie in der Referenz (Break-even in Überblick und Kosten & Ersparnisse
+  rechnet mit, weil alle drei dieselbe Zeitleiste nutzen).
+- **Stromkosten**: Block „E-Auto zu Hause“ (geladen zu Hause, geschätzter Netzanteil, Allgemeinstrom ohne E-Auto,
+  Ersparnis gegenüber öffentlich) und Hinweis zum Abschlag ab Übergabe des E-Autos (erwartete kWh und € pro Monat),
+  weil die Hochrechnung aus Zählerständen den neuen Verbrauch erst nach einigen Wochen kennt.
+- **Tarifrechner**: Der Netzanteil des Ladens zu Hause wird aus dem Allgemeinstrom herausgerechnet, damit
+  „inkl. E-Auto“ nicht doppelt zählt.
+- **Ausbau (Weg B)**: Hinweis auf Doppelzählung mit dem Auto-Vergleich entfernt (der Auto-Vergleich ist ein
+  allgemeiner Vergleich E-Auto gegen Verbrenner), stattdessen Verweis auf die Amortisation.
+- Beispielwerte in Kommentaren (Boni-Posten) durch neutrale Zahlen ersetzt.
+- Tests: 55 Unit-Tests (neu `tests/v09.test.mjs`), `scripts/v09-check.mjs` 13 Prüfungen; Seitenvergleich,
+  Bearbeiten, Offline, v0.7 und v0.8 unverändert bestanden.
+
+## v0.10.0 – Wetter
+- **Schema v5** (`docs/UPDATE_V10.sql`): Tabelle `weather_daily` (Tagesmitteltemperatur, Globalstrahlung kWh/m²,
+  Sonnenstunden) mit RLS wie alle Tabellen. Fehlt sie, läuft die App ohne Wetter weiter und zeigt einen Hinweis.
+- **Datenquelle Open-Meteo** (`js/weather.js`, frei, ohne Schlüssel): Archiv bis etwa 6 Tage vor heute, die letzten
+  Tage aus der Vorhersage-API. Ortssuche über Open-Meteo, Koordinaten auf 0,01° gerundet und nur in
+  `settings.data.wx` gespeichert. Fehlende Tage werden beim Öffnen ergänzt, die letzten 10 Tage immer neu geholt.
+- **Wärmepumpe wetterbereinigt** (Zähler & Wärmepumpe): Gradtage nach VDI 3807 (Raum 20 °C, Heizgrenze 15 °C,
+  einstellbar) je Ableseintervall; Modell „Grundlast je Tag + Heizarbeit je Gradtag“ (kleinste Quadrate), getrennt
+  vor und nach dem Gerätetausch; Jahresverbrauch auf das Wetter der letzten 365 Tage umgerechnet. Grund: Der
+  bisherige Vergleich alt/neu hängt stark davon ab, wie kalt der jeweilige Winter war.
+- **PV und Wetter** (PV-Anlage): Erzeugung gegen Einstrahlung je Monat, Ertragsfaktor (kWh je kWp und kWh/m²),
+  Jahresvergleich getrennt nach Sonne und Anlage, auffällige Sonnentage (Hinweis auf Abregelung bei vollem Speicher).
+- **Überblick**: Satz zur Sonne im laufenden Monat gegenüber dem Vorjahreszeitraum.
+- Service Worker cacht `js/weather.js`; Open-Meteo geht wie Supabase immer direkt ins Netz.
+- Anleitung für Updates: `docs/ANLEITUNG_UPDATES.md`.
+- Tests: 62 Unit-Tests (neu `tests/v10.test.mjs`), `scripts/v10-check.mjs` 22 Prüfungen mit simuliertem Open-Meteo;
+  alle bisherigen Prüfungen unverändert bestanden. Der echte Abruf ließ sich in der Entwicklungsumgebung nicht
+  testen (Netzsperre), er läuft erstmals im Browser.

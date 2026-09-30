@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.7.0">
-<link rel="stylesheet" href="css/style.css?v=0.7.0">
+<meta name="app-version" content="0.10.0">
+<link rel="stylesheet" href="css/style.css?v=0.10.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -92,7 +92,7 @@
     <p class="hero-sentence" id="ov-sentence"></p>
     <div class="flow" id="ov-flow"></div>
     <div class="legend" id="ov-legend"></div>
-    <p class="note" id="ov-flow-note"></p>
+    <p class="note" id="ov-flow-note"></p><p class="note" id="ov-weather"></p>
   </div>
   <div class="grid g4" style="margin-top:16px" id="ov-kpis"></div>
   <div class="grid g2" style="margin-top:16px">
@@ -131,6 +131,9 @@
     <div class="panel"><h2>Erzeugung je Strang</h2><p class="note">Hilft, verschattete oder ausgefallene Module zu erkennen.</p><div class="chart"><canvas id="pv-str"></canvas></div></div>
     <div class="panel"><h2>Solarstrom nach Verwendung</h2><p class="note">Direkt verbraucht, in den Speicher geladen oder eingespeist.</p><div class="chart"><canvas id="pv-use"></canvas></div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="wx-pv-panel"><h2>PV und Wetter</h2>
+    <p class="note">Erzeugung gegen Globalstrahlung (horizontal gemessen, Open-Meteo). Der Ertragsfaktor (kWh je kWp und kWh/m²) zeigt, wie gut die Anlage die Sonne nutzt – unabhängig davon, wie sonnig es war. Sinkt er, liegt es an der Anlage (Abregelung, voller Speicher, Verschattung, Ausfall), nicht am Wetter. Nach dem Ausbau die installierte Leistung oben anpassen.</p>
+    <div id="wx-pv"></div><div class="chart tall"><canvas id="wx-pv-chart"></canvas></div><div id="wx-pv-odd"></div></div>
 </section>
 
 <section id="p-batt" data-title="Batterie" hidden>
@@ -157,6 +160,9 @@
     <div class="panel"><h2>Verbrauch pro Tag zwischen den Ablesungen</h2><div class="chart tall"><canvas id="mt-rate"></canvas></div></div>
     <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="wx-wp-panel"><h2>Wärmepumpe wetterbereinigt</h2>
+    <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar.</p>
+    <div id="wx-wp"></div><div class="chart"><canvas id="wx-wp-chart"></canvas></div><div class="tbl-wrap"><table id="wx-wp-tbl"></table></div></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="panel"><h2>Verbrauch pro Monat</h2><p class="note">Aus den Zählerständen, Allgemeinstrom nach Anker-Profil verteilt.</p><div class="chart"><canvas id="mt-month"></canvas></div></div>
     <div class="panel"><h2>Monate im Jahresvergleich</h2><div class="form" style="margin-top:8px;max-width:260px"><label class="f">Zählpunkt<select id="mt-yoy-g"><option value="wp">Wärmepumpe</option><option value="as">Allgemeinstrom</option><option value="feed">Einspeisung</option></select></label></div><div class="chart"><canvas id="mt-yoy"></canvas></div></div>
@@ -182,11 +188,15 @@
   <div class="grid g4" id="ct-kpis"></div>
   <div class="panel" style="margin-top:16px"><h2>Abschlag-Check: zahle ich zu viel?</h2>
     <p class="note">Je laufendem Vertrag: bisher gezahlte Abschläge gegen die bisher verbrauchten Kosten, dazu eine Prognose bis zum Ende des Abrechnungsjahres. Der restliche Verbrauch wird aus denselben Kalendertagen des Vorjahres geschätzt, damit Winter und Sommer richtig eingehen. Unabhängig vom oben gewählten Zeitraum.</p>
-    <div id="ab-flags"></div><div class="tbl-wrap"><table id="ab-tbl"></table></div>
+    <div id="ab-flags"></div><div id="ab-ev"></div><div class="tbl-wrap"><table id="ab-tbl"></table></div>
     <h2 style="margin-top:18px;font-size:15px">Abschläge</h2>
     <p class="note edit-only">Jede Änderung des Abschlags als neue Zeile mit dem Datum, ab dem er gilt.</p>
     <div class="tbl-wrap"><table id="ab-edit"></table></div>
     <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="ab-add">Abschlag hinzufügen</button></div>
+  </div>
+  <div class="panel" style="margin-top:16px" id="evh-panel"><h2>E-Auto zu Hause</h2>
+    <p class="note">Laden zu Hause läuft über den Allgemeinstrom-Zähler. Grundlage sind die Ladevorgänge mit Ort „zu Hause“ (kWh aus der Anker-App unter „Erfassen → Laden“ eintragen, je Ladung oder als Monatssumme). Der Netzanteil wird mit dem PV-Anteil aus dem Auto-Vergleich geschätzt.</p>
+    <div class="grid g4" id="evh-kpis" style="margin-top:10px"></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Zahlungsbuch</h2>
     <p class="note">Tatsächliche Geldflüsse. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme „12 Abschläge ab einem Monat nach Lieferbeginn“. Erstattungen und Nachzahlungen sind Geldflüsse, keine Kostensenkung.</p>
@@ -236,12 +246,27 @@
 <section id="p-amort" data-title="Amortisation" hidden>
   <h1>Amortisation</h1>
   <p class="lead">Wert einer selbst genutzten Solar-kWh ist der Arbeitspreis des Allgemeinstroms. Der Grundpreis fällt ohnehin an und zählt nicht als Ersparnis; mit umgelegtem Grundpreis sähe die Amortisation deutlich zu gut aus.</p>
-  <div class="grid g4" id="am-kpis"></div>
+  <div class="grid g4" id="am-kpis"></div><div id="am-wb-note"></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel"><h2>Investition</h2><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
+    <div class="panel" style="grid-column:1/-1"><h2>Investition</h2><p class="note">Kategorie „Wallbox“: ab dieser Investition zählt Laden zu Hause (Ort „zu Hause“ im Ladebuch) als Ersparnis gegenüber öffentlichem Laden.</p><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
     <div class="panel"><h2>Annahmen</h2><div class="grid g2" id="am-sl" style="margin-top:10px"></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
+</section>
+
+<section id="p-ausbau" data-title="Ausbau (Weg B)" hidden>
+  <h1>Ausbau: PV-Erweiterung, Speicher, Wallbox</h1>
+  <p class="lead">Grobe Amortisation des Pakets gegenüber der heutigen Anlage, gerechnet mit deinen Tageswerten der letzten 365 Tage. Das E-Auto ist ausdrücklich enthalten: Die Wallbox ersetzt das Laden an der gewählten Alternative, die PV-Erweiterung lädt einen Teil davon mit Solarstrom. Schätzung, keine Messung.</p>
+  <div class="grid g4" id="wb-kpis"></div>
+  <div class="panel" style="margin-top:16px"><h2>Vorteil pro Jahr</h2><p class="note">Erstes Jahr, ohne Preissteigerung. Solarstrom wird zum Arbeitspreis bewertet, Laden zu Hause gegen die gewählte Alternative. THG-Prämie nicht enthalten: Sie gehört zum Auto und fällt mit jeder Lademöglichkeit an.</p><div class="tbl-wrap"><table id="wb-tbl"></table></div><div id="wb-flags"></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Kumulierter Vorteil gegen Investition</h2><p class="note">Monatlich ab Inbetriebnahme, mit Strompreissteigerung und Leistungsverlust aus „Amortisation“. Auto-Anteile zählen erst ab Übergabe des E-Autos (Startdatum im „Auto-Vergleich“).</p><div class="chart tall"><canvas id="wb-chart"></canvas></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Kosten</h2><div class="form" style="margin-top:10px" id="wb-cost"></div></div>
+    <div class="panel"><h2>Anlage</h2><div class="form" style="margin-top:10px" id="wb-plant"></div></div>
+    <div class="panel"><h2>Verbrauch und Preise</h2><div class="form" style="margin-top:10px" id="wb-use"></div></div>
+    <div class="panel"><h2>§14a EnWG (steuerbare Wallbox)</h2><p class="note">Reduziertes Netzentgelt für die angemeldete Wallbox. „Aus Tarifrechner“ nimmt die Ersparnis des Moduls mit den dort eingetragenen Werten deines Netzbetreibers. Modul 3 und dynamischer Stromtarif passen nicht bei jedem Anbieter zusammen.</p><div class="form" style="margin-top:10px" id="wb-14a"></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Wie gerechnet wird</h2><div id="wb-method"></div></div>
 </section>
 
 <section id="p-car" data-title="Auto-Vergleich" hidden>
@@ -322,6 +347,18 @@
       <div id="csv-result"></div></div>
     <div class="panel"><h2>Datenstand</h2><div id="status">Lade …</div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="wx-panel"><h2>Wetter</h2>
+    <p class="note">Tageswerte von Open-Meteo (Temperatur, Globalstrahlung, Sonnenstunden) für die Wetterbereinigung der Wärmepumpe und den Ertragsvergleich der PV. Der Standort wird auf etwa 1 km gerundet und nur in deinen Einstellungen gespeichert; Open-Meteo sieht bei jedem Abruf Koordinaten und IP-Adresse. Fehlende Tage werden beim Öffnen automatisch ergänzt.</p>
+    <div class="form" style="margin-top:10px">
+      <label class="f">Ort<input type="text" id="wx-q" autocomplete="off" placeholder="Ort eingeben"></label>
+      <button type="button" class="ghost" id="wx-search">Ort suchen</button>
+      <label class="f" id="wx-pick-wrap" hidden>Treffer<select id="wx-pick"></select></label>
+      <label class="f">Heizgrenze °C<input type="text" inputmode="decimal" id="wx-hl"></label>
+      <label class="f">Raumtemperatur °C<input type="text" inputmode="decimal" id="wx-room"></label>
+      <button type="button" id="wx-sync">Wetter aktualisieren</button>
+    </div>
+    <div id="wx-status" style="margin-top:10px"></div>
+  </div>
   <div class="panel" style="margin-top:16px"><h2>Ereignisse</h2><p class="note">Markierungen, die Auswertungen in vorher und nachher trennen.</p><div class="tbl-wrap"><table id="ev-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px"><h2>Startdaten importieren (einmalig)</h2>
     <p class="note"><code>seed_state.json</code> aus der Referenzversion. Die Datei wird nur im Browser gelesen.</p>
@@ -344,8 +381,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.7.0"></script>
-<script src="vendor/chart.umd.js?v=0.7.0"></script>
-<script type="module" src="js/app.js?v=0.7.0"></script>
+<script src="vendor/supabase.js?v=0.10.0"></script>
+<script src="vendor/chart.umd.js?v=0.10.0"></script>
+<script type="module" src="js/app.js?v=0.10.0"></script>
 </body>
 </html>

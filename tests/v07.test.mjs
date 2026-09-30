@@ -122,6 +122,6 @@ test('Rundlauf Supabase-Format: Zahlungen und Boni-Posten', () => {
 test('parseBoniNote: Posten, Kommabeträge, Mengenbedingung', async () => {
   const { parseBoniNote } = await import('../js/calc.js');
   assert.deepEqual(parseBoniNote('Sofortbonus 99,32 € + Neukundenbonus 150 €'), [{ name: 'Sofortbonus', amount: 99.32 }, { name: 'Neukundenbonus', amount: 150 }]);
-  assert.deepEqual(parseBoniNote('Sofort 10 € + Neukunde 149 € (bei unter 2.500 kWh evtl. nur 100 €)')[1], { name: 'Neukunde', amount: 149, minKwh: 2500, amountBelow: 100 });
+  assert.deepEqual(parseBoniNote('Sofort 10 € + Neukunde 80 € (bei unter 2.000 kWh evtl. nur 50 €)')[1], { name: 'Neukunde', amount: 80, minKwh: 2000, amountBelow: 50 });
   assert.deepEqual(parseBoniNote(''), []);
 });
