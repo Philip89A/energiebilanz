@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather } from './db.js?v=0.10.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.10.0';
-import { stateFromDb } from './calc.js?v=0.10.0';
-import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.10.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.10.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp } from './db.js?v=0.11.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.11.0';
+import { stateFromDb } from './calc.js?v=0.11.0';
+import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.11.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.11.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -52,8 +52,9 @@ setStore({
   saveRow: (kind, row) => send({ op: 'save', kind, row }),
   deleteRow: (kind, row) => send({ op: 'delete', kind, row }),
   saveSettings: data => send({ op: 'settings', data }),
-  reload: () => { shownJson = null; loadModel(); },
-  saveWeather: rows => (online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
+  reload: () => { shownJson = null; loadModel(); },   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
+  saveWeather: rows => (online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),
+  saveHp: rows => (online() ? saveHp(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut hochladen.'))),
 });
 
 let flushing = false;

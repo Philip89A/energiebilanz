@@ -172,3 +172,20 @@
 - Tests: 62 Unit-Tests (neu `tests/v10.test.mjs`), `scripts/v10-check.mjs` 22 Prüfungen mit simuliertem Open-Meteo;
   alle bisherigen Prüfungen unverändert bestanden. Der echte Abruf ließ sich in der Entwicklungsumgebung nicht
   testen (Netzsperre), er läuft erstmals im Browser.
+
+## v0.11.0 – Wärmepumpe laut Gerät, Wetter je Tag
+- **Schema v6** (`docs/UPDATE_V11.sql`): Tabelle `hp_energy` (Auflösung Stunde/Tag/Monat, Strom nach Heizung,
+  Warmwasser, Kühlung und Zuheizer, erzeugte Wärme, Außen-, Vorlauf- und Warmwassertemperatur) mit RLS.
+- **Import des App-Exports der Wärmepumpe** (Daten → „Wärmepumpe: App-Export importieren“, `js/hp.js`): Vorschau,
+  dann Speichern; vorhandene Zeitpunkte werden überschrieben, nichts gelöscht. Erzeugte Wärme = Strom-Anteil +
+  Umgebungs-Anteil laut Export. Abgleich mit dem Zähler: Gerät und Zähler liegen über elf Monate auf etwa 1 %.
+- **Zähler & Wärmepumpe → „Wärmepumpe laut Gerät“**: Strom, Wärme, Arbeitszahl (ohne Kühlung), Anteil
+  Warmwasser für die letzten 12 Monate; Monatsgrafik (Heizung, Warmwasser, Kühlung, Zähler, Arbeitszahl),
+  Tagesgrafik der letzten 90 Tage mit Außentemperatur, Monatstabelle mit Gradtagen und Heizstrom je Gradtag
+  (nur Monate ab 100 Gradtagen).
+- **PV und Wetter je Tag** bei Zeiträumen bis 62 Tage (wie die übrigen Grafiken), sonst je Monat.
+- **Wetter im Tooltip** der Tagesgrafiken (Überblick Tagesbilanz, PV: Autarkie, Ertrag, Verwendung).
+- Bewusst unverändert: Die Verteilung des Wärmepumpen-Zählers auf Tage bleibt gleichmäßig (Referenz). Eine
+  Verteilung nach dem Geräteprofil wäre genauer und ist als eigener Schritt vorgeschlagen.
+- Tests: 66 Unit-Tests (neu `tests/v11.test.mjs`, synthetische `tests/fixture_hp.csv`), `scripts/v11-check.mjs`
+  17 Prüfungen; alle bisherigen Prüfungen unverändert bestanden.

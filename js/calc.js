@@ -8,6 +8,8 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
+import { hpSum } from './hp.js?v=0.11.0';
+
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
   use: 'genutzt', gen: 'erzeugung', feed: 'einspeisung', pv1: 'pv1', pv2: 'pv2', pv3: 'pv3', pv4: 'pv4', plug: 'smart_plug' };
@@ -62,6 +64,9 @@ export function stateFromDb(db) {
     weather: (db.weather_daily || []).map(r => ({ d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }))
       .sort((a, b) => a.d.localeCompare(b.d)),
     weatherError: db.weatherError || null,
+    hp: (db.hp_energy || []).map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !['user_id', 'created_at', 'updated_at'].includes(k))
+      .map(([k, v]) => [k, ['grain', 'ts'].includes(k) || v == null ? v : +v]))),
+    hpError: db.hpError || null,
   };
 }
 
@@ -636,7 +641,7 @@ export function createCalc(S) {
     for (const arr of Object.values(byM)) { if (arr.length < 10) continue; const mr = med(arr.map(x => x.rad)), mf = med(arr.map(x => x.f));
       for (const x of arr) if (x.rad >= mr && x.f < 0.75 * mf) odd.push({ ...x, expected: mf * kwp * x.rad, lost: mf * kwp * x.rad - x.gen }); }
     odd.sort((a, b) => b.lost - a.lost);
-    return { kwp, months: rows, days: days.length, odd, factor: rows.length ? rows.reduce((a, r) => a + r.gen, 0) / (kwp * rows.reduce((a, r) => a + r.rad, 0)) : null };
+    return { kwp, months: rows, days: days.length, list: days, odd, factor: rows.length ? rows.reduce((a, r) => a + r.gen, 0) / (kwp * rows.reduce((a, r) => a + r.rad, 0)) : null };
   }
   // Jahresvergleich PV (letzte 365 Tage gegen die 365 davor, nur gemeinsame Tage mit Wetter) und Satz für den Überblick
   function weatherNote() {
@@ -648,6 +653,28 @@ export function createCalc(S) {
     const sum = (x, k) => x.months.reduce((a, r) => a + r[k], 0);
     const yoy = y0.days >= 300 && y1.days >= 300 ? { gen: sum(y1, 'gen') / sum(y0, 'gen') - 1, rad: sum(y1, 'rad') / sum(y0, 'rad') - 1, f: y1.factor / y0.factor - 1 } : null;
     return { month: mk, cur, prev: prev.n === cur.n && prev.n ? prev : null, yoy };
+  }
+
+  /* Wärmepumpen-App (v0.11): Strom und Wärme nach Heizung/Warmwasser, Arbeitszahl, Abgleich mit dem Zähler */
+  const hpRows = g => (S.hp || []).filter(r => r.grain === g).sort((a, b) => a.ts.localeCompare(b.ts));
+  function hpMonths() {
+    const meter = {}; for (const [d, k] of Object.entries(groupSeries('wp').daily)) meter[monthKey(d)] = (meter[monthKey(d)] || 0) + k;
+    const wl = S.weather?.length ? S.weather[S.weather.length - 1].d : null;
+    return hpRows('month').map(r => {
+      const s = hpSum([r]), from = `${r.ts}-01`, end = addDays(monthEnd(r.ts), 1), dd = S.weather?.length ? degreeDays(from, end) : null;
+      return { k: r.ts, ...s, tOut: r.t_out, tFlow: r.t_flow, tDhw: r.t_dhw, meter: meter[r.ts] ?? null,
+        gt: dd && dd.missing === 0 ? dd.gt : null, heatPerGt: dd && dd.missing === 0 && dd.gt >= 100 ? s.elHeat / dd.gt : null };
+    });
+  }
+  // Letzte 12 Monate mit Daten (Monatswerte der App)
+  function hpYear() {
+    const m = hpRows('month'); if (!m.length) return null;
+    const last = m[m.length - 1].ts, first = addMonths(`${last}-01`, -11).slice(0, 7), rows = m.filter(r => r.ts >= first);
+    return { from: rows[0].ts, to: last, months: rows.length, ...hpSum(rows) };
+  }
+  function hpDays(from, to) {
+    return hpRows('day').filter(r => r.ts >= from && r.ts <= to).map(r => { const s = hpSum([r]), w = W[r.ts];
+      return { d: r.ts, ...s, tOut: r.t_out, tWx: w ? w.t : null, gt: w ? (w.t < wxCfg().heatLimit ? wxCfg().room - w.t : 0) : null }; });
   }
 
   // Hinweis Abschlag: E-Auto lädt ab Übergabe über den Allgemeinstrom, die Hochrechnung aus Zählerständen kennt das
@@ -677,7 +704,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays,
   };
 }
 
