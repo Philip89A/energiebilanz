@@ -5,9 +5,16 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#18212B">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon-192.png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Energiebilanz">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.5.0">
-<link rel="stylesheet" href="css/style.css?v=0.5.0">
+<meta name="app-version" content="0.6.0">
+<link rel="stylesheet" href="css/style.css?v=0.6.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -56,6 +63,8 @@
 </nav>
 <main id="main">
 <p class="loading" id="loading">Lade Daten …</p>
+<p class="flag" id="offline-banner" hidden></p>
+<p class="flag info" id="pending-banner" hidden></p>
 <p class="flag info" id="empty-hint" hidden>Noch keine Anker-Daten. Unter „Daten“ Startdaten oder einen Anker-Export importieren.</p>
 <div class="panel period" id="period-bar" hidden>
   <div class="form">
@@ -68,7 +77,15 @@
   <p class="note" id="pb-info"></p>
 </div>
 
-<section id="p-overview" data-title="Überblick">
+<section id="p-quick" data-title="Erfassen" hidden>
+  <h1>Erfassen</h1>
+  <p class="lead">Neue Werte vom Handy. Ohne Netz werden Einträge vorgemerkt und automatisch gesendet, sobald wieder Verbindung besteht.</p>
+  <div class="quick-grid" id="q-grid"></div>
+  <div id="q-msg"></div>
+  <div class="panel q-form" id="q-form" hidden></div>
+</section>
+
+<section id="p-overview" data-title="Überblick" hidden>
   <h1>Wohin die Sonne ging</h1>
   <p class="lead" id="ov-lead"></p>
   <div class="panel">
@@ -286,8 +303,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.5.0"></script>
-<script src="vendor/chart.umd.js?v=0.5.0"></script>
-<script type="module" src="js/app.js?v=0.5.0"></script>
+<script src="vendor/supabase.js?v=0.6.0"></script>
+<script src="vendor/chart.umd.js?v=0.6.0"></script>
+<script type="module" src="js/app.js?v=0.6.0"></script>
 </body>
 </html>

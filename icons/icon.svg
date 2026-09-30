@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Energiebilanz: Sonne über Batterie, Farben aus dem App-Design (--ink, --sun, --batt) -->
+  <rect width="512" height="512" rx="112" fill="#18212B"/>
+  <g stroke="#F0B43C" stroke-width="22" stroke-linecap="round">
+    <line x1="256" y1="52" x2="256" y2="98"/><line x1="116" y1="110" x2="146" y2="140"/><line x1="396" y1="110" x2="366" y2="140"/>
+    <line x1="60" y1="238" x2="104" y2="238"/><line x1="408" y1="238" x2="452" y2="238"/>
+  </g>
+  <circle cx="256" cy="238" r="96" fill="#F0B43C"/>
+  <rect x="150" y="300" width="212" height="132" rx="22" fill="#4DB6A6"/>
+  <rect x="362" y="342" width="22" height="48" rx="6" fill="#4DB6A6"/>
+  <path d="M268 322 L218 374 H258 L242 414 L298 358 H258 Z" fill="#18212B"/>
+</svg>

@@ -73,3 +73,17 @@
 - Korrektur zu v0.4: Der Seitenvergleich zählte versteckte, leere Blöcke mit. Tatsächlich verglichen wurden
   210 sichtbare Textblöcke und 136 Diagramme; Ergebnis unverändert (nur gewollte Textabweichungen).
   `scripts/compare.mjs` berücksichtigt jetzt nur sichtbare Elemente.
+
+## v0.6.0 – Phase 5: Handy-App und offline
+- Installierbar („Zum Home-Bildschirm“): Manifest, Icons, Start auf der neuen Seite „Erfassen“.
+- „Erfassen“: vier große Knöpfe für Zählerstand, Tanken, Laden und Fahrzeugbuch mit letztem Stand als Hilfe,
+  Datum vorausgefüllt, Zahlentastatur, deutsche Zahlen („40,2“, „12.531,5“), Plausibilitätsprüfung (Stand oder
+  Kilometerstand kleiner als zuvor → Rückfrage), €/l bzw. €/kWh und Verbrauch seit letztem Stand live.
+- Offline: Service Worker hält die App vor, der letzte Datenstand liegt je Nutzer im Gerät. Ohne Netz erfasste
+  Einträge werden vorgemerkt und bei Netz in Reihenfolge gesendet; Hinweise „Offline – Stand vom …“ und
+  „n Einträge warten auf Senden“. Lehnt Supabase einen vorgemerkten Eintrag ab, wird er verworfen und gemeldet.
+- Start zeigt sofort den lokalen Stand und aktualisiert dann aus Supabase (schneller Start am Handy).
+- Abmelden fragt nach, wenn noch Einträge warten, und löscht den lokalen Stand.
+- iOS: Eingabefelder mit 16 px Schrift (sonst zoomt Safari beim Antippen hinein).
+- `scripts/offline-check.mjs`: 21 Prüfungen (Service Worker, Erfassen, offline vormerken, Neustart offline,
+  Senden bei Netz, Serverfehler, Offline-Start ohne Sitzung) grün.
