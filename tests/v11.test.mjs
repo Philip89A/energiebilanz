@@ -44,8 +44,39 @@ test('Monate: Zähler, Gradtage und Heizung je Gradtag; Jahr und Tage', () => {
   assert.equal(typeof S.hp[0].el_hp, 'number'); assert.equal(S.hp[0].user_id, undefined);
   const C = createCalc(S), m = C.hpMonths();
   assert.equal(m.length, 2);
-  assert.equal(m[0].meter, 310); assert.equal(m[0].gt, 31 * 10);
+  assert.ok(Math.abs(m[0].meter - 310) < 1e-9); assert.equal(m[0].gt, 31 * 10);
   assert.ok(Math.abs(m[0].heatPerGt - 180 / 310) < 1e-9);
   const y = C.hpYear(); assert.equal(y.months, 2); assert.equal(y.from, '2025-01');
   const d = C.hpDays('2025-01-01', '2025-01-31'); assert.equal(d.length, 2); assert.equal(d[1].tWx, 10); assert.equal(d[1].gt, 10);
+});
+
+test('v0.12: Wärmepumpen-Zähler nach Geräteprofil verteilt, nur bei vollständiger Abdeckung', () => {
+  const base = { anker_daily: [{ day: '2025-01-01', genutzt: 1 }], meters: [{ id: 'w', name: 'WP', grp: 'wp', sort: 0 }], settings: { data: { pv: { kwp: 1 }, battery: {}, amort: {} } } };
+  const readings = [{ meter_id: 'w', day: '2025-01-01', value: 0 }, { meter_id: 'w', day: '2025-01-04', value: 30 }, { meter_id: 'w', day: '2025-01-06', value: 40 }];
+  // Tage 1–3 mit Gerätewerten 1:2:3, Tag 4–5 ohne Wert (kein Monatswert) → gleichmäßig
+  const hp = [{ grain: 'day', ts: '2025-01-01', el_hp: 1, el_aux: 0 }, { grain: 'day', ts: '2025-01-02', el_hp: 2, el_aux: 0 }, { grain: 'day', ts: '2025-01-03', el_hp: 2, el_aux: 1 }];
+  const g = createCalc(stateFromDb({ ...base, meter_readings: readings, hp_energy: hp })).groupSeries('wp');
+  assert.deepEqual([g.daily['2025-01-01'], g.daily['2025-01-02'], g.daily['2025-01-03']], [5, 10, 15]);
+  assert.equal(g.intervals[0].shaped, 'hp');
+  assert.deepEqual([g.daily['2025-01-04'], g.daily['2025-01-05']], [5, 5]);
+  assert.equal(g.intervals[1].shaped, undefined);
+  // Monatswert füllt Tage ohne Tageswert (Rest des Monats gleichmäßig)
+  const g2 = createCalc(stateFromDb({ ...base, meter_readings: readings, hp_energy: [...hp, { grain: 'month', ts: '2025-01', el_hp: 6 + 28 * 2, el_aux: 0 }] })).groupSeries('wp');
+  assert.equal(g2.intervals[1].shaped, 'hp');
+  assert.deepEqual([g2.daily['2025-01-04'], g2.daily['2025-01-05']], [5, 5]);
+  // ohne Gerätedaten wie bisher gleichmäßig
+  const g3 = createCalc(stateFromDb({ ...base, meter_readings: readings })).groupSeries('wp');
+  assert.deepEqual([g3.daily['2025-01-01'], g3.daily['2025-01-03']], [10, 10]);
+});
+
+test('v0.12: Tauschmonat – Monatswert nur ab dem Tauschtag, davor gleichmäßig', () => {
+  const base = { anker_daily: [{ day: '2025-01-01', genutzt: 1 }], meters: [{ id: 'w', name: 'WP', grp: 'wp', sort: 0 }], settings: { data: { pv: { kwp: 1 }, battery: {}, amort: {} } } };
+  const readings = [{ meter_id: 'w', day: '2025-01-01', value: 0 }, { meter_id: 'w', day: '2025-01-21', value: 200 }, { meter_id: 'w', day: '2025-02-11', value: 400 }];
+  const hp = [{ grain: 'month', ts: '2025-01', el_hp: 110, el_aux: 0 }, { grain: 'month', ts: '2025-02', el_hp: 280, el_aux: 0 }];
+  const events = [{ id: 'e', day: '2025-01-21', grp: 'wp', type: 'geraet', note: 'Tausch' }];
+  const g = createCalc(stateFromDb({ ...base, meter_readings: readings, hp_energy: hp, events })).groupSeries('wp');
+  assert.equal(g.intervals[0].shaped, undefined, 'vor dem Tausch keine Gerätedaten');
+  assert.equal(g.intervals[1].shaped, 'hp');
+  // Januar ab 21.: 110 kWh auf 11 Tage = 10/Tag, Februar 280/28 = 10/Tag → gleich gewichtet
+  assert.ok(Math.abs(g.daily['2025-01-25'] - 200 / 21) < 1e-9 && Math.abs(g.daily['2025-02-05'] - 200 / 21) < 1e-9);
 });

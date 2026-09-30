@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.11.0';
-import { parseNum } from './queue.js?v=0.11.0';
-import { geocode, fetchDays } from './weather.js?v=0.11.0';
-import { parseHpCsv } from './hp.js?v=0.11.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.12.0';
+import { parseNum } from './queue.js?v=0.12.0';
+import { geocode, fetchDays } from './weather.js?v=0.12.0';
+import { parseHpCsv } from './hp.js?v=0.12.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
