@@ -161,6 +161,11 @@ create table if not exists settings (       -- Parameter als JSON: battery, pv, 
   updated_at timestamptz not null default now()
 );
 
+-- v3 (App v0.7): Boni als Einzelposten je Tarif, z. B.
+-- [{"name":"Sofortbonus","amount":157},{"name":"Neukundenbonus","amount":149,"minKwh":2500,"amountBelow":100}]
+alter table tariffs add column if not exists boni_items jsonb;
+create index if not exists payments_day on payments (user_id, grp, day);
+
 -- Indizes für Abfragen nach Zeitraum
 create index if not exists meter_readings_day on meter_readings (user_id, meter_id, day);
 create index if not exists fuel_log_day   on fuel_log   (user_id, day);

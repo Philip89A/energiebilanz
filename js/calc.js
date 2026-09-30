@@ -49,13 +49,16 @@ export function stateFromDb(db) {
     readings: (db.meter_readings || []).map(r => ({ m: r.meter_id, d: r.day, v: +r.value, src: r.source })),
     events: (db.events || []).map(e => ({ id: e.id, d: e.day, group: e.grp, type: e.type, text: e.note })),
     tariffs: (db.tariffs || []).map(t => ({ id: t.id, group: t.grp, name: t.name, from: t.valid_from, to: t.valid_to || '',
-      ap: +t.ap_ct, gp: +t.gp_eur_year, boni: +t.boni_eur || 0, boniNote: t.boni_note || '', est: t.estimate_note || '' })),
+      ap: +t.ap_ct, gp: +t.gp_eur_year, boni: +t.boni_eur || 0, boniNote: t.boni_note || '', est: t.estimate_note || '',
+      ...(Array.isArray(t.boni_items) ? { boniItems: t.boni_items } : {}) })),
     abschlaege: (db.installments || []).map(a => ({ id: a.id, group: a.grp, from: a.valid_from, amount: +a.amount, note: a.note || '' })),
     invest: (db.investments || []).map(x => ({ id: x.id, name: x.name, date: x.day || '', cost: +x.cost })),
     fuel: (db.fuel_log || []).map(x => ({ id: x.id, d: x.day, km: +x.odometer, l: +x.liters, e: +x.amount, s: x.fuel_type, full: x.full_tank })),
     charges: (db.charge_log || []).map(x => ({ id: x.id, d: x.day, km: x.odometer == null ? null : +x.odometer, k: +x.kwh, e: x.amount == null ? 0 : +x.amount, o: x.location })),
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
+    payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
+    tarif: s.tarif || {},
   };
 }
 
@@ -63,14 +66,16 @@ export function stateFromDb(db) {
 export const toDb = {
   reading: r => ({ meter_id: r.m, day: r.d, value: +r.v, source: r.src || null }),
   tariff: t => ({ id: t.id, grp: t.group, name: t.name, valid_from: t.from, valid_to: t.to || null, ap_ct: +t.ap,
-    gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null }),
+    gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null,
+    ...(Array.isArray(t.boniItems) ? { boni_items: t.boniItems } : {}) }),   // Spalte erst ab schema v3, nur senden wenn genutzt
   installment: a => ({ id: a.id, grp: a.group, valid_from: a.from, amount: +a.amount, note: a.note || null }),
   investment: x => ({ id: x.id, day: x.date || null, name: x.name, cost: +x.cost || 0 }),
   fuel: x => ({ id: x.id, day: x.d, odometer: +x.km, liters: +x.l, amount: +x.e, fuel_type: x.s || null, full_tank: !!x.full }),
   charge: x => ({ id: x.id, day: x.d, odometer: x.km ? +x.km : null, kwh: +x.k, amount: x.e == null ? null : +x.e, location: x.o || null }),
   carlog: x => ({ id: x.id, day: x.d, car: x.car, category: x.cat, odometer: x.km ? +x.km : null, amount: +x.e || 0, note: x.note || null }),
   event: e => ({ id: e.id, day: e.d, grp: e.group || null, type: e.type || null, note: e.text || null }),
-  settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars } }),
+  payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
+  settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -139,7 +144,7 @@ export function createCalc(S) {
       const t = tariffAt(group, d);
       if (!t) { unpricedKwh += k; unpricedDays++; continue; }
       const p = per[t.id] = per[t.id] || { t, kwh: 0, apE: 0, gpE: 0, days: 0, from: d, to: d };
-      p.kwh += k; p.apE += k * t.ap / 100; p.gpE += t.gp / 365; p.days++; if (d < addDays(t.from, 365)) p.bo = (p.bo || 0) + (+t.boni || 0) / 365; if (d < p.from) p.from = d; if (d > p.to) p.to = d;
+      p.kwh += k; p.apE += k * t.ap / 100; p.gpE += t.gp / 365; p.days++; if (d < addDays(t.from, 365)) p.bo = (p.bo || 0) + boniOf(t) / 365; if (d < p.from) p.from = d; if (d > p.to) p.to = d;
       const mk = monthKey(d); monthly[mk] = (monthly[mk] || 0) + k * t.ap / 100 + t.gp / 365;
     }
     return { g, per: Object.values(per).sort((a, b) => a.from.localeCompare(b.from)), monthly, unpricedKwh, unpricedDays };
@@ -214,7 +219,7 @@ export function createCalc(S) {
     const g = groupSeries(group); let kw = 0, e = 0, bo = 0, days = 0, unp = 0;
     for (const [d, k] of Object.entries(g.daily)) {
       if (d < from || d > to) continue; const t = tariffAt(group, d); days++;
-      if (!t) { unp += k; kw += k; continue; } kw += k; e += k * t.ap / 100 + t.gp / 365; if (d < addDays(t.from, 365)) bo += (+t.boni || 0) / 365;
+      if (!t) { unp += k; kw += k; continue; } kw += k; e += k * t.ap / 100 + t.gp / 365; if (d < addDays(t.from, 365)) bo += boniOf(t) / 365;
     }
     return { kwh: kw, eur: e, bo, days, unp };
   }
@@ -291,7 +296,12 @@ export function createCalc(S) {
 
   /* Abschlag-Check je laufendem Vertrag */
   function abschlagAt(g, d) { const l = S.abschlaege.filter(a => a.group === g && a.from && a.from <= d).sort((a, b) => b.from.localeCompare(a.from))[0]; return l ? +l.amount : 0; }
-  function abschlagCheck(g) {
+  // calToday: Kalenderdatum (für den aktuell gültigen Abschlag); Rechenstand bleibt „letzter Zählerstand − 1 Tag“
+  function abschlagCheck(g, calToday) {
+    const r = abschlagCore(g, calToday); if (!r) return null;
+    return { ...r, boni: boniOf(r.t) };
+  }
+  function abschlagCore(g, calToday) {
     const t = currentTariff(g), s = groupSeries(g); if (!t || !s.last) return null;
     const start = t.from, end = t.to || addDays(addMonths(start, 12), -1), today = addDays(s.last, -1);
     if (today < start) return null;
@@ -305,9 +315,125 @@ export function createCalc(S) {
       for (let d = addDays(today, 1); d <= end; d = addDays(d, 1)) if (d >= e.start) evK += perDay; kwhRest += evK; costRest += evK * t.ap / 100;
     }
     let paid = 0, nPaid = 0; for (let m = 1; m <= 12; m++) { const dd = addMonths(start, m); if (dd > today) break; paid += abschlagAt(g, dd); nPaid++; }
-    const nRest = 12 - nPaid, cur = abschlagAt(g, today), payTotal = paid + nRest * cur, costTotal = costSo + costRest;
-    return { t, start, end, today, kwhSo, costSo, kwhRest, costRest, paid, nPaid, nRest, cur, payTotal, costTotal, boni: +t.boni || 0,
-      evK, bal: payTotal - costTotal, recNow: nRest > 0 ? Math.max(0, (costTotal - paid) / nRest) : null, recAvg: costTotal / 12, fb, kwhTotal: kwhSo + kwhRest };
+    // Zahlungsbuch (v0.7): Sind im Abrechnungsjahr Abschläge erfasst, zählen diese statt der Annahme
+    const nExpected = nPaid, booked = (S.payments || []).filter(p => p.group === g && p.kind === 'abschlag' && p.d >= start && p.d <= end && p.d <= today);
+    const paidSource = booked.length ? 'buch' : 'annahme';
+    if (booked.length) { paid = booked.reduce((a, p) => a + (+p.amount || 0), 0); nPaid = Math.min(12, booked.length); }
+    // v0.7: jeder noch offene Abschlag mit dem Betrag, der an seinem Fälligkeitstag gilt (Referenz: Betrag vom Rechenstand)
+    const nRest = 12 - nPaid, cur = abschlagAt(g, calToday && calToday > today ? calToday : today), costTotal = costSo + costRest;
+    let restPay = 0; for (let m = nPaid + 1; m <= 12; m++) restPay += abschlagAt(g, addMonths(start, m));
+    const payTotal = paid + restPay, nextDue = nRest > 0 ? addMonths(start, nPaid + 1) : null;
+    return { t, start, end, today, kwhSo, costSo, kwhRest, costRest, paid, nPaid, nRest, cur, payTotal, costTotal, nextDue,
+      evK, bal: payTotal - costTotal, recNow: nRest > 0 ? Math.max(0, (costTotal - paid) / nRest) : null, recAvg: costTotal / 12, fb, kwhTotal: kwhSo + kwhRest,
+      paidSource, nExpected };
+  }
+
+  /* Boni: Einzelposten je Tarif (boniItems), optional mit Mengenbedingung
+     { name, amount, minKwh?, amountBelow? } – unter minKwh im ersten Vertragsjahr gilt amountBelow.
+     Ohne Posten gilt die Summe boni wie in der Referenz. */
+  const _boniCache = new Map();
+  function firstYearKwh(t) {
+    const cur = currentTariff(t.group);
+    if (cur && cur.id === t.id) { const c = abschlagCore(t.group); if (c && c.start === t.from) return c.kwhTotal; }
+    const s = groupSeries(t.group); let end = addDays(addMonths(t.from, 12), -1); if (t.to && t.to < end) end = t.to;
+    let k = 0; for (const [d, v] of Object.entries(s.daily)) if (d >= t.from && d <= end) k += v; return k;
+  }
+  function boniInfo(t) {
+    if (_boniCache.has(t)) return _boniCache.get(t);
+    let res;
+    if (!Array.isArray(t.boniItems) || !t.boniItems.length) res = { items: [], total: +t.boni || 0, effective: +t.boni || 0, kwh: null };
+    else {
+      const needKwh = t.boniItems.some(i => +i.minKwh > 0), kwh = needKwh ? firstYearKwh(t) : null;
+      const items = t.boniItems.map(i => {
+        const cond = +i.minKwh > 0, met = !cond || kwh >= +i.minKwh;
+        return { ...i, amount: +i.amount || 0, cond, met, effective: met ? (+i.amount || 0) : (+i.amountBelow || 0) };
+      });
+      res = { items, total: items.reduce((a, i) => a + i.amount, 0), effective: items.reduce((a, i) => a + i.effective, 0), kwh };
+    }
+    _boniCache.set(t, res); return res;
+  }
+  function boniOf(t) { return t ? boniInfo(t).effective : 0; }
+
+  /* Gesamtbilanz Energie (getrennt, nicht in der Amortisation): PV-Ersparnis, Tarifwechsel gegenüber dem
+     jeweils vorherigen Vertrag derselben Gruppe (Preise fortgeschrieben), vertragliche Boni tagesanteilig */
+  function energyBalance(from, to) {
+    const m = metrics(from, to), out = { pv: m.sav, switchAs: 0, switchWp: 0, boniAs: 0, boniWp: 0 };
+    for (const g of ['as', 'wp']) {
+      const ts = S.tariffs.filter(t => t.group === g).sort((a, b) => a.from.localeCompare(b.from));
+      for (const [d, k] of Object.entries(groupSeries(g).daily)) {
+        if (d < from || d > to) continue;
+        const t = tariffAt(g, d); if (!t) continue;
+        const i = ts.indexOf(t), prev = i > 0 ? ts[i - 1] : null;
+        if (prev) out[g === 'as' ? 'switchAs' : 'switchWp'] += k * (prev.ap - t.ap) / 100 + (prev.gp - t.gp) / 365;
+        if (d < addDays(t.from, 365)) out[g === 'as' ? 'boniAs' : 'boniWp'] += boniOf(t) / 365;
+      }
+    }
+    out.total = (out.pv || 0) + out.switchAs + out.switchWp + out.boniAs + out.boniWp;
+    return out;
+  }
+
+  /* Zahlungsbuch */
+  // Geplante Abschläge (aus installments) bis heute, für die noch keine Zahlung ±12 Tage erfasst ist
+  function paymentSuggestions(today) {
+    const out = [];
+    for (const t of S.tariffs) {
+      const g = t.group, last = t.to && t.to < today ? t.to : today;
+      for (let m = 1; m <= 240; m++) {
+        const d = addMonths(t.from, m); if (d > last) break;
+        const amount = abschlagAt(g, d); if (!amount) continue;
+        const have = (S.payments || []).some(p => p.group === g && p.kind === 'abschlag' && Math.abs(diffDays(p.d, d)) <= 12);
+        if (!have) out.push({ group: g, d, amount, kind: 'abschlag', note: 'Vorschlag aus Abschlagsplan' });
+      }
+    }
+    return out.sort((a, b) => a.d.localeCompare(b.d) || a.group.localeCompare(b.group));
+  }
+  // Abrechnungsjahre je Tarif (ab Lieferbeginn, 12 Monate, letztes bis Vertragsende) mit Kassen- und Kostensicht.
+  // Erstattung/Nachzahlung gehören zum zuletzt beendeten Jahr (bis 270 Tage danach), Boni zum laufenden bzw. letzten.
+  // Erstattungen senken keine Kosten: Kosten kommen allein aus Verbrauch × Tarif.
+  function billingPeriods(g, today) {
+    const s = groupSeries(g), periods = [];
+    for (const t of S.tariffs.filter(x => x.group === g).sort((a, b) => a.from.localeCompare(b.from))) {
+      for (let k = 0; k < 30; k++) {
+        const from = addMonths(t.from, 12 * k); if (from > today || (t.to && from > t.to)) break;
+        let to = addDays(addMonths(t.from, 12 * (k + 1)), -1); if (t.to && to > t.to) to = t.to;
+        periods.push({ t, from, to, closed: to < today });
+      }
+    }
+    const pays = (S.payments || []).filter(p => p.group === g);
+    for (const P of periods) {
+      let kwh = 0, cost = 0, days = 0, boniContract = 0;
+      for (let d = P.from; d <= P.to && d <= today; d = addDays(d, 1)) {
+        const k = s.daily[d]; if (k == null) continue;
+        kwh += k; cost += k * P.t.ap / 100 + P.t.gp / 365; days++;
+        if (d < addDays(P.t.from, 365)) boniContract += boniOf(P.t) / 365;
+      }
+      Object.assign(P, { kwh, cost, days, boniContract, abschlag: 0, erstattung: 0, nachzahlung: 0, bonus: 0, nAbschlag: 0 });
+    }
+    const containing = d => periods.find(P => P.from <= d && d <= P.to);
+    const lastEnded = (d, maxDays) => periods.filter(P => P.to < d && diffDays(P.to, d) <= maxDays).sort((a, b) => b.to.localeCompare(a.to))[0];
+    for (const p of pays) {
+      const P = p.kind === 'abschlag' ? containing(p.d)
+        : p.kind === 'bonus' ? (containing(p.d) || lastEnded(p.d, 365))
+        : (lastEnded(p.d, 270) || containing(p.d));
+      if (!P) continue;
+      P[p.kind] += +p.amount || 0; if (p.kind === 'abschlag') P.nAbschlag++;
+    }
+    for (const P of periods) {
+      P.netPaid = P.abschlag + P.nachzahlung - P.erstattung - P.bonus;       // Kasse: was netto geflossen ist
+      P.netCost = P.cost - P.boniContract;                                     // Kosten laut Verbrauch × Tarif abzüglich Boni
+      P.settled = P.erstattung > 0 || P.nachzahlung > 0;
+      P.expectedSettlement = P.abschlag - P.netCost + P.bonus;                 // erwartet: + Erstattung / − Nachzahlung
+      P.diff = P.settled ? P.netPaid - P.netCost : null;                       // Abweichung Versorger ↔ eigene Rechnung
+    }
+    return periods;
+  }
+
+  /* Tarifrechner (Stufe A): Jahresverbrauch der letzten 365 Tage, Angebote, Wallbox nach §14a, iMSys */
+  function tariffBase() {
+    const as = last365Cost('as'), wp = last365Cost('wp'), e = S.cars.ev || {};
+    const evYear = (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100);
+    const evHome = evYear * (+e.shHome || 0) / 100, evGrid = evHome * (1 - (+e.shPV || 0) / 100);
+    return { asKwh: as ? as.kwh : 0, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid };
   }
 
   /* Fahrzeuge */
@@ -389,7 +515,7 @@ export function createCalc(S) {
   /* Kosten & Ersparnisse */
   function finData(from, to, today) {
     const m = metrics(from, to);
-    const split = g => { const s = groupSeries(g); let ap = 0, gp = 0, bo = 0, k = 0; for (const [d, v] of Object.entries(s.daily)) { if (d < from || d > to) continue; const t = tariffAt(g, d); if (!t) continue; k += v; ap += v * t.ap / 100; gp += t.gp / 365; if (d < addDays(t.from, 365)) bo += (+t.boni || 0) / 365; } return { ap, gp, bo, k }; };
+    const split = g => { const s = groupSeries(g); let ap = 0, gp = 0, bo = 0, k = 0; for (const [d, v] of Object.entries(s.daily)) { if (d < from || d > to) continue; const t = tariffAt(g, d); if (!t) continue; k += v; ap += v * t.ap / 100; gp += t.gp / 365; if (d < addDays(t.from, 365)) bo += boniOf(t) / 365; } return { ap, gp, bo, k }; };
     const as = split('as'), wp = split('wp');
     const direct = A.dates.some(d => d >= from && d <= to) ? valueAt('s2h', from, to) : null;
     const feedVal = feedValue(from, to);
@@ -443,5 +569,51 @@ export function createCalc(S) {
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
+    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance,
   };
+}
+
+/* ---------- Tarifrechner (Stufe A), reine Funktion ----------
+   base: tariffBase(); cur: { as, wp } aktuelle Tarife (Referenzform); p: Parameter aus settings.data.tarif
+   p = { withEv, offers:[{name, grp:'as'|'wp', ap, gp, boni}], m1Eur, neAp, neHt, neSt, neNt, shNt, shHt, m2MeterEur, imsysNew, imsysOld }
+   Alle Beträge brutto; ct-Werte in ct/kWh, Euro-Werte je Jahr. */
+export function tarifRechner(base, cur, p = {}) {
+  const n = v => (isFinite(+v) ? +v : 0);
+  const kwh = { as: base.asKwh + (p.withEv ? base.evGrid : 0), wp: base.wpKwh };
+  const year = (k, t) => ({ ap: k * n(t.ap) / 100, gp: n(t.gp), boni: n(t.boni) });
+  const cost = (k, t) => { const y = year(k, t); return { ...y, y1: y.ap + y.gp - y.boni, y2: y.ap + y.gp }; };
+  const groups = {};
+  for (const g of ['as', 'wp']) {
+    const c = cur[g] ? cost(kwh[g], cur[g]) : null;
+    const offers = (p.offers || []).map((o, idx) => ({ ...o, idx })).filter(o => o.grp === g).map(o => { const r = cost(kwh[g], o); return { ...o, ...r, diffY1: c ? r.y1 - c.y2 : null, diffY2: c ? r.y2 - c.y2 : null }; });
+    groups[g] = { kwh: kwh[g], current: c ? { name: cur[g].name, ...c } : null, offers };
+  }
+  // Wallbox (E-Auto-Laden zu Hause aus dem Netz) nach §14a EnWG; Grenzkosten = Arbeitspreis Allgemeinstrom
+  const ev = base.evGrid, apAs = cur.as ? n(cur.as.ap) : 0, basis = ev * apAs / 100;
+  const m3Shift = ev * (n(p.shNt) / 100 * (n(p.neSt) - n(p.neNt)) - n(p.shHt) / 100 * (n(p.neHt) - n(p.neSt))) / 100;
+  const imsysExtra = n(p.imsysNew) - n(p.imsysOld);
+  const wallbox = [
+    { key: 'none', name: 'Ohne §14a', eur: basis, note: 'Laden über den Allgemeinstrom-Zähler' },
+    { key: 'm1', name: 'Modul 1', eur: basis - n(p.m1Eur), note: 'Pauschale Netzentgelt-Reduzierung pro Jahr' },
+    { key: 'm2', name: 'Modul 2', eur: ev * (apAs - 0.6 * n(p.neAp)) / 100 + n(p.m2MeterEur), note: 'Netzentgelt-Arbeitspreis −60 %, eigener Zähler nötig' },
+    { key: 'm3', name: 'Modul 1 + 3', eur: basis - n(p.m1Eur) - m3Shift + imsysExtra, note: 'Zeitvariable Netzentgelte, braucht intelligentes Messsystem' },
+  ].map(o => ({ ...o, vsNone: o.eur - basis }));
+  const best = wallbox.reduce((a, b) => (b.eur < a.eur ? b : a));
+  return { kwh, ev, groups, wallbox, best, m3Shift, imsysExtra, imsysBreakEven: m3Shift > 0 ? imsysExtra / m3Shift : null };
+}
+
+// Boni-Notiz in Posten zerlegen, z. B. „Sofortbonus 157 € + Neukundenbonus 149 € (bei unter 2.500 kWh evtl. nur 100 €)“
+// → [{name:'Sofortbonus',amount:157},{name:'Neukundenbonus',amount:149,minKwh:2500,amountBelow:100}]
+export function parseBoniNote(note) {
+  const num = t => +String(t).replace(/\./g, '').replace(',', '.');
+  const items = [];
+  for (const part of String(note || '').split('+')) {
+    const m = part.match(/^\s*(.+?)\s+([\d.]+(?:,\d+)?)\s*€/);
+    if (!m) continue;
+    const it = { name: m[1].trim(), amount: num(m[2]) };
+    const c = part.match(/unter\s+([\d.]+)\s*kWh[^\d]*([\d.]+(?:,\d+)?)\s*€/i);
+    if (c) { it.minKwh = num(c[1]); it.amountBelow = num(c[2]); }
+    items.push(it);
+  }
+  return items;
 }
