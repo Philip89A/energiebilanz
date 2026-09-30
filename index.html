@@ -4,70 +4,273 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex, nofollow">
-<meta name="theme-color" content="#12372a">
+<meta name="theme-color" content="#18212B">
 <title>Energiebilanz</title>
 <link rel="stylesheet" href="css/style.css">
 </head>
-<body>
+<body class="ro">
 
 <section id="auth-screen" class="screen" hidden>
-  <form id="login-form" class="card narrow">
+  <form id="login-form" class="panel narrow">
     <h1>Energiebilanz</h1>
-    <label>E-Mail
-      <input type="email" id="login-email" required autocomplete="username">
-    </label>
-    <label>Passwort
-      <input type="password" id="login-password" required autocomplete="current-password">
-    </label>
+    <label class="f">E-Mail<input type="email" id="login-email" required autocomplete="username"></label>
+    <label class="f">Passwort<input type="password" id="login-password" required autocomplete="current-password"></label>
     <p id="login-error" class="error" hidden></p>
-    <button type="submit" class="primary">Anmelden</button>
+    <button type="submit">Anmelden</button>
     <button type="button" id="forgot-password-btn" class="link">Passwort vergessen?</button>
   </form>
 </section>
 
 <section id="recovery-screen" class="screen" hidden>
-  <form id="recovery-form" class="card narrow">
+  <form id="recovery-form" class="panel narrow">
     <h1>Neues Passwort</h1>
-    <label>Neues Passwort
-      <input type="password" id="recovery-password" required autocomplete="new-password" minlength="12">
-    </label>
+    <label class="f">Neues Passwort<input type="password" id="recovery-password" required autocomplete="new-password" minlength="12"></label>
     <p id="recovery-error" class="error" hidden></p>
-    <button type="submit" class="primary">Speichern</button>
+    <button type="submit">Speichern</button>
   </form>
 </section>
 
 <div id="app-shell" hidden>
-  <header class="topbar">
-    <span class="brand">Energiebilanz</span>
-    <button id="logout-btn" class="link light">Abmelden</button>
-  </header>
+<div class="mobile-nav" id="mnav"></div>
+<div class="app">
+<nav class="side" id="snav" aria-label="Bereiche">
+  <div class="brand">Energiebilanz</div>
+  <div class="brand-sub" id="brand-sub">Nur Anzeige (v0.4)</div>
+</nav>
+<main id="main">
+<p class="loading" id="loading">Lade Daten …</p>
+<p class="flag info" id="empty-hint" hidden>Noch keine Anker-Daten. Unter „Daten“ Startdaten oder einen Anker-Export importieren.</p>
+<div class="panel period" id="period-bar" hidden>
+  <div class="form">
+    <label class="f">Zeitraum<select id="pb-mode"><option value="all">Gesamter Zeitraum</option><option value="r12">Rollierende 12 Monate</option><option value="year">Jahr</option><option value="quarter">Quartal</option><option value="month">Monat</option><option value="custom">Frei wählen</option></select></label>
+    <label class="f" id="pb-keywrap">Auswahl<select id="pb-key"></select></label>
+    <label class="f" id="pb-cust">Von – bis<span class="row" style="flex-wrap:nowrap"><input type="date" id="pb-from"><input type="date" id="pb-to"></span></label>
+    <label class="f">Vergleichen mit<select id="pb-cmp"><option value="none">Kein Vergleich</option><option value="prev">Vorperiode</option><option value="yoy">Vorjahreszeitraum</option><option value="custom">Frei wählen</option></select></label>
+    <label class="f" id="pb-ccust">Vergleich von – bis<span class="row" style="flex-wrap:nowrap"><input type="date" id="pb-cfrom"><input type="date" id="pb-cto"></span></label>
+  </div>
+  <p class="note" id="pb-info"></p>
+</div>
 
-  <main>
-    <h2>Daten</h2>
+<section id="p-overview" data-title="Überblick">
+  <h1>Wohin die Sonne ging</h1>
+  <p class="lead" id="ov-lead"></p>
+  <div class="panel">
+    <p class="hero-sentence" id="ov-sentence"></p>
+    <div class="flow" id="ov-flow"></div>
+    <div class="legend" id="ov-legend"></div>
+    <p class="note" id="ov-flow-note"></p>
+  </div>
+  <div class="grid g4" style="margin-top:16px" id="ov-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2 id="ov-mtitle">Monatsbilanz PV-Messkreis</h2><p class="note">Erzeugung, genutzter Solarstrom, Netzbezug und Einspeisung laut Anker.</p><div class="chart"><canvas id="ov-month"></canvas></div></div>
+    <div class="panel" id="ov-cmp-panel"><h2>Erzeugung im Vergleich</h2><p class="note" id="ov-cmp-note"></p><div class="chart"><canvas id="ov-cmp"></canvas></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Kennzahlen im Zeitraum</h2><p class="note">Grün: besser als der Vergleich, orange: schlechter. Pp. = Prozentpunkte.</p><div id="ov-cmp-tbl"></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Offene Punkte in den Daten</h2><div id="ov-todo"></div></div>
+</section>
 
-    <section class="card">
-      <h3>Datenstand</h3>
-      <div id="status">Lade …</div>
-    </section>
+<section id="p-fin" data-title="Kosten & Ersparnisse" hidden>
+  <h1>Kosten und Ersparnisse</h1>
+  <p class="lead">Alles in Euro für den oben gewählten Zeitraum. Betrachtet wird nur der Allgemeinstrom, weil PV und Speicher nur dort wirken; die Wärmepumpe hängt an einem eigenen Zähler und steht unter „Stromkosten“.</p>
+  <div class="grid g4" id="fin-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Stromrechnung mit und ohne PV</h2><p class="note">Von den hypothetischen Kosten ohne Anlage über Ersparnis und Boni zu dem, was tatsächlich anfällt.</p><div class="chart"><canvas id="fin-wf"></canvas></div></div>
+    <div class="panel"><h2>Kosten und Ersparnis im Verlauf</h2><p class="note">Allgemeinstrom inkl. Grundpreis ohne Boni, Ersparnis zum Arbeitspreis.</p><div class="chart"><canvas id="fin-month"></canvas></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Aufstellung</h2><div class="tbl-wrap"><table id="fin-tbl"></table></div>
+    <p class="note">Ersparnisse nur zum Arbeitspreis (der Grundpreis fällt ohnehin an). Boni sind die vertraglichen Boni (Sofort-, Neukunden-, Treuebonus), tagesanteilig über das erste Vertragsjahr verteilt. Erstattungen zu viel gezahlter Abschläge sind nicht enthalten: Sie sind Rückzahlung eigenen Geldes, keine Kostensenkung, und die Kosten werden hier direkt aus Verbrauch mal Tarif berechnet. Tavascan-Werte sind eine Hochrechnung aus dem Auto-Vergleich.</p></div>
+  <div class="panel" style="margin-top:16px"><h2>Nach Kalenderjahren</h2><p class="note">Unabhängig vom oben gewählten Zeitraum. Angefangene Jahre enthalten nur die Tage mit Daten.</p><div class="tbl-wrap"><table id="fin-years"></table></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Investition PV-Anlage und Speicher</h2><div id="fin-inv"></div></div>
+</section>
 
-    <section class="card">
-      <h3>Anker-Export importieren</h3>
-      <p class="hint">Anker-App → Energiedetails → Export als CSV. Neue Tage werden ergänzt, geänderte Tage
-        vor dem Übernehmen angezeigt.</p>
-      <input type="file" id="csv-file" accept=".csv,text/csv,text/comma-separated-values">
-      <div id="csv-result"></div>
-    </section>
+<section id="p-pv" data-title="PV-Anlage" hidden>
+  <h1>PV-Anlage</h1>
+  <p class="lead">Vier Stränge (PV1–PV4). Netzbezug und Einspeisung misst Anker erst seit dem <span data-sm></span>, Autarkiewerte davor sind ausgeblendet.</p>
+  <div class="grid g4" id="pv-kpis"></div>
+  <div class="panel" style="margin-top:16px"><h2>Tageserträge im Kalender</h2><p class="note">Jedes Kästchen ist ein Tag, je kräftiger, desto mehr Erzeugung. Spalten sind Wochen, Zeilen Montag bis Sonntag.</p><div class="heat-wrap" id="pv-heat"></div><p class="note" id="pv-top"></p></div>
+  <div class="panel" style="margin-top:16px"><h2>Erzeugung kumuliert</h2><p class="note" id="pv-cum-note"></p><div class="chart tall"><canvas id="pv-cum"></canvas></div>
+    <div class="form" style="margin-top:12px;max-width:520px"><label class="f">Erzeugung vor Beginn des Exports in kWh<input type="number" step="0.1" id="pv-offset"></label></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Autarkie im Anker-Messkreis</h2><p class="note">Anteil Solarstrom am Verbrauch des Messkreises (nur Allgemeinstrom, ohne Wärmepumpe).</p><div class="chart"><canvas id="pv-aut"></canvas></div></div>
+    <div class="panel"><h2>Erzeugung <span id="pv-gran">je Monat</span></h2><p class="note">Spezifischer Ertrag in kWh je kWp installierter Leistung.</p><div class="chart"><canvas id="pv-yield"></canvas></div></div>
+    <div class="panel"><h2>Erzeugung je Strang</h2><p class="note">Hilft, verschattete oder ausgefallene Module zu erkennen.</p><div class="chart"><canvas id="pv-str"></canvas></div></div>
+    <div class="panel"><h2>Solarstrom nach Verwendung</h2><p class="note">Direkt verbraucht, in den Speicher geladen oder eingespeist.</p><div class="chart"><canvas id="pv-use"></canvas></div></div>
+  </div>
+</section>
 
-    <section class="card">
-      <h3>Startdaten importieren (einmalig)</h3>
-      <p class="hint"><code>seed_state.json</code> aus der Referenzversion. Die Datei wird nur im Browser gelesen.</p>
-      <input type="file" id="seed-file" accept=".json,application/json">
-      <div id="seed-result"></div>
-    </section>
-  </main>
+<section id="p-batt" data-title="Batterie" hidden>
+  <h1>Batterie</h1>
+  <p class="lead">Die Anker-Daten enthalten Lade- und Entlademengen pro Tag, aber keinen Füllstand. Eine Tagesladung von 4 kWh kann den Speicher füllen, wenn er morgens noch halb voll war. Ob er voll war, zeigt deshalb die Einspeisung: Überschuss geht erst ins Netz, wenn der Speicher nichts mehr aufnimmt.</p>
+  <div class="grid g4" id="bt-kpis"></div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Speicherdaten</h2>
+    <div class="form" style="margin-top:10px" id="bt-params"></div>
+    <p class="note">Voll-Indikator gilt erst ab dem Smart Meter (<span data-sm></span>). Davor wurde Einspeisung nicht gemessen, volle Tage sind dort nicht erkennbar.</p>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Tage mit vollem Speicher</h2><p class="note">Tage mit Einspeisung über der Schwelle. Bei kurzen Zeiträumen je Tag (voll oder nicht), sonst je Monat.</p><div class="chart"><canvas id="bt-full"></canvas></div></div>
+    <div class="panel"><h2>Laden und Entladen pro Tag</h2><p class="note">Punkte markieren Tage, an denen der Speicher voll war.</p><div class="chart"><canvas id="bt-daily"></canvas></div></div>
+    <div class="panel"><h2>Vollzyklen</h2><p class="note">Entladene Energie geteilt durch nutzbare Kapazität, je Tag oder je Monat je nach Zeitraum.</p><div class="chart"><canvas id="bt-cyc"></canvas></div></div>
+    <div class="panel"><h2>Was im Speicher verloren geht</h2><p class="note">Ladung minus Entladung und Wirkungsgrad. Der Wirkungsgrad erscheint nur in Monatsansicht, weil Laden und Entladen oft auf verschiedene Tage fallen.</p><div class="chart"><canvas id="bt-loss"></canvas></div></div>
+  </div>
+</section>
+
+<section id="p-meter" data-title="Zähler & Wärmepumpe" hidden>
+  <h1>Zählerstände</h1>
+  <p class="lead">Zwei Zählpunkte: Allgemeinstrom und Wärmepumpe (Zähler- und Gerätetausch siehe Ereignisse unter „Daten“). Zwischen zwei Ablesungen wird der Verbrauch der Wärmepumpe gleichmäßig verteilt. Beim Allgemeinstrom richtet sich die Verteilung nach dem täglichen Anker-Netzbezug (ab <span data-sm></span>), damit Winter und Sommer richtig abgebildet sind.</p>
+  <div class="grid g2">
+    <div class="panel"><h2>Verbrauch pro Tag zwischen den Ablesungen</h2><div class="chart tall"><canvas id="mt-rate"></canvas></div></div>
+    <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Verbrauch pro Monat</h2><p class="note">Aus den Zählerständen, Allgemeinstrom nach Anker-Profil verteilt.</p><div class="chart"><canvas id="mt-month"></canvas></div></div>
+    <div class="panel"><h2>Monate im Jahresvergleich</h2><div class="form" style="margin-top:8px;max-width:260px"><label class="f">Zählpunkt<select id="mt-yoy-g"><option value="wp">Wärmepumpe</option><option value="as">Allgemeinstrom</option><option value="feed">Einspeisung</option></select></label></div><div class="chart"><canvas id="mt-yoy"></canvas></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Zählerstände</h2>
+    <div class="form edit-only" style="margin-top:10px">
+      <label class="f">Zähler<select id="rd-m"></select></label>
+      <label class="f">Datum<input type="date" id="rd-d"></label>
+      <label class="f">Stand in kWh<input type="number" step="0.1" id="rd-v"></label>
+      <button id="rd-add">Stand speichern</button>
+    </div>
+    <p class="note edit-only">Bei einem Zählertausch den Endstand beim alten und den Startstand beim neuen Zähler am selben Tag eintragen.</p>
+    <div class="form" style="margin-top:14px;max-width:320px"><label class="f">Anzeigen<select id="rd-filter"></select></label></div>
+    <div class="tbl-wrap"><table id="rd-tbl"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Abgleich Hauptzähler gegen Anker</h2><div id="mt-rec"></div></div>
+</section>
+
+<section id="p-cost" data-title="Stromkosten" hidden>
+  <h1>Stromkosten</h1>
+  <p class="lead">Verbrauch aus den Zählerständen mal Tarif, für den oben gewählten Zeitraum. Arbeitspreis variabel, Grundpreis tagesanteilig, Boni getrennt ausgewiesen.</p>
+  <div class="grid g4" id="ct-kpis"></div>
+  <div class="panel" style="margin-top:16px"><h2>Abschlag-Check: zahle ich zu viel?</h2>
+    <p class="note">Je laufendem Vertrag: bisher gezahlte Abschläge gegen die bisher verbrauchten Kosten, dazu eine Prognose bis zum Ende des Abrechnungsjahres. Der restliche Verbrauch wird aus denselben Kalendertagen des Vorjahres geschätzt, damit Winter und Sommer richtig eingehen. Unabhängig vom oben gewählten Zeitraum.</p>
+    <div id="ab-flags"></div><div class="tbl-wrap"><table id="ab-tbl"></table></div>
+    <h2 style="margin-top:18px;font-size:15px">Abschläge</h2>
+    <p class="note edit-only">Jede Änderung des Abschlags als neue Zeile mit dem Datum, ab dem er gilt.</p>
+    <div class="tbl-wrap"><table id="ab-edit"></table></div>
+    <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="ab-add">Abschlag hinzufügen</button></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Kosten je Tarifperiode</h2><div class="tbl-wrap"><table id="ct-tbl"></table></div><div id="ct-flags"></div></div>
+  <div class="panel" style="margin-top:16px"><h2 id="ct-mtitle">Monatliche Kosten</h2><div class="chart"><canvas id="ct-month"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Tarife</h2><p class="note">Geschätzte Daten sind in der Spalte „Hinweis“ markiert. Bitte korrigieren, sobald bekannt.</p><div class="tbl-wrap"><table id="tf-tbl"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="tf-add">Tarif hinzufügen</button></div></div>
+</section>
+
+<section id="p-amort" data-title="Amortisation" hidden>
+  <h1>Amortisation</h1>
+  <p class="lead">Wert einer selbst genutzten Solar-kWh ist der Arbeitspreis des Allgemeinstroms. Der Grundpreis fällt ohnehin an und zählt nicht als Ersparnis; mit umgelegtem Grundpreis sähe die Amortisation deutlich zu gut aus.</p>
+  <div class="grid g4" id="am-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Investition</h2><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
+    <div class="panel"><h2>Annahmen</h2><div class="grid g2" id="am-sl" style="margin-top:10px"></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
+</section>
+
+<section id="p-car" data-title="Auto-Vergleich" hidden>
+  <h1>Cupra Leon gegen Cupra Tavascan</h1>
+  <p class="lead">Gesamtkosten über je 36 Monate Leasing mit der vereinbarten Laufleistung. Laden zu Hause wird nur mit dem Arbeitspreis bewertet, der Grundpreis fällt ohnehin an. Die Monate, die der Leon bis zur Tavascan-Übergabe verlängert wird, laufen nicht in den Vergleich.</p>
+  <div class="grid g3" id="car-kpis"></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Cupra Leon (Benziner)</h2><div class="grid g2" id="car-ice" style="margin-top:10px"></div></div>
+    <div class="panel"><h2>Cupra Tavascan (elektrisch)</h2><div class="grid g2" id="car-ev" style="margin-top:10px"></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Kumulierter Vorteil des Tavascan</h2><p class="note">Über null: Tavascan bis dahin günstiger. Sprünge durch Überführung und THG-Prämie.</p><div class="chart"><canvas id="car-cum"></canvas></div></div>
+    <div class="panel"><h2>Kostenblöcke über 36 Monate</h2><div class="chart"><canvas id="car-bar"></canvas></div></div>
+  </div>
+</section>
+
+<section id="p-log" data-title="Tanken & Laden" hidden>
+  <h1>Tanken und Laden</h1>
+  <p class="lead">Echter Verbrauch lässt sich nur von Volltankung zu Volltankung rechnen. Deshalb bei jedem Eintrag Kilometerstand und „voll getankt“ angeben.</p>
+  <div class="grid g4" id="lg-kpis"></div>
+  <div class="panel" style="margin-top:16px">
+    <div class="form" style="max-width:420px"><label class="f">Fahrzeug<select id="lg-car"><option value="leon">Cupra Leon</option><option value="tavascan">Cupra Tavascan</option></select></label>
+    <label class="f">Auflösung<select id="lg-gran"><option value="week">Woche</option><option value="month">Monat</option><option value="quarter">Quartal</option><option value="year">Jahr</option></select></label></div>
+    <div class="grid g4" id="lg-car-kpis" style="margin-top:12px"></div>
+  </div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Gefahrene Kilometer</h2><p class="note" id="lg-km-note"></p><div class="chart"><canvas id="lg-km"></canvas></div></div>
+    <div class="panel"><h2>Fahrzeugkosten ohne Leasing</h2><p class="note">Sprit bzw. Laden plus alle Einträge im Fahrzeugbuch.</p><div class="chart"><canvas id="lg-cost"></canvas></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Verbrauch und Spritpreis je Volltank-Intervall</h2><div class="chart"><canvas id="lg-fuel"></canvas></div></div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Fahrzeugbuch</h2><p class="note">Kilometerstände ohne Tanken, Versicherung, Steuer, Räderwechsel, Wartung und Sonstiges, jeweils mit Datum.</p>
+    <div class="form edit-only" style="margin-top:10px">
+      <label class="f">Datum<input type="date" id="cl-d"></label>
+      <label class="f">Fahrzeug<select id="cl-car"><option value="leon">Cupra Leon</option><option value="tavascan">Cupra Tavascan</option></select></label>
+      <label class="f">Kategorie<select id="cl-cat"></select></label>
+      <label class="f">Kilometerstand<input type="number" id="cl-km"></label>
+      <label class="f">Betrag in €<input type="number" step="0.01" id="cl-e"></label>
+      <label class="f">Notiz<input type="text" id="cl-n"></label>
+      <button id="cl-add">Eintrag speichern</button>
+    </div>
+    <div class="tbl-wrap"><table id="cl-tbl"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Tankvorgänge</h2>
+    <div class="form edit-only" style="margin-top:10px">
+      <label class="f">Datum<input type="date" id="fu-d"></label>
+      <label class="f">Kilometerstand<input type="number" id="fu-km"></label>
+      <label class="f">Liter<input type="number" step="0.01" id="fu-l"></label>
+      <label class="f">Betrag in €<input type="number" step="0.01" id="fu-e"></label>
+      <label class="f">Sorte<select id="fu-s"><option>Super E10</option><option>Super E5</option><option>Super Plus</option><option>Diesel</option></select></label>
+      <label class="f" style="flex-direction:row;align-items:center;gap:8px;color:var(--ink)"><input type="checkbox" id="fu-full" checked> voll getankt</label>
+      <button id="fu-add">Tankvorgang speichern</button>
+    </div>
+    <div class="tbl-wrap"><table id="fu-tbl"></table></div>
+  </div>
+  <div class="panel" style="margin-top:16px">
+    <h2>Ladevorgänge</h2>
+    <div class="form edit-only" style="margin-top:10px">
+      <label class="f">Datum<input type="date" id="ch-d"></label>
+      <label class="f">Kilometerstand<input type="number" id="ch-km"></label>
+      <label class="f">kWh<input type="number" step="0.1" id="ch-k"></label>
+      <label class="f">Betrag in €<input type="number" step="0.01" id="ch-e"></label>
+      <label class="f">Ort<select id="ch-o"><option>zu Hause</option><option>öffentlich AC</option><option>öffentlich DC</option><option>Arbeitgeber</option></select></label>
+      <button id="ch-add">Ladevorgang speichern</button>
+    </div>
+    <div class="tbl-wrap"><table id="ch-tbl"></table></div>
+  </div>
+</section>
+
+<section id="p-data" data-title="Daten" hidden>
+  <h1>Daten und Import</h1>
+  <p class="lead">Neue Anker-Exporte ergänzen oder aktualisieren die Tageswerte. Eigene Eingaben (Zählerstände, Tarife, Investition, Tanken) bleiben erhalten.</p>
+  <div class="grid g2">
+    <div class="panel"><h2>Anker-Export importieren</h2>
+      <p class="note">Anker-App → Energiedetails → Export als CSV. Neue Tage werden ergänzt, geänderte Tage vor dem Übernehmen angezeigt.</p>
+      <div class="row" style="margin-top:12px"><input type="file" id="csv-file" accept=".csv,text/csv,text/comma-separated-values"></div>
+      <div id="csv-result"></div></div>
+    <div class="panel"><h2>Datenstand</h2><div id="status">Lade …</div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Ereignisse</h2><p class="note">Markierungen, die Auswertungen in vorher und nachher trennen.</p><div class="tbl-wrap"><table id="ev-tbl"></table></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Startdaten importieren (einmalig)</h2>
+    <p class="note"><code>seed_state.json</code> aus der Referenzversion. Die Datei wird nur im Browser gelesen.</p>
+    <div class="row" style="margin-top:12px"><input type="file" id="seed-file" accept=".json,application/json"></div>
+    <div id="seed-result"></div></div>
+  <div class="panel" style="margin-top:16px"><h2>So wird gerechnet</h2>
+<ul style="margin:8px 0 0;padding-left:18px;max-width:80ch">
+      <li style="margin:6px 0"><b>Speicher voll:</b> Ein Tag gilt als voll, wenn Anker an diesem Tag mindestens die Voll-Schwelle (Standard 0,3 kWh) eingespeist hat. Überschuss geht erst ins Netz, wenn der Speicher nichts mehr aufnimmt. Nur ab dem Smart Meter (<span data-sm></span>) auswertbar.</li>
+      <li style="margin:6px 0"><b>Vermiedene Netzkosten:</b> Für jeden Tag „Genutzte Solarenergie“ laut Anker mal Arbeitspreis des an diesem Tag gültigen Allgemeinstrom-Tarifs, plus Einspeisung mal Einspeisevergütung (Standard 0 ct). Der Grundpreis zählt nicht, er fällt ohnehin an.</li>
+      <li style="margin:6px 0"><b>Grundpreis:</b> Enthalten in allen Stromkosten (Summe je Tarif, „€/kWh eff.“, Kacheln Allgemeinstrom und Wärmepumpe, Gesamtkosten Haus). Nicht enthalten in vermiedenen Netzkosten, Wert des Speichers, Amortisation und den Ladekosten des Tavascan zu Hause. Grund: Der Grundpreis fällt mit und ohne PV an; eine zusätzliche oder eingesparte kWh kostet nur den Arbeitspreis. Folge: Je mehr die PV abdeckt, desto höher der effektive Preis je Netz-kWh, weil derselbe Grundpreis auf weniger kWh verteilt wird.</li>
+      <li style="margin:6px 0"><b>Bereits erwirtschaftet:</b> Dieselbe Rechnung über alle Tage seit Beginn des Anker-Exports.</li>
+      <li style="margin:6px 0"><b>Speicherwirkungsgrad:</b> Speicherentladung geteilt durch Speicherladung im Zeitraum, beides laut Anker. Enthält Umwandlungsverluste und den Eigenverbrauch der Solarbank. Nur über Wochen oder Monate sinnvoll, weil Laden und Entladen oft auf verschiedene Tage fallen.</li>
+      <li style="margin:6px 0"><b>Verlust im Speicher:</b> Ladung minus Entladung laut Anker. Darin stecken die Umwandlung beim Laden und Entladen (inklusive Wechselrichter, falls Anker nach ihm misst), der Eigenverbrauch von Solarbank und Batterien sowie Messdifferenzen. Es ist Solarstrom, der erzeugt, aber nie im Haus angekommen ist.</li>
+      <li style="margin:6px 0"><b>Wert des Speichers:</b> Für jeden Tag „Speicher zu Haushalt“ mal Arbeitspreis des Tages. Annahme: Ohne Speicher wäre diese Energie mittags ohne Vergütung ins Netz geflossen und abends aus dem Netz gekauft worden.</li>
+      <li style="margin:6px 0"><b>Zählerverbrauch:</b> Wärmepumpe: zwischen zwei Ablesungen gleichmäßig verteilt (viele Ablesungen, daher saisonal genau genug). Allgemeinstrom: der Zählerverbrauch zwischen zwei Ablesungen wird nach dem täglichen Anker-Netzbezug verteilt, für Tage vor dem Smart Meter gleichmäßig mit dem Rest. Der Zähler misst nur Netzbezug; Gesamtverbrauch Allgemeinstrom = Zähler plus genutzter Solarstrom.</li>
+      <li style="margin:6px 0"><b>Zeiträume:</b> Bis 62 Tage zeigen die Grafiken Tageswerte, darüber Monatswerte. Amortisation und Abschlagsprüfung rechnen immer mit den letzten 12 Monaten.</li>
+    </ul></div>
+</section>
+</main>
+</div>
 </div>
 
 <script src="vendor/supabase.js"></script>
+<script src="vendor/chart.umd.js"></script>
 <script type="module" src="js/app.js"></script>
 </body>
 </html>
