@@ -36,7 +36,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
 2. Einmaliger Import von `data/seed_state.json` über eine Import-Seite in der App (eingeloggt, kein
    service_role-Key), danach Anker-CSV-Import mit Upsert über (user_id, day).
 3. Rechenlogik aus der Referenz in `js/calc.js` übernehmen, reine Funktionen, Tests gegen die Referenzwerte.
-   Summen intern in ganzen Wh/Cent bilden (Fließkomma-Summen runden sonst z. B. 629,45 auf 629,4).
+   Summen intern in ganzen Wh/Cent bilden (Fließkomma-Summen runden exakte ,x5-Werte sonst falsch ab).
 4. Seiten portieren: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe, Stromkosten
    (inkl. Abschlag-Check), Amortisation, Auto-Vergleich, Tanken & Laden (inkl. Fahrzeugbuch), Daten.
 5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy
