@@ -13,6 +13,7 @@ edit('index.html', s => s
   .replace(/(href="css\/[^"?]+\.css)(\?v=[^"]*)?"/g, `$1?v=${v}"`)
   .replace(/(src="(?:vendor|js)\/[^"?]+\.js)(\?v=[^"]*)?"/g, `$1?v=${v}"`)
   .replace(/<meta name="app-version" content="[^"]*">/, `<meta name="app-version" content="${v}">`));
+edit('sw.js', s => s.replace(/const VERSION = '[^']*';/, `const VERSION = '${v}';`));
 for (const f of readdirSync(root + 'js').filter(f => f.endsWith('.js'))) {
   edit('js/' + f, s => s.replace(/(from\s+'\.{1,2}\/[^'?]+\.js)(\?v=[^']*)?'/g, `$1?v=${v}'`));
 }

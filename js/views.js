@@ -3,7 +3,8 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb } from './calc.js?v=0.5.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb } from './calc.js?v=0.6.0';
+import { parseNum } from './queue.js?v=0.6.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -33,18 +34,23 @@ function persist() {
 function refreshCalc() { C = createCalc(S); A = C.A; }
 function setSaveState(t) { const e = document.getElementById('save-state'); if (e) e.textContent = t; }
 let pending = 0;
+// Ergebnis: 'saved' (in Supabase), 'queued' (offline vorgemerkt) oder 'error'
 async function track(promise) {
   pending++; setSaveState('Speichert …');
-  try { await promise; if (--pending === 0) setSaveState('Gespeichert'); }
-  catch (err) {
+  try {
+    const r = await promise;
+    if (--pending === 0) setSaveState(r === 'queued' ? 'Offline gespeichert' : 'Gespeichert');
+    return r === 'queued' ? 'queued' : 'saved';
+  } catch (err) {
     pending--; setSaveState('Fehler');
     $("main").insertAdjacentHTML("afterbegin", flag("Speichern fehlgeschlagen: " + esc(err.message) + " Der Stand aus der Datenbank wird neu geladen."));
     store.reload();
+    return 'error';
   }
 }
 // Einzelnen Datensatz schreiben bzw. löschen (kind wie in db.js), danach neu rechnen
-function write(kind, obj) { if (!obj.id && kind !== 'reading') obj.id = crypto.randomUUID(); refreshCalc(); track(store.saveRow(kind, toDb[kind](obj))); }
-function remove(kind, obj) { refreshCalc(); track(store.deleteRow(kind, toDb[kind](obj))); }
+function write(kind, obj) { if (!obj.id && kind !== 'reading') obj.id = crypto.randomUUID(); refreshCalc(); return track(store.saveRow(kind, toDb[kind](obj))); }
+function remove(kind, obj) { refreshCalc(); return track(store.deleteRow(kind, toDb[kind](obj))); }
 
 export function setModel(state) {
   const v = loadView();
@@ -668,7 +674,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -684,7 +690,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts,
+    ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts,
        "p-amort":()=>renderAmort(first), "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -776,3 +782,122 @@ function wireEditing(){
 
 // Für den Seitenvergleich im Test (tests/…/compare): Diagrammdaten lesbar machen
 window.__ebCharts = charts;
+
+/* ---------- Schnell erfassen (Handy): Zählerstand, Tanken, Laden, Fahrzeugbuch ---------- */
+const Q_KINDS = {
+  reading: { title: "Zählerstand", btn: "Zählerstand" },
+  fuel: { title: "Tankvorgang", btn: "Tanken" },
+  charge: { title: "Ladevorgang", btn: "Laden" },
+  carlog: { title: "Fahrzeugbuch", btn: "Fahrzeugbuch" },
+};
+const lsGet = (k, d) => { try { return localStorage.getItem(k) ?? d; } catch (e) { return d; } };
+const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) { /* egal */ } };
+function lastReading(m, before) {
+  return S.readings.filter(r => r.m === m && (!before || r.d < before)).sort((a, b) => b.d.localeCompare(a.d))[0] || null;
+}
+function lastOdo(car, before) { const o = odoPoints(car).filter(x => !before || x.d <= before); return o.length ? o[o.length - 1] : null; }
+function quickSub(kind) {
+  if (kind === "reading") { const m = lsGet("eb_q_meter", "wp"), r = lastReading(m); const mm = S.meters.find(x => x.id === m);
+    return r ? `${esc(mm?.name || m)}: ${nf(r.v)} kWh am ${dde(r.d)}` : "Noch kein Stand"; }
+  if (kind === "fuel") { const f = [...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0]; return f ? `Zuletzt ${dde(f.d)} · ${nf(f.km)} km` : "Noch kein Tankvorgang"; }
+  if (kind === "charge") { const c = [...S.charges].sort((a, b) => b.d.localeCompare(a.d))[0]; return c ? `Zuletzt ${dde(c.d)} · ${nf(c.k, 1)} kWh` : "Noch kein Ladevorgang"; }
+  const l = [...S.carlog].sort((a, b) => b.d.localeCompare(a.d))[0]; return l ? `Zuletzt ${dde(l.d)} · ${esc(l.cat)}` : "Noch kein Eintrag";
+}
+function renderQuick() {
+  if (!$("q-grid").children.length) {
+    $("q-grid").innerHTML = Object.entries(Q_KINDS).map(([k, q]) => `<button type="button" class="qbtn" data-q="${k}"><span class="qt">${q.btn}</span><span class="qs" data-qs="${k}"></span></button>`).join("");
+    $("q-grid").addEventListener("click", e => { const b = e.target.closest("[data-q]"); if (b) openQuick(b.dataset.q); });
+  }
+  Object.keys(Q_KINDS).forEach(k => { const el = document.querySelector(`[data-qs="${k}"]`); if (el) el.innerHTML = quickSub(k); });
+}
+const fld = (label, html, cls = "") => `<label class="f ${cls}">${label}${html}</label>`;
+const num = (id, ph = "", mode = "decimal") => `<input type="text" inputmode="${mode}" autocomplete="off" id="${id}" placeholder="${ph}">`;
+function openQuick(kind) {
+  const f = $("q-form"), today = iso(new Date());
+  $("q-msg").innerHTML = "";
+  let body = "";
+  if (kind === "reading") {
+    const m = lsGet("eb_q_meter", "wp");
+    body = fld("Zähler", `<select id="q-m">${S.meters.map(x => `<option value="${x.id}" ${x.id === m ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`, "wide")
+      + fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("Stand in kWh", num("q-v", "z. B. 12530", "decimal"));
+  } else if (kind === "fuel") {
+    const lastS = ([...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0] || {}).s || "Super E10";
+    body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("Kilometerstand", num("q-km", "", "numeric"))
+      + fld("Liter", num("q-l", "z. B. 38,5")) + fld("Betrag in €", num("q-e", "z. B. 68,40"))
+      + fld("Sorte", `<select id="q-s">${["Super E10", "Super E5", "Super Plus", "Diesel"].map(x => `<option ${x === lastS ? "selected" : ""}>${x}</option>`).join("")}</select>`)
+      + `<label class="f check-row"><span><input type="checkbox" id="q-full" checked> voll getankt</span></label>`;
+  } else if (kind === "charge") {
+    const lastO = ([...S.charges].sort((a, b) => b.d.localeCompare(a.d))[0] || {}).o || "zu Hause";
+    body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("kWh", num("q-k", "z. B. 42,5"))
+      + fld("Betrag in € (optional)", num("q-e")) + fld("Kilometerstand (optional)", num("q-km", "", "numeric"))
+      + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`);
+  } else {
+    body = fld("Datum", `<input type="date" id="q-d" value="${today}">`)
+      + fld("Fahrzeug", `<select id="q-car">${Object.entries(CARS).map(([k, v]) => `<option value="${k}" ${k === S.ui.logCar ? "selected" : ""}>${v}</option>`).join("")}</select>`)
+      + fld("Kategorie", `<select id="q-cat">${CAR_CATS.map(c => `<option>${c}</option>`).join("")}</select>`)
+      + fld("Kilometerstand", num("q-km", "", "numeric")) + fld("Betrag in €", num("q-e")) + fld("Notiz", `<input type="text" id="q-n">`, "wide");
+  }
+  f.innerHTML = `<h2>${Q_KINDS[kind].title}</h2><div class="q-fields">${body}</div><p class="note" id="q-hint"></p><p class="error" id="q-err" hidden></p>
+    <div class="q-actions"><button type="button" id="q-save">Speichern</button><button type="button" class="ghost" id="q-cancel">Abbrechen</button></div>`;
+  f.hidden = false; f.dataset.kind = kind;
+  const hint = () => { $("q-hint").innerHTML = quickHint(kind); };
+  f.querySelectorAll("input,select").forEach(el => el.addEventListener("input", hint));
+  f.querySelectorAll("select,input[type=date]").forEach(el => el.addEventListener("change", hint));
+  hint();
+  $("q-cancel").onclick = () => { f.hidden = true; };
+  $("q-save").onclick = () => saveQuick(kind);
+  f.scrollIntoView({ behavior: "smooth", block: "start" });
+  const first = f.querySelector('input[inputmode]'); if (first) first.focus({ preventScroll: true });
+}
+function quickHint(kind) {
+  const d = $("q-d")?.value;
+  if (kind === "reading") { const r = lastReading($("q-m").value, d), v = parseNum($("q-v").value);
+    if (!r) return "Erster Stand für diesen Zähler.";
+    let s = `Vorheriger Stand: ${nf(r.v)} kWh am ${dde(r.d)}.`;
+    if (isFinite(v) && d > r.d) s += ` Verbrauch seitdem ${nf(v - r.v)} kWh (${nf((v - r.v) / diffDays(r.d, d), 1)} kWh/Tag).`;
+    return s; }
+  if (kind === "fuel") { const o = lastOdo("leon", d), l = parseNum($("q-l").value), e = parseNum($("q-e").value), km = parseNum($("q-km").value);
+    const parts = []; if (o) parts.push(`Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}${isFinite(km) && km > o.km ? ` (+${nf(km - o.km)} km)` : ""}.`);
+    if (isFinite(l) && isFinite(e) && l > 0) parts.push(`${nf(e / l, 3)} €/l.`); return parts.join(" "); }
+  if (kind === "charge") { const k = parseNum($("q-k").value), e = parseNum($("q-e").value), o = lastOdo("tavascan", d);
+    const parts = []; if (o) parts.push(`Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}.`);
+    if (isFinite(k) && isFinite(e) && k > 0) parts.push(`${nf(e / k, 3)} €/kWh.`); return parts.join(" "); }
+  const o = lastOdo($("q-car").value, d); return o ? `Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}.` : "";
+}
+async function saveQuick(kind) {
+  const err = t => { $("q-err").textContent = t; $("q-err").hidden = false; };
+  $("q-err").hidden = true;
+  const d = $("q-d").value; if (!d) return err("Datum angeben.");
+  let obj, label;
+  if (kind === "reading") {
+    const m = $("q-m").value, v = parseNum($("q-v").value);
+    if (!isFinite(v) || v < 0) return err("Stand als Zahl angeben.");
+    const r = lastReading(m, d);
+    if (r && v < r.v && !confirm(`Der Stand ist kleiner als der vorherige (${nf(r.v)} kWh am ${dde(r.d)}). Zählertausch oder Tippfehler? Trotzdem speichern?`)) return;
+    lsSet("eb_q_meter", m);
+    obj = S.readings.find(x => x.m === m && x.d === d);
+    if (obj) obj.v = v; else { obj = { m, d, v, src: "Eingabe" }; S.readings.push(obj); }
+    label = `${esc(S.meters.find(x => x.id === m)?.name || m)}: ${nf(v)} kWh`;
+  } else if (kind === "fuel") {
+    const km = parseNum($("q-km").value), l = parseNum($("q-l").value), e = parseNum($("q-e").value);
+    if (!(km > 0) || !(l > 0) || !(e > 0)) return err("Kilometerstand, Liter und Betrag angeben.");
+    const o = lastOdo("leon", d); if (o && km <= o.km && !confirm(`Kilometerstand ist nicht höher als der letzte (${nf(o.km)} km am ${dde(o.d)}). Trotzdem speichern?`)) return;
+    obj = { d, km, l, e, s: $("q-s").value, full: $("q-full").checked }; S.fuel.push(obj);
+    label = `Tankvorgang ${nf(l, 2)} l · ${nf(e, 2)} €`;
+  } else if (kind === "charge") {
+    const k = parseNum($("q-k").value), e = parseNum($("q-e").value), km = parseNum($("q-km").value);
+    if (!(k > 0)) return err("kWh angeben.");
+    obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o: $("q-o").value }; S.charges.push(obj);
+    label = `Ladevorgang ${nf(k, 1)} kWh`;
+  } else {
+    const km = parseNum($("q-km").value), e = parseNum($("q-e").value);
+    if (!(km > 0) && !isFinite(e)) return err("Kilometerstand oder Betrag angeben.");
+    obj = { d, car: $("q-car").value, cat: $("q-cat").value, km: km > 0 ? km : null, e: isFinite(e) ? e : 0, note: $("q-n").value }; S.carlog.push(obj);
+    label = `Fahrzeugbuch: ${esc(obj.cat)}`;
+  }
+  $("q-save").disabled = true;
+  const r = await write(kind, obj);
+  $("q-form").hidden = true;
+  $("q-msg").innerHTML = r === "error" ? "" : flag(r === "queued" ? `Offline gespeichert: ${label}. Wird gesendet, sobald wieder Netz da ist.` : `Gespeichert: ${label}.`, true);
+  renderQuick();
+}

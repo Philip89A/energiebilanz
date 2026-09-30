@@ -56,8 +56,12 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Prüfung: `scripts/edit-check.mjs` (25 Prüfungen) und `scripts/compare.mjs`.
    - Texte ohne private Details (Anbieter, Daten, Geräteaufbau): aus den Daten füllen (`data-sm` = Smart-Meter-
      Datum aus `events`) oder neutral formulieren.
-5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy
-   (Zählerstand, Tankvorgang, Ladevorgang, Fahrzeugbuch-Eintrag) als eigene, große Startbuttons.
+5. ✅ PWA (v0.6): `manifest.webmanifest` (Start `./#quick`), `sw.js` (Seite netzwerk-zuerst, versionierte Dateien
+   cache-zuerst, Supabase nie aus dem Cache), Seite „Erfassen“ mit vier großen Knöpfen (Zählerstand, Tanken,
+   Laden, Fahrzeugbuch; deutsche Zahlen per `parseNum`, Plausibilitätsprüfung gegen letzten Stand).
+   Offline (`js/queue.js`): letzter Datenstand und Warteschlange je Nutzer im localStorage; Schreiben ohne Netz
+   wird vorgemerkt und bei Netz in Reihenfolge gesendet; Serverfehler beim Nachsenden → verwerfen und melden.
+   Prüfung: `scripts/offline-check.mjs` (21 Prüfungen). Icons: `icons/icon.svg` → `scripts/icons.mjs`.
 6. Später: Zahlungsbuch (Tabelle `payments` existiert), Tarifrechner (Fix vs. dynamisch, §14a Modul 1/3,
    Kosten intelligentes Messsystem), Wetterbereinigung Wärmepumpe (DWD-Gradtagzahlen),
    Einstrahlungsdaten zur Trennung Wetter vs. Abregelung, Ausbau-Szenarien (Speicher, Module, Wallbox).
