@@ -189,3 +189,16 @@
   Verteilung nach dem Geräteprofil wäre genauer und ist als eigener Schritt vorgeschlagen.
 - Tests: 66 Unit-Tests (neu `tests/v11.test.mjs`, synthetische `tests/fixture_hp.csv`), `scripts/v11-check.mjs`
   17 Prüfungen; alle bisherigen Prüfungen unverändert bestanden.
+
+## v0.12.0 – Wärmepumpen-Zähler nach Geräteprofil verteilt
+- Zwischen zwei Ablesungen verteilt die App den Verbrauch der Wärmepumpe jetzt nach dem Profil aus der
+  Wärmepumpen-App: Tageswerte, sonst Monatswert (abzüglich vorhandener Tageswerte) gleichmäßig auf die übrigen
+  Tage des Monats. Nur wenn jeder Tag des Intervalls einen Wert hat; die Zählersumme je Intervall bleibt exakt.
+  Grund: Die gleichmäßige Verteilung verschob Verbrauch zwischen Monaten (z. B. Februar/März und April um
+  40–60 kWh); mit Profil liegen die Monate auf wenige kWh am Gerät. Abgestimmte Abweichung von der Referenz,
+  wirkt nur mit importierten Gerätedaten (Seed und Seitenvergleich unverändert).
+- Gerätedaten gelten erst ab dem Tauschtag (Ereignis Wärmepumpe/Gerät); im Tauschmonat wird der Monatswert nur
+  auf die Tage ab dem Tausch verteilt, Intervalle der alten Wärmepumpe bleiben gleichmäßig.
+- Wirkt überall, wo Tageswerte der Wärmepumpe genutzt werden (Monatsverbrauch, Jahresvergleich, Kosten je Monat,
+  Zeiträume); Abschlag-Check und Intervallwerte ändern sich nicht (Summen je Ablesung bleiben gleich).
+- Tests: 68 Unit-Tests (2 neue in `tests/v11.test.mjs`); alle Browser-Prüfungen und der Seitenvergleich bestanden.

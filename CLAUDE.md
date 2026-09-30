@@ -85,7 +85,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.11: Wärmepumpen-App-Export (`js/hp.js`, Tabelle `hp_energy` schema v6 / `docs/UPDATE_V11.sql`, Upload unter
      „Daten“), Auswertung „Wärmepumpe laut Gerät“ (Arbeitszahl, Warmwasser-Anteil, Abgleich Zähler); PV und Wetter
      je Tag bis 62 Tage, Wetter im Tooltip der Tagesgrafiken. Prüfung: `tests/v11.test.mjs`, `scripts/v11-check.mjs`.
-     Offen: Wärmepumpen-Zähler nach Geräteprofil auf Tage verteilen (Abweichung von der Referenz, abstimmen).
+   - ✅ v0.12: Wärmepumpen-Zähler nach Geräteprofil auf Tage verteilt (`hpWeight` in `groupSeries`, erst ab Tauschtag;
+     mit Philip abgestimmte Abweichung von der Referenz, wirkt nur mit Gerätedaten).
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.11.0';
+import { hpSum } from './hp.js?v=0.12.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -105,6 +105,21 @@ export function createCalc(S) {
 
   /* Zähler: Tageswerte aus Ablesungen */
   const _gcache = new Map();
+  // Gewicht eines Tages für die Wärmepumpe aus den Gerätedaten (Strom inkl. Zuheizer), null = unbekannt
+  const _hpDay = {}, _hpMonth = {};
+  for (const r of S.hp || []) { const v = (+r.el_hp || 0) + (+r.el_aux || 0); if (r.grain === 'day') _hpDay[r.ts] = v; else if (r.grain === 'month') _hpMonth[r.ts] = v; }
+  // Gerätedaten gelten erst ab dem Tausch (Ereignis wp/geraet): Tage davor gehören zur alten Wärmepumpe
+  const _hpFrom = (S.events.find(e => e.type === 'geraet' && e.group === 'wp') || {}).d || '';
+  function hpWeight(d) {
+    if (d < _hpFrom) return null;
+    if (_hpDay[d] !== undefined) return _hpDay[d];
+    const m = _hpMonth[monthKey(d)]; if (m === undefined) return null;
+    const k = monthKey(d), first = _hpFrom > `${k}-01` ? _hpFrom : `${k}-01`, dim = diffDays(first, monthEnd(k)) + 1;
+    const known = Object.keys(_hpDay).filter(x => x.startsWith(k) && x >= first);
+    // Monatsrest ohne Tageswerte gleichmäßig auf die übrigen Tage (im Tauschmonat erst ab dem Tauschtag)
+    const rest = m - known.reduce((a, x) => a + _hpDay[x], 0), n = dim - known.length;
+    return n > 0 ? Math.max(0, rest) / n : null;
+  }
   function groupSeries(group) {
     if (_gcache.has(group)) return _gcache.get(group);
     const meters = S.meters.filter(m => m.group === group).sort((a, b) => a.order - b.order);
@@ -135,6 +150,16 @@ export function createCalc(S) {
             pre.forEach(d => daily[d] = rem / pre.length);
             shaped = true; intervals[intervals.length - 1].shaped = true;
           }
+        }
+      }
+      if (!shaped && group === 'wp') {
+        // Wärmepumpe (v0.12): Verteilung nach dem Geräteprofil aus der Wärmepumpen-App – Tageswert, sonst
+        // Monatswert ÷ Tage des Monats. Nur wenn jeder Tag des Intervalls einen Wert hat und die Summe > 0 ist.
+        const w = days.map(hpWeight);
+        const sw = w.reduce((a, x) => a + (x ?? 0), 0);
+        if (w.every(x => x != null) && sw > 0) {
+          days.forEach((d, j) => daily[d] = kw * w[j] / sw);
+          shaped = true; intervals[intervals.length - 1].shaped = 'hp';
         }
       }
       if (!shaped) days.forEach(d => daily[d] = rate);
