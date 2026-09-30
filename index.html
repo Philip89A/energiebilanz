@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.7.0">
-<link rel="stylesheet" href="css/style.css?v=0.7.0">
+<meta name="app-version" content="0.8.0">
+<link rel="stylesheet" href="css/style.css?v=0.8.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -244,6 +244,21 @@
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
 </section>
 
+<section id="p-ausbau" data-title="Ausbau (Weg B)" hidden>
+  <h1>Ausbau: PV-Erweiterung, Speicher, Wallbox</h1>
+  <p class="lead">Grobe Amortisation des Pakets gegenüber der heutigen Anlage, gerechnet mit deinen Tageswerten der letzten 365 Tage. Das E-Auto ist ausdrücklich enthalten: Die Wallbox ersetzt das Laden an der gewählten Alternative, die PV-Erweiterung lädt einen Teil davon mit Solarstrom. Schätzung, keine Messung.</p>
+  <div class="grid g4" id="wb-kpis"></div>
+  <div class="panel" style="margin-top:16px"><h2>Vorteil pro Jahr</h2><p class="note">Erstes Jahr, ohne Preissteigerung. Solarstrom wird zum Arbeitspreis bewertet, Laden zu Hause gegen die gewählte Alternative. THG-Prämie nicht enthalten: Sie gehört zum Auto und fällt mit jeder Lademöglichkeit an.</p><div class="tbl-wrap"><table id="wb-tbl"></table></div><div id="wb-flags"></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Kumulierter Vorteil gegen Investition</h2><p class="note">Monatlich ab Inbetriebnahme, mit Strompreissteigerung und Leistungsverlust aus „Amortisation“. Auto-Anteile zählen erst ab Übergabe des E-Autos (Startdatum im „Auto-Vergleich“).</p><div class="chart tall"><canvas id="wb-chart"></canvas></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Kosten</h2><div class="form" style="margin-top:10px" id="wb-cost"></div></div>
+    <div class="panel"><h2>Anlage</h2><div class="form" style="margin-top:10px" id="wb-plant"></div></div>
+    <div class="panel"><h2>Verbrauch und Preise</h2><div class="form" style="margin-top:10px" id="wb-use"></div></div>
+    <div class="panel"><h2>§14a EnWG (steuerbare Wallbox)</h2><p class="note">Reduziertes Netzentgelt für die angemeldete Wallbox. „Aus Tarifrechner“ nimmt die Ersparnis des Moduls mit den dort eingetragenen Werten deines Netzbetreibers. Modul 3 und dynamischer Stromtarif passen nicht bei jedem Anbieter zusammen.</p><div class="form" style="margin-top:10px" id="wb-14a"></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Wie gerechnet wird</h2><div id="wb-method"></div></div>
+</section>
+
 <section id="p-car" data-title="Auto-Vergleich" hidden>
   <h1>Cupra Leon gegen Cupra Tavascan</h1>
   <p class="lead">Gesamtkosten über je 36 Monate Leasing mit der vereinbarten Laufleistung. Laden zu Hause wird nur mit dem Arbeitspreis bewertet, der Grundpreis fällt ohnehin an. Die Monate, die der Leon bis zur Tavascan-Übergabe verlängert wird, laufen nicht in den Vergleich.</p>
@@ -344,8 +359,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.7.0"></script>
-<script src="vendor/chart.umd.js?v=0.7.0"></script>
-<script type="module" src="js/app.js?v=0.7.0"></script>
+<script src="vendor/supabase.js?v=0.8.0"></script>
+<script src="vendor/chart.umd.js?v=0.8.0"></script>
+<script type="module" src="js/app.js?v=0.8.0"></script>
 </body>
 </html>

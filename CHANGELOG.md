@@ -113,3 +113,22 @@
 - „Erfassen“: fünfter Knopf „Zahlung“ (Betrag aus dem Abschlagsplan vorausgefüllt).
 - Tests: 39 Unit-Tests; `scripts/v07-check.mjs` 20 Prüfungen; Seitenvergleich zählt Diagramme jetzt als gleich,
   wenn alle Datenreihen der Referenz unverändert enthalten sind (zusätzliche Reihen erlaubt).
+
+## v0.8.0 – Ausbau-Szenario „Weg B“
+- **Neue Seite „Ausbau (Weg B)“**: grobe Amortisation für PV-Erweiterung, Zusatzspeicher und Wallbox gegenüber der
+  heutigen Anlage, mit dem E-Auto ausdrücklich eingerechnet. Grund: Wallbox und PV-Erweiterung werden für das Auto
+  angeschafft, eine Rechnung ohne Auto unterschätzt den Nutzen.
+- Tagesmodell über die letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler), Reihenfolge Haus →
+  Klimaanlage → Auto → Speicher → Einspeisung, optional abends Speicher → Auto. Kalibriert auf den gemessenen
+  genutzten Solarstrom der heutigen Anlage (Faktor wird angezeigt).
+- Ergebnis getrennt nach Paket, Anteil PV/Speicher und Anteil Wallbox; Auto-Anteile erst ab Übergabe des E-Autos
+  (Startdatum aus dem Auto-Vergleich). Alternative ohne Wallbox umschaltbar: öffentlich laden oder Steckdose
+  (deren Kosten mindern dann die Wallbox-Investition).
+- **§14a EnWG an/aus**: eigener Betrag oder Modul 1, 2 bzw. 1+3 aus dem Tarifrechner (mit dem Netzladen des Szenarios).
+- Kosten ohne Vorgabewerte (Angebotswerte gehören nicht ins öffentliche Repo); Hinweis, solange sie fehlen.
+  Parameter in `settings.data.ausbau`, kein Schema-Update nötig.
+- Bewusst unverändert: Der Auto-Vergleich bleibt wie in der Referenz. Die Seite weist darauf hin, dass der
+  Wallbox-Vorteil nicht zusätzlich zum Auto-Vergleich gezählt werden darf.
+- THG-Prämie nicht enthalten (gehört zum Auto, fällt mit jeder Lademöglichkeit an).
+- Tests: 49 Unit-Tests (neu `tests/ausbau.test.mjs`), `scripts/v08-check.mjs` 24 Prüfungen; Seitenvergleich,
+  Bearbeiten, Offline und v0.7 unverändert bestanden.

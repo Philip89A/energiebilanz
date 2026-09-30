@@ -3,8 +3,8 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote } from './calc.js?v=0.7.0';
-import { parseNum } from './queue.js?v=0.7.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.8.0';
+import { parseNum } from './queue.js?v=0.8.0';
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -686,7 +686,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -703,7 +703,7 @@ function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
     ({ "p-quick":renderQuick, "p-overview":renderOverview, "p-fin":renderFinance, "p-pv":renderPV, "p-batt":()=>renderBattery(first), "p-meter":renderMeters, "p-cost":renderCosts, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":renderData })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -784,6 +784,10 @@ function wireEditing(){
       if(d.k==="name") it.name=el.value; else { const v=parseNum(el.value); if(isFinite(v)) it[d.k]=v; else delete it[d.k]; }
       tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
     else if(d.tr){ S.tarif=S.tarif||{}; const v=parseNum(el.value); if(isFinite(v)) S.tarif[d.tr]=v; else delete S.tarif[d.tr]; persist(); rerender(); }
+    else if(d.wb){ S.ausbau=S.ausbau||{}; const k=d.wb;
+      if(el.type==="checkbox") S.ausbau[k]=el.checked; else if(el.tagName==="SELECT"||el.type==="date") S.ausbau[k]=el.value;
+      else { const v=parseNum(el.value); if(el.value.trim()==="") delete S.ausbau[k]; else if(isFinite(v)) S.ausbau[k]=v; }
+      persist(); rerender(); }
     else if(d.tro!==undefined){ const o=S.tarif.offers[+d.tro]; o[d.k]=["name","grp"].includes(d.k)?el.value:parseNum(el.value); persist(); rerender(); }
   });
   $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
@@ -1044,4 +1048,75 @@ function quickPaymentFields(today) {
     + `<label class="f">Datum<input type="date" id="q-d" value="${today}"></label>`
     + `<label class="f">Betrag in €<input type="text" inputmode="decimal" autocomplete="off" id="q-pa"></label>`
     + `<label class="f wide">Notiz<input type="text" id="q-pn"></label>`;
+}
+
+/* ---------- Ausbau-Szenario „Weg B“ (v0.8) ---------- */
+const WB_FIELDS = {
+  "wb-cost": [["hwTotal", "Hardware gesamt € (inkl. Wallbox)"], ["hwWallbox", "davon Wallbox €"], ["craftPv", "Handwerker PV/Speicher €"],
+    ["craftWallbox", "Handwerker Wallbox inkl. Anmeldung €"], ["start", "Inbetriebnahme", "date"],
+    ["alt", "Alternative ohne Wallbox", [["public", "Öffentlich laden"], ["socket", "Steckdose in der Garage"]]], ["socketEur", "Kosten Steckdose € (nur Alternative Steckdose)"]],
+  "wb-plant": [["pvAddWp", "Zusätzliche PV-Leistung Wp"], ["yieldPct", "Ertrag neue Module % (Ausrichtung)"], ["storeAddKwh", "Zusätzlicher Speicher kWh"],
+    ["storeUsablePct", "Davon nutzbar %"]],
+  "wb-use": [["acKwh", "Klimaanlage kWh pro Sommer (Jun–Aug)"], ["feedCt", "Einspeisevergütung ct/kWh"],
+    ["apPvCt", "Wert Solarstrom im Haus ct/kWh (leer = aktueller Arbeitspreis)"], ["apEvCt", "Preis Laden zu Hause ct/kWh (leer = aktueller Arbeitspreis; dynamisch: Ø der Ladestunden)"],
+    ["evDayPct", "Auto tagsüber zu Hause: Anteil Laden aus Überschuss %"], ["battEv", "Auto abends aus dem Speicher laden (Phasenumschaltung, Speicher-Steuerung)", "check"],
+    ["dayLoadPct", "Anteil Hauslast tagsüber %"], ["years", "Betrachtungsdauer Jahre"]],
+  "wb-14a": [["s14a", "§14a einrechnen", "check"], ["s14aMod", "Quelle", [["manual", "Eigener Betrag"], ["m1", "Modul 1 aus Tarifrechner"], ["m2", "Modul 2 aus Tarifrechner"], ["m3", "Modul 1 + 3 aus Tarifrechner"]]],
+    ["s14aEur", "Eigener Betrag €/Jahr"]],
+};
+function renderAusbau() {
+  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
+  for (const [host, fields] of Object.entries(WB_FIELDS)) {
+    const h = $(host);
+    if (!h.children.length) h.innerHTML = fields.map(([k, l, t]) => t === "check" ? `<label class="f check wide"><input type="checkbox" data-wb="${k}"> ${l}</label>`
+      : Array.isArray(t) ? `<label class="f">${l}<select data-wb="${k}">${t.map(([o, ol]) => `<option value="${o}">${ol}</option>`).join("")}</select></label>`
+      : `<label class="f">${l}<input type="${t === "date" ? "date" : "text"}" ${t === "date" ? "" : 'inputmode="decimal"'} data-wb="${k}"></label>`).join("");
+    h.querySelectorAll("[data-wb]").forEach(el => { if (document.activeElement === el) return; const k = el.dataset.wb;
+      if (el.type === "checkbox") el.checked = !!v(k); else if (el.type === "date") el.value = v(k) || today;
+      else if (el.tagName === "SELECT") el.value = v(k); else { const x = v(k); el.value = x === "" || x == null ? "" : nf(+x, +x % 1 ? 2 : 0).replace(/\./g, ""); } });
+  }
+  $("wb-cost").querySelector('[data-wb="socketEur"]').closest("label").hidden = v("alt") !== "socket";
+  $("wb-14a").querySelectorAll('[data-wb="s14aMod"],[data-wb="s14aEur"]').forEach(el => el.closest("label").hidden = !v("s14a"));
+  $("wb-14a").querySelector('[data-wb="s14aEur"]').closest("label").hidden = !v("s14a") || v("s14aMod") !== "manual";
+  // §14a-Ersparnis je Modul mit dem Netzladen des Szenarios (Werte des Netzbetreibers aus dem Tarifrechner)
+  const r0 = ausbauRechner(base, p, today);
+  const tr = tarifRechner({ ...C.tariffBase(), evGrid: r0.kwh.evGrid }, { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, S.tarif || {});
+  const m14a = Object.fromEntries(tr.wallbox.filter(w => w.key !== "none").map(w => [w.key, -w.vsNone]));
+  const r = ausbauRechner(base, p, today, m14a), y = r.year, nc = r.noCar, N = +v("years") || 20;
+  const pb = (h, inv) => h ? `${nf(h.years, 1)} Jahre` : "–";
+  const pbSub = (h, inv) => h ? `${monthLabel(h.date.slice(0, 7))}, Investition ${eur(inv)}` : `nicht innerhalb von ${N} Jahren (Investition ${eur(inv)})`;
+  $("wb-kpis").innerHTML = kpi(pb(r.payback.total), "Paket amortisiert nach", pbSub(r.payback.total, r.invest.total))
+    + kpi(eur(y.total), "Vorteil pro Jahr mit E-Auto", `vor Übergabe des Autos ${eur(nc.total)} pro Jahr`)
+    + kpi(pb(r.payback.pv), "Anteil PV und Speicher", pbSub(r.payback.pv, r.invest.pv))
+    + kpi(pb(r.payback.wallbox), "Anteil Wallbox", pbSub(r.payback.wallbox, r.invest.wallbox));
+  const alt = v("alt") === "public" ? "öffentlich" : "per Steckdose";
+  const rows = [
+    ["Solarstrom im Haus (inkl. Klimaanlage)", r.kwh.house, nc.houseKwh, nc.house, y.house],
+    ["E-Auto lädt Solarstrom", r.kwh.pvEv, null, null, y.carPv],
+    [`Wallbox: zu Hause statt ${alt} laden`, r.kwh.evHome, null, null, y.wallbox],
+    ["§14a Netzentgelt-Reduzierung", null, null, null, y.s14a],
+    ["Mehr Einspeisung", r.kwh.feed, nc.feedKwh, nc.feed, y.feed],
+  ];
+  const k0 = x => x == null ? "–" : kwh(x);
+  $("wb-tbl").innerHTML = `<thead><tr><th>Posten</th><th>kWh/Jahr mit Auto</th><th>vor Übergabe Auto</th><th>mit E-Auto</th></tr></thead><tbody>${
+    rows.map(([l, k, , a, b]) => `<tr><td>${l}</td><td>${k0(k)}</td><td>${a == null ? "–" : eur(a)}</td><td>${eur(b)}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td>Gesamt</td><td></td><td>${eur(nc.total)}</td><td>${eur(y.total)}</td></tr></tfoot>`;
+  const fl = [];
+  if (!(r.invest.total > 0)) fl.push(flag("Noch keine Kosten eingetragen: unten unter „Kosten“ Hardware und Handwerker aus dem Angebot eintragen, sonst ist die Amortisation 0 Jahre."));
+  if (v("s14a") && v("s14aMod") !== "manual" && !(m14a[v("s14aMod")] > 0)) fl.push(flag("§14a: Im Tarifrechner fehlen die Werte deines Netzbetreibers, deshalb zählt das Modul mit 0 €. Werte dort eintragen oder „Eigener Betrag“ wählen."));
+  if (v("s14a") && v("s14aMod") === "manual") fl.push(flag("§14a mit eigenem Betrag: Schätzwert, bis die Werte des Netzbetreibers im Tarifrechner stehen.", true));
+  if (v("alt") === "socket") fl.push(flag("Alternative Steckdose: Laden zu Hause wäre auch ohne Wallbox möglich, der Wallbox-Anteil bringt dann nur noch §14a. Die Kosten der Steckdose sind von der Wallbox-Investition abgezogen.", true));
+  fl.push(flag("Der „Auto-Vergleich“ rechnet bereits mit Laden zu Hause. Wer beide Seiten zusammenzählt, zählt den Wallbox-Vorteil doppelt: Die Wallbox gehört entweder hierher oder in die Autokosten.", true));
+  $("wb-flags").innerHTML = fl.join("");
+  const lab = r.months.map(m => monthLabel(m.d.slice(0, 7)));
+  const line = (label, data, c, dash, w = 2) => ({ label, data, borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: w, ...(dash ? { borderDash: [5, 4] } : {}) });
+  chart("wb-chart", { type: "line", data: { labels: lab, datasets: [
+    line("Vorteil Paket", r.months.map(m => m.cum), "--sun", false, 2.5), line("Investition Paket", lab.map(() => r.invest.total), "--ink", false, 1.5),
+    line("Vorteil PV/Speicher", r.months.map(m => m.cumPv), "--batt", false), line("Investition PV/Speicher", lab.map(() => r.invest.pv), "--batt", true, 1.5),
+    line("Vorteil Wallbox", r.months.map(m => m.cumWb), "--grid", false), line("Investition Wallbox", lab.map(() => r.invest.wallbox), "--grid", true, 1.5)] },
+    options: { plugins: { tooltip: numTip("€") }, scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { title: { display: true, text: "€" } } } } });
+  $("wb-method").innerHTML = `<p class="note">Grundlage: ${dde(base.from)} bis ${dde(base.to)}. Tageslast = genutzter Solarstrom + Netzbezug Allgemeinstrom laut Zähler; ${nf(+v("dayLoadPct"))} % davon tagsüber, der Rest abends und nachts.
+    Solarstrom geht zuerst ins Haus, dann in die Klimaanlage (Juni–August), dann ins Auto, dann in den Speicher (Wirkungsgrad ${pct(r.eta)} aus den Anker-Daten), der Rest wird eingespeist.
+    PV-Erzeugung skaliert mit Faktor ${nf(r.scale, 2)}, nutzbarer Speicher ${nf(r.usable, 1)} kWh. Das Modell der heutigen Anlage liegt um ${pct(Math.abs(1 - r.K))} ${r.K < 1 ? "über" : "unter"} dem gemessenen genutzten Solarstrom; alle Mehrwerte sind damit korrigiert (Faktor ${nf(r.K, 2)}).</p>
+    <p class="note">Nicht abgebildet: Stundenverläufe (es gibt nur Tageswerte), Abregelung bei hoher Leistung, negative Börsenpreise (Solarspitzengesetz: keine Vergütung, ohne Smart Meter Einspeisung auf 60 % begrenzt), Alterung des Speichers, Ladeverluste. Die Wallbox braucht einphasiges Laden bzw. Phasenumschaltung, damit der Speicher mit seiner begrenzten Ausgangsleistung das Auto nennenswert laden kann. THG-Prämie nicht enthalten.</p>`;
 }

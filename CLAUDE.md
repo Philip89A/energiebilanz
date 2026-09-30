@@ -69,7 +69,11 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      einheitlicher Break-even, Zähler-Linie im Überblick. Prüfung: `scripts/v07-check.mjs` (20 Prüfungen).
    - Offen: Tarifrechner Stufe B (dynamischer Tarif, nur als Schätzung über Lastprofil – es gibt nur Tageswerte),
      Wetterbereinigung Wärmepumpe (DWD-Gradtagzahlen), Einstrahlungsdaten zur Trennung Wetter vs. Abregelung,
-     Ausbau-Szenarien (Speicher, Module, Wallbox).
+     weitere Ausbau-Szenarien.
+   - ✅ v0.8: Seite „Ausbau (Weg B)“ (`ausbauRechner` in calc.js, `settings.data.ausbau`): Tagesmodell über 365 Tage,
+     kalibriert auf den gemessenen genutzten Solarstrom; E-Auto ab Übergabe; Alternative öffentlich/Steckdose;
+     §14a an/aus (eigener Betrag oder Modul aus dem Tarifrechner). Kosten ohne Vorgabewerte.
+     Prüfung: `tests/ausbau.test.mjs`, `scripts/v08-check.mjs` (24 Prüfungen).
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

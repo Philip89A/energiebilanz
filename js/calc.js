@@ -58,7 +58,7 @@ export function stateFromDb(db) {
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
-    tarif: s.tarif || {},
+    tarif: s.tarif || {}, ausbau: s.ausbau || {},
   };
 }
 
@@ -75,7 +75,8 @@ export const toDb = {
   carlog: x => ({ id: x.id, day: x.d, car: x.car, category: x.cat, odometer: x.km ? +x.km : null, amount: +x.e || 0, note: x.note || null }),
   event: e => ({ id: e.id, day: e.d, grp: e.group || null, type: e.type || null, note: e.text || null }),
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
-  settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}) } }),
+  settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
+    ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -564,12 +565,23 @@ export function createCalc(S) {
     }) };
   }
 
+  // Ausbau-Szenario: Tageswerte der letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler) und Rahmenwerte
+  function ausbauBase() {
+    const r = last12(), as = groupSeries('as').daily, days = [];
+    A.dates.forEach((d, i) => { if (d < r.from || d > r.to) return;
+      days.push({ d, gen: A.c.gen[i] || 0, use: A.c.use[i] || 0, bch: A.c.bch[i] || 0, bdis: A.c.bdis[i] || 0, asGrid: as[d] ?? null }); });
+    const b = S.battery, e = S.cars.ev || {}, tb = tariffBase();
+    return { from: r.from, to: r.to, days, kwp: +S.pv.kwp || 0, usable: (+b.capGross || 0) * (1 - (+b.reserve || 0) / 100),
+      evHome: tb.evHome, ap: +(currentTariff('as')?.ap) || 0, pricePublic: +e.pricePublic || 0, evStart: e.start || '',
+      priceInc: +S.amort.priceInc || 0, degr: +S.amort.degr || 0 };
+  }
+
   return {
     A, IMPORT_START, sumRange, last12, groupSeries, tariffAt, currentTariff, costs, last365Cost, feedValue, pvSavings,
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
-    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance,
+    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase,
   };
 }
 
@@ -616,4 +628,77 @@ export function parseBoniNote(note) {
     items.push(it);
   }
   return items;
+}
+
+/* ---------- Ausbau-Szenario „Weg B“ (PV-Erweiterung + Speicher + Wallbox), reine Funktion ----------
+   base: ausbauBase(); p: settings.data.ausbau (fehlende Werte aus AUSBAU_DEFAULTS); today: ISO-Datum; m14a: Ersparnis
+   je §14a-Modul in €/Jahr aus dem Tarifrechner ({m1, m2, m3}) oder null.
+   Tagesmodell über 365 Tage: Last = genutzter Solarstrom + Netzbezug Allgemeinstrom; der Anteil dayLoadPct fällt
+   tagsüber an, der Rest abends/nachts. Reihenfolge des Solarstroms: Haus tagsüber → Klimaanlage (Jun–Aug) → Auto
+   tagsüber → Speicher → Einspeisung; abends Speicher → Haus, danach optional Speicher → Auto. Kalibrierung K: das
+   Modell der heutigen Anlage wird auf den gemessenen genutzten Solarstrom skaliert. Alle Mehrwerte sind gegenüber
+   der heutigen Anlage ohne Laden zu Hause. Kosten haben keine Vorgabe (Angebotswerte gehören nicht ins Repo). */
+export const AUSBAU_DEFAULTS = { pvAddWp: 1500, yieldPct: 100, storeAddKwh: 5, storeUsablePct: 90,
+  hwTotal: '', hwWallbox: '', craftWallbox: '', craftPv: '', start: '', acKwh: 500, dayLoadPct: 30, evDayPct: 10,
+  battEv: true, feedCt: 7, apPvCt: '', apEvCt: '', alt: 'public', socketEur: 400, s14a: false, s14aMod: 'manual', s14aEur: 140, years: 20 };
+export function ausbauRechner(base, p0 = {}, today = '', m14a = null) {
+  const p = { ...AUSBAU_DEFAULTS, ...p0 }, n = v => (v === '' || v == null || !isFinite(+v) ? 0 : +v);
+  const days = base.days.filter(x => x.gen != null);
+  const known = days.filter(x => x.asGrid != null), gridAvg = known.length ? known.reduce((a, x) => a + x.asGrid, 0) / known.length : 0;
+  const bch = days.reduce((a, x) => a + x.bch, 0), bdis = days.reduce((a, x) => a + x.bdis, 0), eta = bch > 0 ? Math.min(1, bdis / bch) : 0.9;
+  const f = n(p.dayLoadPct) / 100, summer = x => ['06', '07', '08'].includes(x.d.slice(5, 7));
+  const acDay = n(p.acKwh) / Math.max(1, days.filter(summer).length), evDay = base.evHome / 365, evSun = n(p.evDayPct) / 100;
+  function sim(scale, usable, ac, car) {
+    let soc = 0, house = 0, pvEv = 0, feed = 0;
+    for (const x of days) {
+      const load = x.use + (x.asGrid ?? gridAvg), gen = x.gen * scale, day = f * load, night = load - day;
+      const d = Math.min(gen, day); house += d; let sur = gen - d; const short = day - d;
+      if (ac && summer(x)) { const c = Math.min(sur, acDay); house += c; sur -= c; }
+      let ev = car ? evDay : 0; const e = Math.min(sur, ev * evSun); pvEv += e; sur -= e; ev -= e;
+      const ch = Math.min(sur, Math.max(0, usable - soc) / eta); soc += ch * eta; feed += sur - ch;
+      const o = Math.min(soc, short + night); house += o; soc -= o;
+      if (car && p.battEv && ev > 0) { const b = Math.min(soc * 0.8, ev); pvEv += b; soc -= b; }
+    }
+    return { house, pvEv, feed };
+  }
+  const now = sim(1, base.usable, false, false), used = days.reduce((a, x) => a + x.use, 0);
+  const K = now.house > 0 ? used / now.house : 1;
+  const wpNow = base.kwp * 1000, scale = wpNow > 0 ? (wpNow + n(p.pvAddWp) * n(p.yieldPct) / 100) / wpNow : 1;
+  const usable = base.usable + n(p.storeAddKwh) * n(p.storeUsablePct) / 100;
+  const nowAc = sim(1, base.usable, true, false);      // Klimaanlage käme auch ohne Ausbau; Mehrwert nur durch den Ausbau
+  const pk = { noCar: sim(scale, usable, true, false), car: sim(scale, usable, true, true) };
+  const apPv = (p.apPvCt === '' || p.apPvCt == null ? base.ap : n(p.apPvCt)) / 100;
+  const apEv = (p.apEvCt === '' || p.apEvCt == null ? base.ap : n(p.apEvCt)) / 100;
+  const feedEur = n(p.feedCt) / 100, pub = p.alt === 'public';
+  const s14 = !p.s14a ? 0 : p.s14aMod === 'manual' ? n(p.s14aEur) : Math.max(0, n(m14a?.[p.s14aMod]));
+  const part = r => {
+    const houseKwh = K * (r.house - nowAc.house), pvEv = K * r.pvEv;
+    return { houseKwh, pvEvKwh: pvEv, feedKwh: r.feed - nowAc.feed, evGridKwh: Math.max(0, (r === pk.car ? base.evHome : 0) - pvEv),
+      house: houseKwh * apPv, carPv: pvEv * apEv, feed: (r.feed - nowAc.feed) * feedEur };
+  };
+  const yNo = part(pk.noCar), yCar = part(pk.car);
+  const wallbox = pub ? base.evHome * (base.pricePublic - apEv) : 0;
+  const year = { ...yCar, wallbox, s14a: s14, total: yCar.house + yCar.carPv + yCar.feed + wallbox + s14 };
+  const invest = { pv: n(p.hwTotal) - n(p.hwWallbox) + n(p.craftPv), wallbox: n(p.hwWallbox) + n(p.craftWallbox) - (pub ? 0 : n(p.socketEur)) };
+  invest.total = invest.pv + invest.wallbox;
+  // Monatlicher Verlauf ab Inbetriebnahme; Auto-Anteile erst ab Übergabe des E-Autos
+  const start = p.start || today || base.to, inc = n(base.priceInc) / 100, dg = n(base.degr) / 100, N = Math.max(1, Math.round(n(p.years))) * 12;
+  const evMonth = base.evStart ? base.evStart.slice(0, 7) : '';
+  let cum = 0, cumPv = 0, cumWb = 0; const months = [];
+  const hit = { total: null, pv: null, wallbox: null };
+  for (let m = 0; m < N; m++) {
+    const d = addMonths(start.slice(0, 7) + '-01', m), y = Math.floor(m / 12), carOn = !evMonth || d.slice(0, 7) >= evMonth;
+    const pF = (1 + inc) ** y, dF = (1 - dg) ** y, r = carOn ? yCar : yNo;
+    const pvM = ((r.house + r.carPv) * pF * dF + r.feed * dF) / 12;
+    const wbM = carOn ? (wallbox * pF + s14) / 12 : 0;
+    const prev = { total: cum, pv: cumPv, wallbox: cumWb };
+    cum += pvM + wbM; cumPv += pvM; cumWb += wbM;
+    const cur = { total: cum, pv: cumPv, wallbox: cumWb };
+    for (const k of Object.keys(hit)) if (hit[k] == null && invest[k] > 0 && cur[k] >= invest[k]) {
+      const fr = (invest[k] - prev[k]) / (cur[k] - prev[k]); hit[k] = { years: (m + fr) / 12, date: addDays(d, Math.round(fr * 30)) };
+    } else if (hit[k] == null && invest[k] <= 0) hit[k] = { years: 0, date: start };
+    months.push({ d, cum, cumPv, cumWb });
+  }
+  return { K, eta, scale, usable, start, evMonth, year, noCar: { ...yNo, total: yNo.house + yNo.carPv + yNo.feed }, invest, payback: hit, months,
+    kwh: { house: yCar.houseKwh, pvEv: yCar.pvEvKwh, evGrid: yCar.evGridKwh, feed: yCar.feedKwh, evHome: base.evHome }, s14 };
 }
