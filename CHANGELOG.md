@@ -28,3 +28,13 @@
 - Summen exakt in Tausendsteln (Wh bzw. 0,1 ct).
 - Tests: `node --test tests/*.test.mjs` (synthetisch im Repo; Referenztests lesen `data/`, sonst übersprungen).
 - supabase-js 2.117.2 lokal unter `vendor/`.
+
+## v0.3 – Phase 3: Rechenlogik
+- `js/calc.js`: alle Kennzahlen der Referenz als reine Funktionen (Anker-Kennzahlen, Zeiträume und Vergleich,
+  Zählerverteilung mit Zählertausch, Stromkosten nach Tagestarif mit Boni, PV-Ersparnis, Wert des Speichers,
+  Amortisation mit Break-even, Abschlag-Check, Auto-Vergleich, Kilometer, Kosten & Ersparnisse je Jahr,
+  Zählerabgleich, Wärmepumpe vorher/nachher). Nah am Original gehalten, damit Zeile für Zeile prüfbar.
+- `stateFromDb`: Supabase-Zeilen → Rechenmodell; getestet, dass beide Wege identische Ergebnisse liefern.
+- `sumRange` summiert exakt in Wh (Referenz: Fließkomma), Unterschied < 1e-9, trifft aber exakte ,x5-Werte.
+- „Heute“ als Parameter statt `new Date()` (nur Fahrzeugbuch betroffen) – Tests bleiben stabil.
+- `scripts/golden.mjs` + Differenztest über 35 Zeiträume gegen die Referenz-HTML, alle Referenzwerte getroffen.

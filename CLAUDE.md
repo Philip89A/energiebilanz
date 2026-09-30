@@ -27,16 +27,22 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
   Prüfungen aus `docs/ANLEITUNG_PHASE1.md` Teil C bestehen. Der Publishable-Key liegt im Frontend
   (`config.js`), deshalb ist RLS Pflicht. Registrierung in Supabase ist geschlossen, der einzige Nutzer
   wurde im Dashboard angelegt.
-- Tests: synthetische Fixtures im Repo; Tests gegen echte Referenzwerte lesen `data/` und werden
-  übersprungen, wenn die Dateien fehlen.
+- Tests: `node --test tests/*.test.mjs`. Synthetische Fixtures im Repo; Tests gegen echte Werte lesen `data/`
+  (seed_state.json, anker_energiedetails.csv, expected.json, golden.json) und werden übersprungen, wenn sie fehlen.
+  Keine echten Zahlen in Testdateien, Doku oder Commit-Texten.
+- Zählerstand eines Tages gilt als Stand am Tagesanfang (Verbrauch des Ablesetags gehört zum Folgeintervall).
 - Versionen mit Changelog (`CHANGELOG.md`, vX.Y), jede Änderung kurz begründet.
 
 ## Phasen
 1. ✅ Supabase-Projekt, `schema.sql` v2, RLS, Login per E-Mail + Passwort (v0.1).
-2. Einmaliger Import von `data/seed_state.json` über eine Import-Seite in der App (eingeloggt, kein
-   service_role-Key), danach Anker-CSV-Import mit Upsert über (user_id, day).
-3. Rechenlogik aus der Referenz in `js/calc.js` übernehmen, reine Funktionen, Tests gegen die Referenzwerte.
-   Summen intern in ganzen Wh/Cent bilden (Fließkomma-Summen runden exakte ,x5-Werte sonst falsch ab).
+2. ✅ Import (v0.2).
+3. ✅ Rechenlogik in `js/calc.js` (v0.3): `createCalc(state)` mit den Funktionen der Referenz (gleiche Namen,
+   gleiche Rechenschritte), `stateFromDb(db)` wandelt Supabase-Zeilen um. `sumRange` summiert exakt in Wh.
+   Prüfung: `scripts/golden.mjs` führt die Referenz-HTML mit dem Seed im Browser aus und schreibt alle Kennzahlen
+   für 35 Zeiträume nach `data/golden.json`; `tests/calc.reference.test.mjs` vergleicht calc.js damit
+   (Toleranz 1e-9) und mit den von Hand übertragenen Referenzwerten in `data/expected.json` → `kennzahlen`.
+   „Heute“ ist Parameter (`today`) für Fahrzeugbuch-Auswertungen; der Abschlag-Check rechnet bis letzter
+   Zählerstand − 1 Tag, nicht bis zum Kalenderdatum.
 4. Seiten portieren: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe, Stromkosten
    (inkl. Abschlag-Check), Amortisation, Auto-Vergleich, Tanken & Laden (inkl. Fahrzeugbuch), Daten.
 5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy
