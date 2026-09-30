@@ -132,3 +132,17 @@ export async function verifySeed(mapped, written) {
   const got = seedSummary(actual);
   return { expected, got, diffs: compareSummary(expected, got) };
 }
+
+// Alle Tabellen für das Rechenmodell (calc.js stateFromDb)
+export async function loadAll() {
+  const tables = ['meters', 'meter_readings', 'events', 'tariffs', 'installments', 'investments',
+                  'fuel_log', 'charge_log', 'car_log'];
+  const [anker, settings, ...rest] = await Promise.all([
+    fetchAll('anker_daily', { order: 'day' }),
+    fetchAll('settings'),
+    ...tables.map(t => fetchAll(t)),
+  ]);
+  const db = { anker_daily: anker, settings: settings[0] || null };
+  tables.forEach((t, i) => { db[t] = rest[i]; });
+  return db;
+}

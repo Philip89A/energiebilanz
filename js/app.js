@@ -1,6 +1,8 @@
-// Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker) und Seite „Daten“ mit den Importen.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts } from './db.js';
+// Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js) und Importe.
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll } from './db.js';
 import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js';
+import { stateFromDb } from './calc.js';
+import { setModel, startViews } from './views.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -36,7 +38,43 @@ function enter(session) {
   show('app');
   if (loadedFor !== session.user.id) {
     loadedFor = session.user.id;
-    refreshStatus();
+    loadModel();
+  }
+}
+
+// Alle Daten laden, Rechenmodell bauen, Seiten zeigen. Ohne Anker-Daten nur die Seite „Daten“.
+async function loadModel() {
+  $('loading').hidden = false;
+  try {
+    const db = await loadAll();
+    const empty = !db.anker_daily.length;
+    $('empty-hint').hidden = !empty;
+    if (empty) {
+      document.querySelectorAll('main > section').forEach(s => { s.hidden = s.id !== 'p-data'; });
+      $('period-bar').hidden = true;
+      addLogout();
+    } else {
+      setModel(stateFromDb(db));
+      startViews();
+      addLogout();
+    }
+  } catch (err) {
+    $('main').insertAdjacentHTML('afterbegin', `<p class="flag">Laden fehlgeschlagen: ${esc(err.message)}</p>`);
+  } finally {
+    $('loading').hidden = true;
+  }
+  refreshStatus();
+}
+
+let logoutAdded = false;
+function addLogout() {
+  if (logoutAdded) return;
+  logoutAdded = true;
+  for (const nav of [$('snav'), $('mnav')]) {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'ghost logout'; b.textContent = 'Abmelden';
+    b.addEventListener('click', () => client.auth.signOut());
+    nav.appendChild(b);
   }
 }
 
@@ -80,7 +118,6 @@ $('recovery-form').addEventListener('submit', async e => {
   if (session) enter(session);
 });
 
-$('logout-btn').addEventListener('click', () => client.auth.signOut());
 
 /* ---------- Datenstand ---------- */
 
@@ -155,7 +192,7 @@ function renderCsvDiff(out, name, parsed, diff) {
       await upsertRows('anker_daily', diff.write, 'user_id,day',
                        (n, total) => { $('csv-progress').textContent = `${n}/${total}`; });
       $('csv-progress').innerHTML = '<span class="ok">Übernommen.</span>';
-      refreshStatus();
+      loadModel();
     } catch (err) {
       $('csv-progress').innerHTML = `<span class="error">${esc(err.message)}</span>`;
       ev.target.disabled = false;
@@ -208,7 +245,7 @@ $('seed-file').addEventListener('change', async e => {
         ? `<p class="error">Rückprüfung mit Abweichungen:\n${esc(res.diffs.join('\n'))}</p>`
         : `<p class="ok">Import vollständig. Rückprüfung: alle Mengen und Kontrollsummen stimmen
              (Erzeugung ${kwhFromMilli(res.got.erzeugung_wh)}, Investitionen ${eurFromMilli(res.got.invest_milli_eur)}).</p>`;
-      refreshStatus();
+      loadModel();
     } catch (err) {
       $('seed-progress').innerHTML = `<span class="error">${esc(err.message)}</span>`;
       ev.target.disabled = false;

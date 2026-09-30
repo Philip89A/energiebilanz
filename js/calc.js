@@ -67,7 +67,9 @@ export function createCalc(S) {
   const A = { dates, c: src.c, n: dates.length, idx: Object.fromEntries(dates.map((d, i) => [d, i])) };
   if (!A.n) throw new Error('Keine Anker-Daten.');
 
-  const IMPORT_START = () => (S.events.find(e => e.type === 'daten' && e.group === 'pv') || { d: '2025-12-23' }).d;
+  // Smart-Meter-Start: Ereignis (pv/daten); ohne Ereignis der erste Tag mit gemessenem Netzbezug oder Einspeisung
+  const smFallback = (() => { const i = A.dates.findIndex((d, j) => (A.c.imp[j] || 0) > 0 || (A.c.feed[j] || 0) > 0); return i >= 0 ? A.dates[i] : A.dates[A.n - 1]; })();
+  const IMPORT_START = () => (S.events.find(e => e.type === 'daten' && e.group === 'pv') || { d: smFallback }).d;
   // exakt in Tausendsteln summieren (Fließkomma-Summen landen bei exakten ,x5-Werten sonst knapp darunter und runden ab)
   function sumRange(key, from, to) { let s = 0; A.dates.forEach((d, i) => { if (d >= from && d <= to) s += Math.round((A.c[key][i] || 0) * 1000); }); return s / 1000; }
   function last12() { const to = A.dates[A.n - 1]; return { from: addDays(to, -364), to }; }

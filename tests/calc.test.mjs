@@ -158,3 +158,8 @@ test('stateFromDb: Supabase-Zeilen ergeben dieselben Kennzahlen', () => {
   assert.deepEqual(rb, ra);
   assert.equal(tb.name, ta.name);
 });
+
+test('Smart-Meter-Start ohne Ereignis: erster Tag mit gemessenem Netzbezug oder Einspeisung', () => {
+  assert.equal(createCalc(state()).IMPORT_START(), '2025-01-06');
+  assert.equal(createCalc(state({ events: [] })).IMPORT_START(), '2025-01-06');
+});

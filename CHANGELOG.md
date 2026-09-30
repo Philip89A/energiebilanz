@@ -38,3 +38,16 @@
 - `sumRange` summiert exakt in Wh (Referenz: Fließkomma), Unterschied < 1e-9, trifft aber exakte ,x5-Werte.
 - „Heute“ als Parameter statt `new Date()` (nur Fahrzeugbuch betroffen) – Tests bleiben stabil.
 - `scripts/golden.mjs` + Differenztest über 35 Zeiträume gegen die Referenz-HTML, alle Referenzwerte getroffen.
+
+## v0.4 – Phase 4a: Seiten (nur Anzeige)
+- Alle Seiten der Referenz: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe, Stromkosten
+  mit Abschlag-Check, Amortisation, Auto-Vergleich, Tanken & Laden, Daten. Zeitraum und Vergleich wie in der
+  Referenz, Auswahl je Gerät gespeichert.
+- `js/views.js`: Anzeige-Code der Referenz übernommen, Rechnung aus calc.js, Daten aus Supabase (`loadAll`).
+- Eingaben vorerst gesperrt (Bearbeiten folgt in 4b); Import-Karten auf der Seite „Daten“.
+- Private Details aus Seitentexten entfernt (Anbieter, feste Daten, Geräteaufbau, Laufleistung); das
+  Smart-Meter-Datum kommt aus den Ereignissen.
+- Layout-Korrektur: Hauptspalte wächst nicht mehr mit breiten Tabellen (Referenz scrollte am Handy seitlich).
+- Chart.js 4.4.1 lokal (`vendor/`), Systemschrift statt Google Fonts (offline, keine Anfrage an Google).
+- `scripts/compare.mjs`: Seitenvergleich Referenz ↔ App, 1.626 Textblöcke und 136 Diagramme identisch bis auf
+  die gewollten Textänderungen.

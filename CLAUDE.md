@@ -45,6 +45,13 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    Zählerstand − 1 Tag, nicht bis zum Kalenderdatum.
 4. Seiten portieren: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe, Stromkosten
    (inkl. Abschlag-Check), Amortisation, Auto-Vergleich, Tanken & Laden (inkl. Fahrzeugbuch), Daten.
+   - ✅ 4a Anzeige (v0.4): `js/views.js` enthält die render*-Funktionen der Referenz, verbunden mit calc.js;
+     Eingaben gesperrt (`body.ro`, `.edit-only`). `scripts/compare.mjs` vergleicht Referenz und App (Texte und
+     Diagrammdaten, 9 Seiten × 6 Ansichten); gewollte Abweichungen stehen im Kopf des Skripts.
+   - 4b Bearbeiten: Zählerstände, Tarife, Abschläge, Investitionen, Tanken, Laden, Fahrzeugbuch, Ereignisse,
+     Parameter (Batterie, Amortisation, Autos, PV-Offset) mit Schreiben nach Supabase.
+   - Texte ohne private Details (Anbieter, Daten, Geräteaufbau): aus den Daten füllen (`data-sm` = Smart-Meter-
+     Datum aus `events`) oder neutral formulieren.
 5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy
    (Zählerstand, Tankvorgang, Ladevorgang, Fahrzeugbuch-Eintrag) als eigene, große Startbuttons.
 6. Später: Zahlungsbuch (Tabelle `payments` existiert), Tarifrechner (Fix vs. dynamisch, §14a Modul 1/3,
