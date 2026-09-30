@@ -51,3 +51,25 @@
 - Chart.js 4.4.1 lokal (`vendor/`), Systemschrift statt Google Fonts (offline, keine Anfrage an Google).
 - `scripts/compare.mjs`: Seitenvergleich Referenz ↔ App, 1.626 Textblöcke und 136 Diagramme identisch bis auf
   die gewollten Textänderungen.
+
+## v0.4.1 – Fehlerbehebung Laden nach Update
+- Problem: Nach dem Update auf v0.4 kombinierte der Browser die neue Seite mit zwischengespeicherten Dateien aus
+  v0.2 (Styles, Skript). Ergebnis: keine Navigation, keine Kennzahlen, „Lade Daten …“ blieb stehen.
+- Versionskennung `?v=` an allen Dateiverweisen und Modul-Imports (`scripts/set-version.mjs`), damit ein Update
+  immer vollständig neue Dateien lädt.
+- Lade- und Laufzeitfehler erscheinen als Hinweis am unteren Rand statt als halb leere Seite.
+- Versionsanzeige in der Navigation.
+
+## v0.5.0 – Phase 4b: Bearbeiten
+- Erfassen, Ändern und Löschen wie in der Referenz: Zählerstände, Tarife, Abschläge, Investitionen, Tankvorgänge,
+  Ladevorgänge, Fahrzeugbuch, Ereignisse. Jede Änderung schreibt genau einen Datensatz nach Supabase.
+- Parameter (Batterie, PV-Offset, Amortisations-Regler, Autos) werden 0,7 s nach der letzten Änderung als
+  Einstellungen gespeichert, damit beim Ziehen eines Reglers nicht jede Zwischenstellung geschrieben wird.
+- Nach jeder Änderung rechnet die App neu; Speicherstatus in der Navigation („Speichert …“, „Gespeichert“).
+- Scheitert ein Speichern (z. B. doppelter Abschlag am selben Tag), erscheint ein Hinweis und der Stand wird aus
+  Supabase neu geladen – Anzeige und Datenbank laufen nicht auseinander.
+- `scripts/edit-check.mjs`: 25 Prüfungen gegen ein simuliertes Supabase, alle grün. Nach Bearbeitungen stimmen
+  die Kennzahlen weiter mit der Referenz überein (gleiche Änderungen dort gesetzt).
+- Korrektur zu v0.4: Der Seitenvergleich zählte versteckte, leere Blöcke mit. Tatsächlich verglichen wurden
+  210 sichtbare Textblöcke und 136 Diagramme; Ergebnis unverändert (nur gewollte Textabweichungen).
+  `scripts/compare.mjs` berücksichtigt jetzt nur sichtbare Elemente.

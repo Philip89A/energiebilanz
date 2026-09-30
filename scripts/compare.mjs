@@ -31,7 +31,7 @@ const SEL = ['#pb-info', '#ov-sentence', '#ov-legend', '#ov-kpis', '#ov-cmp-tbl'
 async function grab(p) {
   return p.evaluate(({ SEL }) => {
     const t = {};
-    for (const s of SEL) { const e = document.querySelector(s); if (e) t[s] = e.innerText.replace(/\s+/g, ' ').trim(); }
+    for (const s of SEL) { const e = document.querySelector(s); if (e && !e.closest('[hidden]')) t[s] = e.innerText.replace(/\s+/g, ' ').trim(); }  // nur sichtbare Elemente
     const ch = (typeof charts !== 'undefined' ? charts : window.__ebCharts) || {};
     const c = {};
     for (const [id, x] of Object.entries(ch)) { if (!x || !x.data) continue; c[id] = { labels: x.data.labels, ds: x.data.datasets.map(d => ({ label: d.label, data: d.data })) }; }

@@ -32,6 +32,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
   Keine echten Zahlen in Testdateien, Doku oder Commit-Texten.
 - Zählerstand eines Tages gilt als Stand am Tagesanfang (Verbrauch des Ablesetags gehört zum Folgeintervall).
 - Versionen mit Changelog (`CHANGELOG.md`, vX.Y), jede Änderung kurz begründet.
+- Vor jedem Release `node scripts/set-version.mjs X.Y.Z` ausführen: setzt `?v=` in index.html und allen Imports,
+  sonst mischen Browser nach einem Update alte und neue Dateien (GitHub Pages cacht bis zu 10 Minuten).
 
 ## Phasen
 1. ✅ Supabase-Projekt, `schema.sql` v2, RLS, Login per E-Mail + Passwort (v0.1).
@@ -48,8 +50,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ 4a Anzeige (v0.4): `js/views.js` enthält die render*-Funktionen der Referenz, verbunden mit calc.js;
      Eingaben gesperrt (`body.ro`, `.edit-only`). `scripts/compare.mjs` vergleicht Referenz und App (Texte und
      Diagrammdaten, 9 Seiten × 6 Ansichten); gewollte Abweichungen stehen im Kopf des Skripts.
-   - 4b Bearbeiten: Zählerstände, Tarife, Abschläge, Investitionen, Tanken, Laden, Fahrzeugbuch, Ereignisse,
-     Parameter (Batterie, Amortisation, Autos, PV-Offset) mit Schreiben nach Supabase.
+   - ✅ 4b Bearbeiten (v0.5): Handler der Referenz; jede Änderung schreibt genau einen Datensatz (`toDb` in
+     calc.js, `saveRow`/`deleteRow` in db.js), Parameter (battery, pv, amort, cars) verzögert als `settings`.
+     Danach neues Rechenmodell (`refreshCalc`). Bei Fehlern Hinweis und Neuladen aus Supabase.
+     Prüfung: `scripts/edit-check.mjs` (25 Prüfungen) und `scripts/compare.mjs`.
    - Texte ohne private Details (Anbieter, Daten, Geräteaufbau): aus den Daten füllen (`data-sm` = Smart-Meter-
      Datum aus `events`) oder neutral formulieren.
 5. PWA: Manifest, Service Worker, Offline-Cache, schnelle Eingabemasken für das Handy

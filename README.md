@@ -10,7 +10,7 @@ Hosting auf GitHub Pages, Daten in Supabase (Login per E-Mail + Passwort, Row Le
 - `js/views.js` – Seiten (aus der Referenz übernommen), `js/calc.js` – Rechenlogik (reine Funktionen), `js/import.js` – Import-Logik (reine Funktionen), `js/db.js` – Supabase-Zugriff, `js/app.js` – Oberfläche
 - `CHANGELOG.md` – Versionen
 
-Tests: `node --test tests/*.test.mjs` (Vergleichswerte neu erzeugen: `npx -y -p playwright node scripts/golden.mjs`; Seitenvergleich Referenz ↔ App: `scripts/compare.mjs`). Lokal starten: `python3 -m http.server 8000`, dann http://localhost:8000
+Tests: `node --test tests/*.test.mjs` (Vergleichswerte neu erzeugen: `npx -y -p playwright node scripts/golden.mjs`; Seitenvergleich Referenz ↔ App: `scripts/compare.mjs`; Bearbeiten: `scripts/edit-check.mjs`; Version setzen: `node scripts/set-version.mjs X.Y.Z`). Lokal starten: `python3 -m http.server 8000`, dann http://localhost:8000
 
 Nicht im Repo (siehe `.gitignore`): `data/` (Seed, Anker-Exporte) und `reference/` (Referenz-HTML mit
 eingebetteten Messdaten). Beides liegt nur lokal.

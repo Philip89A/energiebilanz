@@ -47,7 +47,7 @@ export function stateFromDb(db) {
     anker: { dates: rows.map(r => r.day), c },
     meters: (db.meters || []).map(m => ({ id: m.id, name: m.name, group: m.grp, order: +m.sort || 0 })),
     readings: (db.meter_readings || []).map(r => ({ m: r.meter_id, d: r.day, v: +r.value, src: r.source })),
-    events: (db.events || []).map(e => ({ d: e.day, group: e.grp, type: e.type, text: e.note })),
+    events: (db.events || []).map(e => ({ id: e.id, d: e.day, group: e.grp, type: e.type, text: e.note })),
     tariffs: (db.tariffs || []).map(t => ({ id: t.id, group: t.grp, name: t.name, from: t.valid_from, to: t.valid_to || '',
       ap: +t.ap_ct, gp: +t.gp_eur_year, boni: +t.boni_eur || 0, boniNote: t.boni_note || '', est: t.estimate_note || '' })),
     abschlaege: (db.installments || []).map(a => ({ id: a.id, group: a.grp, from: a.valid_from, amount: +a.amount, note: a.note || '' })),
@@ -58,6 +58,20 @@ export function stateFromDb(db) {
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
   };
 }
+
+// Referenzform -> Supabase-Zeile (Umkehrung von stateFromDb), je Datensatzart. user_id setzt db.js.
+export const toDb = {
+  reading: r => ({ meter_id: r.m, day: r.d, value: +r.v, source: r.src || null }),
+  tariff: t => ({ id: t.id, grp: t.group, name: t.name, valid_from: t.from, valid_to: t.to || null, ap_ct: +t.ap,
+    gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null }),
+  installment: a => ({ id: a.id, grp: a.group, valid_from: a.from, amount: +a.amount, note: a.note || null }),
+  investment: x => ({ id: x.id, day: x.date || null, name: x.name, cost: +x.cost || 0 }),
+  fuel: x => ({ id: x.id, day: x.d, odometer: +x.km, liters: +x.l, amount: +x.e, fuel_type: x.s || null, full_tank: !!x.full }),
+  charge: x => ({ id: x.id, day: x.d, odometer: x.km ? +x.km : null, kwh: +x.k, amount: x.e == null ? null : +x.e, location: x.o || null }),
+  carlog: x => ({ id: x.id, day: x.d, car: x.car, category: x.cat, odometer: x.km ? +x.km : null, amount: +x.e || 0, note: x.note || null }),
+  event: e => ({ id: e.id, day: e.d, grp: e.group || null, type: e.type || null, note: e.text || null }),
+  settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars } }),
+};
 
 /* ---------- Rechenkern ---------- */
 export function createCalc(S) {
