@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="theme-color" content="#12372a">
+<title>Energiebilanz</title>
+<link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<section id="auth-screen" class="screen" hidden>
+  <form id="login-form" class="card narrow">
+    <h1>Energiebilanz</h1>
+    <label>E-Mail
+      <input type="email" id="login-email" required autocomplete="username">
+    </label>
+    <label>Passwort
+      <input type="password" id="login-password" required autocomplete="current-password">
+    </label>
+    <p id="login-error" class="error" hidden></p>
+    <button type="submit" class="primary">Anmelden</button>
+    <button type="button" id="forgot-password-btn" class="link">Passwort vergessen?</button>
+  </form>
+</section>
+
+<section id="recovery-screen" class="screen" hidden>
+  <form id="recovery-form" class="card narrow">
+    <h1>Neues Passwort</h1>
+    <label>Neues Passwort
+      <input type="password" id="recovery-password" required autocomplete="new-password" minlength="12">
+    </label>
+    <p id="recovery-error" class="error" hidden></p>
+    <button type="submit" class="primary">Speichern</button>
+  </form>
+</section>
+
+<div id="app-shell" hidden>
+  <header class="topbar">
+    <span class="brand">Energiebilanz</span>
+    <button id="logout-btn" class="link light">Abmelden</button>
+  </header>
+
+  <main>
+    <h2>Daten</h2>
+
+    <section class="card">
+      <h3>Datenstand</h3>
+      <div id="status">Lade …</div>
+    </section>
+
+    <section class="card">
+      <h3>Anker-Export importieren</h3>
+      <p class="hint">Anker-App → Energiedetails → Export als CSV. Neue Tage werden ergänzt, geänderte Tage
+        vor dem Übernehmen angezeigt.</p>
+      <input type="file" id="csv-file" accept=".csv,text/csv,text/comma-separated-values">
+      <div id="csv-result"></div>
+    </section>
+
+    <section class="card">
+      <h3>Startdaten importieren (einmalig)</h3>
+      <p class="hint"><code>seed_state.json</code> aus der Referenzversion. Die Datei wird nur im Browser gelesen.</p>
+      <input type="file" id="seed-file" accept=".json,application/json">
+      <div id="seed-result"></div>
+    </section>
+  </main>
+</div>
+
+<script src="vendor/supabase.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
