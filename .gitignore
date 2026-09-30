@@ -1,0 +1,9 @@
+# Private Daten nur lokal für den einmaligen Import, niemals committen
+data/
+reference/
+*.csv
+*.xlsx
+seed_state*.json
+.env
+.DS_Store
+node_modules/
