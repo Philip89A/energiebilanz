@@ -10,3 +10,8 @@
 - `view`/`ui` werden je Gerät im localStorage gehalten, nicht in `settings` (sonst springt die Ansicht
   auf allen Geräten um). `abschlag` und `version` aus dem Seed entfallen (Altbestand).
 - `config.js` mit Supabase-URL und Publishable-Key.
+
+## v0.1.1 – CLAUDE.md aufgeteilt
+- Öffentliche `CLAUDE.md`: Arbeitsweise, Phasen, Mapping (auf Schema v2 aktualisiert), Rechenregeln.
+- Referenzwerte, Tarife, Verträge, Zählerstände, Fahrzeugkonditionen und offene Punkte nach `data/REFERENZ.md`
+  (nur lokal). Grund: öffentliches Repo, Mess- und Vertragsdaten gehören nicht hinein.
