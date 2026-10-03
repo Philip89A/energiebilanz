@@ -202,3 +202,18 @@
 - Wirkt überall, wo Tageswerte der Wärmepumpe genutzt werden (Monatsverbrauch, Jahresvergleich, Kosten je Monat,
   Zeiträume); Abschlag-Check und Intervallwerte ändern sich nicht (Summen je Ablesung bleiben gleich).
 - Tests: 68 Unit-Tests (2 neue in `tests/v11.test.mjs`); alle Browser-Prüfungen und der Seitenvergleich bestanden.
+
+## v0.13.0 – Zeitraum auf „Zähler & Wärmepumpe“
+- Die Zeitraumleiste (gesamter Zeitraum, 12 Monate, Jahr, Quartal, Monat, frei, mit Vergleich) erscheint jetzt auch auf
+  „Zähler & Wärmepumpe“; die Auswahl gilt wie bisher für alle Seiten gemeinsam.
+- **Wärmepumpe laut Gerät**: Kennzahlen (Strom, Wärme, Arbeitszahl, Warmwasser-Strom pro Tag) für den Zeitraum, mit
+  Vergleichswert und Abweichung; Monatsgrafik und Tabelle nur mit den Monaten im Zeitraum; Tagesgrafik für den
+  ganzen Zeitraum bis 92 Tage, sonst die letzten 90 Tage. Fehlende Tageswerte werden aus dem Monatswert gleichmäßig
+  verteilt (`hpDayRows`, ab dem Tauschtag) und hell dargestellt; der Hinweis nennt die Abdeckung.
+  Grund: Vergleiche wie „Oktober 2026 gegen Oktober 2025“ für die neuen Warmwasser-Zeitfenster.
+- **Verbrauch pro Monat** (Zähler) folgt dem Zeitraum, bis 62 Tage je Tag. Abgestimmte Abweichung von der Referenz
+  (Diagramm mt-month, „Gesamter Zeitraum“ unverändert), im Kopf von `scripts/compare.mjs` vermerkt.
+- **Wärmepumpe wetterbereinigt**: Grafik und Tabelle zeigen die Ableseintervalle im Zeitraum; das Modell rechnet
+  weiterhin mit allen Daten.
+- Unverändert: Zählerstände, Abgleich Hauptzähler, alt gegen neu, Monate im Jahresvergleich.
+- Tests: 69 Unit-Tests, `scripts/v13-check.mjs` 15 Prüfungen; `v11-check` an die Tauschtag-Regel angepasst.

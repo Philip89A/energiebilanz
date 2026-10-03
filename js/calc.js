@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.12.0';
+import { hpSum } from './hp.js?v=0.13.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -691,6 +691,29 @@ export function createCalc(S) {
         gt: dd && dd.missing === 0 ? dd.gt : null, heatPerGt: dd && dd.missing === 0 && dd.gt >= 100 ? s.elHeat / dd.gt : null };
     });
   }
+  // v0.13: Tageswerte für einen Zeitraum – echte Tageswerte, sonst Monatswert (abzüglich vorhandener Tage) gleichmäßig
+  // auf die übrigen Tage des Monats ab dem Tauschtag verteilt (est = geschätzt). Tage ohne Daten fehlen.
+  const HP_F = ['el_hp', 'el_heat', 'el_cool', 'el_dhw', 'el_aux', 'el_aux_heat', 'el_aux_dhw', 'heat_heat', 'heat_dhw', 'heat_cool'];
+  function hpDayRows(from, to) {
+    const days = Object.fromEntries(hpRows('day').map(r => [r.ts, r])), months = Object.fromEntries(hpRows('month').map(r => [r.ts, r]));
+    const spread = {}, out = [];
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      if (d < _hpFrom) continue;
+      if (days[d]) { out.push({ ...days[d], d, est: false }); continue; }
+      const k = monthKey(d), m = months[k]; if (!m) continue;
+      if (!spread[k]) {
+        const first = _hpFrom > `${k}-01` ? _hpFrom : `${k}-01`, known = Object.keys(days).filter(x => x.startsWith(k) && x >= first);
+        const n = diffDays(first, monthEnd(k)) + 1 - known.length;
+        spread[k] = Object.fromEntries(HP_F.map(f => [f, n > 0 ? Math.max(0, (+m[f] || 0) - known.reduce((a, x) => a + (+days[x][f] || 0), 0)) / n : 0]));
+      }
+      out.push({ ...spread[k], grain: 'day', ts: d, d, t_out: m.t_out, est: true });
+    }
+    return out;
+  }
+  function hpPeriod(from, to) {
+    const rows = hpDayRows(from, to); if (!rows.length) return null;
+    return { ...hpSum(rows), days: rows.length, estDays: rows.filter(r => r.est).length, total: diffDays(from, to) + 1, from: rows[0].d, to: rows[rows.length - 1].d };
+  }
   // Letzte 12 Monate mit Daten (Monatswerte der App)
   function hpYear() {
     const m = hpRows('month'); if (!m.length) return null;
@@ -729,7 +752,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod,
   };
 }
 

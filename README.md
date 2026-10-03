@@ -13,7 +13,7 @@ Hosting auf GitHub Pages, Daten in Supabase (Login per E-Mail + Passwort, Row Le
 - `docs/UPDATE_V07.sql` – einmaliges Datenbank-Update für v0.7 (Boni-Posten)
 - `CHANGELOG.md` – Versionen
 
-Tests: `node --test tests/*.test.mjs` (Vergleichswerte neu erzeugen: `npx -y -p playwright node scripts/golden.mjs`; Seitenvergleich Referenz ↔ App: `scripts/compare.mjs`; Bearbeiten: `scripts/edit-check.mjs`; Offline: `scripts/offline-check.mjs`; v0.7: `scripts/v07-check.mjs`; v0.8: `scripts/v08-check.mjs`; v0.9: `scripts/v09-check.mjs`; v0.10: `scripts/v10-check.mjs`; v0.11: `scripts/v11-check.mjs`; Version setzen: `node scripts/set-version.mjs X.Y.Z`). Lokal starten: `python3 -m http.server 8000`, dann http://localhost:8000
+Tests: `node --test tests/*.test.mjs` (Vergleichswerte neu erzeugen: `npx -y -p playwright node scripts/golden.mjs`; Seitenvergleich Referenz ↔ App: `scripts/compare.mjs`; Bearbeiten: `scripts/edit-check.mjs`; Offline: `scripts/offline-check.mjs`; v0.7: `scripts/v07-check.mjs`; v0.8: `scripts/v08-check.mjs`; v0.9: `scripts/v09-check.mjs`; v0.10: `scripts/v10-check.mjs`; v0.11: `scripts/v11-check.mjs`; v0.13: `scripts/v13-check.mjs`; Version setzen: `node scripts/set-version.mjs X.Y.Z`). Lokal starten: `python3 -m http.server 8000`, dann http://localhost:8000
 
 Nicht im Repo (siehe `.gitignore`): `data/` (Seed, Anker-Exporte) und `reference/` (Referenz-HTML mit
 eingebetteten Messdaten). Beides liegt nur lokal.
