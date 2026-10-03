@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp } from './db.js?v=0.13.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.13.0';
-import { stateFromDb } from './calc.js?v=0.13.0';
-import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.13.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.13.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp } from './db.js?v=0.14.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.14.0';
+import { stateFromDb } from './calc.js?v=0.14.0';
+import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.14.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.14.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -42,7 +42,9 @@ async function exec(o) {
 function snapApply(o) { const s = local?.snapshot(); if (s) local.saveSnapshot(applyOps(s.db, [o])); }
 function queueOp(o) { local.saveQueue(enqueue(local.queue(), o)); updatePending(); }
 // Schreiben für views.js: sofort senden, sonst vormerken. Reihenfolge bleibt erhalten (wartet schon etwas, hinten anstellen).
+let readOnly = false;      // Gastzugang: nichts senden, nichts vormerken
 async function send(o) {
+  if (readOnly) return 'readonly';
   if (!local) { await exec(o); return 'saved'; }
   if (local.queue().length || !online()) { queueOp(o); return 'queued'; }
   try { await exec(o); snapApply(o); return 'saved'; }
@@ -53,8 +55,8 @@ setStore({
   deleteRow: (kind, row) => send({ op: 'delete', kind, row }),
   saveSettings: data => send({ op: 'settings', data }),
   reload: () => { shownJson = null; loadModel(); },   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
-  saveWeather: rows => (online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),
-  saveHp: rows => (online() ? saveHp(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut hochladen.'))),
+  saveWeather: rows => (readOnly ? Promise.resolve('readonly') : online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),
+  saveHp: rows => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? saveHp(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut hochladen.'))),
 });
 
 let flushing = false;
@@ -130,6 +132,9 @@ function showDb(db) {
   const json = JSON.stringify(d);
   if (json === shownJson) return;
   shownJson = json;
+  readOnly = !!d.readOnly;
+  document.body.classList.toggle('ro', readOnly);
+  $('guest-banner').hidden = !readOnly;
   const empty = !d.anker_daily?.length;
   $('empty-hint').hidden = !empty;
   if (empty) {

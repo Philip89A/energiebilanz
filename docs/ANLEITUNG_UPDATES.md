@@ -29,3 +29,14 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. Daten → „Wärmepumpe: App-Export importieren“ → CSV aus der Wärmepumpen-App wählen → Zeilen speichern.
    Regelmäßig (z. B. monatlich) wiederholen: Die App exportiert Stunden nur für wenige Tage und Tage nur für
    wenige Monate.
+
+# Update v0.14 (Gastzugang, nur lesen)
+1. Gast-Account anlegen: Supabase → Authentication → Users → Add user → Create new user (E-Mail, Passwort,
+   „Auto Confirm User“).
+2. SQL Editor → New query → Inhalt von `docs/UPDATE_V14.sql` einfügen. Unten im Abschnitt 4 die Zeile für den Gast
+   einkommentieren und beide E-Mail-Adressen eintragen → **Run**. Die Warnung „destructive operations“ bestätigen
+   (betrifft nur die Zugriffsregeln, keine Daten). Kontrolle: je Tabelle `eb_delete, eb_insert, eb_read, eb_update`.
+3. Pull Request mergen, App neu laden (v0.14.0). Der Gast meldet sich mit seinen Zugangsdaten an und sieht oben
+   „Gastzugang – nur lesen“.
+4. Gast entfernen: `delete from shares where viewer_id = (select id from auth.users where email = 'GAST@…');`
+   und den Account unter Authentication → Users löschen.

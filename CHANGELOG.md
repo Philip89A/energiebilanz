@@ -217,3 +217,15 @@
   weiterhin mit allen Daten.
 - Unverändert: Zählerstände, Abgleich Hauptzähler, alt gegen neu, Monate im Jahresvergleich.
 - Tests: 69 Unit-Tests, `scripts/v13-check.mjs` 15 Prüfungen; `v11-check` an die Tauschtag-Regel angepasst.
+
+## v0.14.0 – Gastzugang (nur lesen)
+- **Schema v7** (`docs/UPDATE_V14.sql`): Tabelle `shares` (Besitzer gibt Gast frei, nur per SQL Editor änderbar),
+  Funktionen `eb_can_read`/`eb_can_write` und je Tabelle getrennte Regeln: Lesen eigene oder freigegebene Zeilen,
+  Schreiben/Ändern/Löschen nur eigene und nur, wenn man nirgends Gast ist. Ersetzt die Regel `own_rows`.
+  Grund: „nur lesen“ muss die Datenbank durchsetzen, weil der Schlüssel der App öffentlich ist.
+  Lokal mit PostgreSQL 16 geprüft (Schema v2 bis v7, zweimal ausgeführt): Gast liest alles, Einfügen, Ändern,
+  Löschen und neue Freigaben scheitern; Fremde sehen nichts; Besitzer schreibt wie bisher; anon hat keinen Zugriff.
+- **App**: erkennt den Gast über `shares` und schaltet in den Nur-Lese-Modus (`body.ro`): Hinweis oben, Eingaben,
+  Erfassen, Importe und Bearbeiten gesperrt, kein Wetter-Abruf, keine Schreibanfragen; Zeitraum und Ansicht bleiben
+  wählbar (nur auf dem Gerät gespeichert).
+- Tests: `scripts/v14-check.mjs` 15 Prüfungen; alle bisherigen Prüfungen und Seitenvergleich unverändert.

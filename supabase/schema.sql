@@ -202,6 +202,10 @@ create index if not exists charge_log_day on charge_log (user_id, day);
 create index if not exists car_log_day    on car_log    (user_id, car, day);
 create index if not exists tariffs_grp    on tariffs    (user_id, grp, valid_from);
 
+-- v7 (App v0.14): Gastzugang. Die Regeln own_rows unten werden durch docs/UPDATE_V14.sql ersetzt
+-- (Tabelle shares, Funktionen eb_can_read/eb_can_write, Regeln eb_read/eb_insert/eb_update/eb_delete).
+-- Bei einer Neuinstallation zuerst dieses Schema, danach docs/UPDATE_V14.sql ausführen.
+
 -- updated_at automatisch setzen
 create or replace function set_updated_at() returns trigger
 language plpgsql set search_path = '' as $$

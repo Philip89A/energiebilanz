@@ -23,7 +23,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
 - Keine persönlichen Daten im Repo oder im ausgelieferten Code: keine Adresse, Zählernummern, Vertrags- oder
   Kundennummern, IBAN, Geburtsdatum, keine Mess-, Tarif- oder Vertragswerte. Diese liegen nur in Supabase
   bzw. lokal in `data/`. `data/` und `reference/` sind per `.gitignore` ausgeschlossen.
-- **Row Level Security zuerst.** Vor dem ersten echten Datensatz muss `supabase/schema.sql` laufen und die
+- **Row Level Security zuerst.** Ab v0.14 Regeln eb_read/eb_insert/eb_update/eb_delete (Gäste nur lesen). Vor dem ersten echten Datensatz muss `supabase/schema.sql` laufen und die
   Prüfungen aus `docs/ANLEITUNG_PHASE1.md` Teil C bestehen. Der Publishable-Key liegt im Frontend
   (`config.js`), deshalb ist RLS Pflicht. Registrierung in Supabase ist geschlossen, der einzige Nutzer
   wurde im Dashboard angelegt.
@@ -90,6 +90,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.13: Zeitraumleiste auch auf „Zähler & Wärmepumpe“ (gemeinsam mit allen Seiten); Gerätewerte, Tages- und
      Monatsgrafik, wetterbereinigte Intervalle und mt-month folgen dem Zeitraum (`hpDayRows`, `hpPeriod`).
      Prüfung: `scripts/v13-check.mjs`.
+   - ✅ v0.14: Gastzugang nur lesen (`shares`, `eb_can_read`/`eb_can_write`, Regeln eb_* statt own_rows, schema v7 /
+     `docs/UPDATE_V14.sql`; App `body.ro` bei Eintrag als viewer). Prüfung: `scripts/v14-check.mjs`, SQL lokal.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
