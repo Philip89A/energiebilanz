@@ -80,3 +80,20 @@ test('v0.12: Tauschmonat – Monatswert nur ab dem Tauschtag, davor gleichmäßi
   // Januar ab 21.: 110 kWh auf 11 Tage = 10/Tag, Februar 280/28 = 10/Tag → gleich gewichtet
   assert.ok(Math.abs(g.daily['2025-01-25'] - 200 / 21) < 1e-9 && Math.abs(g.daily['2025-02-05'] - 200 / 21) < 1e-9);
 });
+
+test('v0.13: Gerätewerte für Zeiträume – Tageswerte, sonst Monatsrest gleichmäßig, Tausch beachtet', () => {
+  const base = { anker_daily: [{ day: '2025-01-01', genutzt: 1 }], meters: [], settings: { data: { pv: { kwp: 1 }, battery: {}, amort: {} } },
+    events: [{ id: 'e', day: '2025-01-11', grp: 'wp', type: 'geraet', note: 'Tausch' }] };
+  const hp = [{ grain: 'month', ts: '2025-01', el_hp: 63, el_dhw: 21, el_aux: 0, heat_heat: 100, heat_dhw: 50 },
+    { grain: 'day', ts: '2025-01-31', el_hp: 3, el_dhw: 1, el_aux: 0, heat_heat: 5, heat_dhw: 2 }];
+  const C = createCalc(stateFromDb({ ...base, hp_energy: hp }));
+  const rows = C.hpDayRows('2025-01-01', '2025-01-31');
+  assert.equal(rows.length, 21, 'erst ab dem Tauschtag (11.–31.01.)');
+  assert.equal(rows.filter(r => r.est).length, 20);
+  assert.ok(Math.abs(rows[0].el_hp - 3) < 1e-9 && Math.abs(rows[0].el_dhw - 1) < 1e-9, 'Monatsrest (63−3)/20 bzw. (21−1)/20');
+  const p = C.hpPeriod('2025-01-01', '2025-01-31');
+  assert.ok(Math.abs(p.el - 63) < 1e-9 && Math.abs(p.elDhw - 21) < 1e-9, 'Summe = Monatswert');
+  assert.equal(p.total, 31); assert.equal(p.days, 21); assert.equal(p.estDays, 20);
+  assert.ok(Math.abs(C.hpPeriod('2025-01-21', '2025-01-30').el - 30) < 1e-9);
+  assert.equal(C.hpPeriod('2024-01-01', '2024-12-31'), null);
+});

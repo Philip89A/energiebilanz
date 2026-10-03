@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.12.0">
-<link rel="stylesheet" href="css/style.css?v=0.12.0">
+<meta name="app-version" content="0.13.0">
+<link rel="stylesheet" href="css/style.css?v=0.13.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -161,7 +161,7 @@
     <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
   </div>
   <div class="panel" style="margin-top:16px" id="hp-panel"><h2>Wärmepumpe laut Gerät</h2>
-    <p class="note">Aus dem Energie-Export der Wärmepumpen-App (Import unter „Daten“): Strom getrennt nach Heizung, Warmwasser und Kühlung, erzeugte Wärme und Arbeitszahl (Wärme ÷ Strom, ohne Kühlung). Der Zähler misst dasselbe Gerät; die Linie „Zähler“ zeigt den Monatsverbrauch laut Ablesungen, zwischen zwei Ständen nach dem Geräteprofil verteilt – sie weicht vom Gerät nur um den Unterschied der Summen je Ableseintervall ab.</p>
+    <p class="note">Aus dem Energie-Export der Wärmepumpen-App (Import unter „Daten“), für den oben gewählten Zeitraum: Strom getrennt nach Heizung, Warmwasser und Kühlung, erzeugte Wärme und Arbeitszahl (Wärme ÷ Strom, ohne Kühlung). Der Zähler misst dasselbe Gerät; die Linie „Zähler“ zeigt den Monatsverbrauch laut Ablesungen, zwischen zwei Ständen nach dem Geräteprofil verteilt – sie weicht vom Gerät nur um den Unterschied der Summen je Ableseintervall ab.</p>
     <div id="hp-flags"></div><div class="grid g4" id="hp-kpis" style="margin-top:10px"></div>
     <div class="grid g2" style="margin-top:16px">
       <div><h2 style="font-size:15px">Strom je Monat</h2><div class="chart"><canvas id="hp-month"></canvas></div></div>
@@ -169,10 +169,10 @@
     </div>
     <div class="tbl-wrap"><table id="hp-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px" id="wx-wp-panel"><h2>Wärmepumpe wetterbereinigt</h2>
-    <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar.</p>
+    <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar. Grafik und Tabelle zeigen die Ableseintervalle im oben gewählten Zeitraum, das Modell rechnet immer mit allen Daten.</p>
     <div id="wx-wp"></div><div class="chart"><canvas id="wx-wp-chart"></canvas></div><div class="tbl-wrap"><table id="wx-wp-tbl"></table></div></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel"><h2>Verbrauch pro Monat</h2><p class="note">Aus den Zählerständen, Allgemeinstrom nach Anker-Profil, Wärmepumpe nach Geräteprofil verteilt.</p><div class="chart"><canvas id="mt-month"></canvas></div></div>
+    <div class="panel"><h2 id="mt-month-title">Verbrauch pro Monat</h2><p class="note">Aus den Zählerständen im oben gewählten Zeitraum, Allgemeinstrom nach Anker-Profil, Wärmepumpe nach Geräteprofil verteilt.</p><div class="chart"><canvas id="mt-month"></canvas></div></div>
     <div class="panel"><h2>Monate im Jahresvergleich</h2><div class="form" style="margin-top:8px;max-width:260px"><label class="f">Zählpunkt<select id="mt-yoy-g"><option value="wp">Wärmepumpe</option><option value="as">Allgemeinstrom</option><option value="feed">Einspeisung</option></select></label></div><div class="chart"><canvas id="mt-yoy"></canvas></div></div>
   </div>
   <div class="panel" style="margin-top:16px">
@@ -394,8 +394,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.12.0"></script>
-<script src="vendor/chart.umd.js?v=0.12.0"></script>
-<script type="module" src="js/app.js?v=0.12.0"></script>
+<script src="vendor/supabase.js?v=0.13.0"></script>
+<script src="vendor/chart.umd.js?v=0.13.0"></script>
+<script type="module" src="js/app.js?v=0.13.0"></script>
 </body>
 </html>

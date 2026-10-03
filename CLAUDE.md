@@ -87,6 +87,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      je Tag bis 62 Tage, Wetter im Tooltip der Tagesgrafiken. Prüfung: `tests/v11.test.mjs`, `scripts/v11-check.mjs`.
    - ✅ v0.12: Wärmepumpen-Zähler nach Geräteprofil auf Tage verteilt (`hpWeight` in `groupSeries`, erst ab Tauschtag;
      mit Philip abgestimmte Abweichung von der Referenz, wirkt nur mit Gerätedaten).
+   - ✅ v0.13: Zeitraumleiste auch auf „Zähler & Wärmepumpe“ (gemeinsam mit allen Seiten); Gerätewerte, Tages- und
+     Monatsgrafik, wetterbereinigte Intervalle und mt-month folgen dem Zeitraum (`hpDayRows`, `hpPeriod`).
+     Prüfung: `scripts/v13-check.mjs`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

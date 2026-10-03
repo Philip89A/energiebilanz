@@ -3,10 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.12.0';
-import { parseNum } from './queue.js?v=0.12.0';
-import { geocode, fetchDays } from './weather.js?v=0.12.0';
-import { parseHpCsv } from './hp.js?v=0.12.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.13.0';
+import { parseNum } from './queue.js?v=0.13.0';
+import { geocode, fetchDays } from './weather.js?v=0.13.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.13.0';
+const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
 const VIEW_KEY = 'eb_view_v1';
@@ -115,7 +116,7 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-cost"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost"];
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
 function keyLabel(mode,k){ return mode==="quarter" ? `Q${k.slice(6)} ${k.slice(0,4)}` : mode==="month" ? `${MON[+k.slice(5,7)-1]} ${k.slice(0,4)}` : k; }
@@ -235,9 +236,12 @@ function renderMeterExtras(){
   const f=S.ui.meterFilter||"all";
   $("rd-filter").innerHTML = `<option value="all">Alle Zähler</option>`+S.meters.map(m=>`<option value="${m.id}" ${m.id===f?"selected":""}>${esc(m.name)}</option>`).join("");
   const groups=[["as","Allgemeinstrom","--grid"],["wp","Wärmepumpe","--heat"],["feed","Einspeisung (Zähler)","--feed"]].filter(([g])=>groupSeries(g).intervals.length);
-  const mo={}; groups.forEach(([g])=>{ for(const [d,k] of Object.entries(groupSeries(g).daily)){ const key=monthKey(d); mo[key]=mo[key]||{}; mo[key][g]=(mo[key][g]||0)+k; } });
+  // v0.13: nur der oben gewählte Zeitraum, bis 62 Tage je Tag
+  const {P:MP}=currentPeriods(), mg=gran(MP.from,MP.to);
+  const mo={}; groups.forEach(([g])=>{ for(const [d,k] of Object.entries(groupSeries(g).daily)){ if(d<MP.from||d>MP.to) continue; const key=mg==="day"?d:monthKey(d); mo[key]=mo[key]||{}; mo[key][g]=(mo[key][g]||0)+k; } });
   const ks=Object.keys(mo).sort();
-  chart("mt-month",{type:"bar",data:{labels:ks.map(monthLabel),datasets:groups.map(([g,l,c])=>({label:l,data:ks.map(k=>mo[k][g]||0),backgroundColor:css(c)}))},
+  $("mt-month-title").textContent = mg==="day" ? "Verbrauch pro Tag" : "Verbrauch pro Monat";
+  chart("mt-month",{type:"bar",data:{labels:ks.map(k=>mg==="day"?dde(k).slice(0,6):monthLabel(k)),datasets:groups.map(([g,l,c])=>({label:l,data:ks.map(k=>mo[k][g]||0),backgroundColor:css(c)}))},
     options:{plugins:{tooltip:numTip("kWh")},scales:{y:{title:{display:true,text:"kWh"}}}}});
   const yg=S.ui.yoyGroup||"wp"; $("mt-yoy-g").value=yg;
   const ser=groupSeries(yg).daily, yy={}; for(const [d,k] of Object.entries(ser)){ const y=d.slice(0,4), m=+d.slice(5,7)-1; yy[y]=yy[y]||Array(12).fill(null); yy[y][m]=(yy[y][m]||0)+k; }
@@ -1202,14 +1206,15 @@ function renderWxWp() {
     : kpi("–", `${lab[k]}`, "Zu wenige Ableseintervalle mit Wetterdaten (mindestens 3 mit unterschiedlichem Wetter)")).join("");
   const cmp = G.alt?.year && G.neu?.year ? kpi(`${G.neu.year < G.alt.year ? "−" : "+"}${pct(Math.abs(G.neu.year / G.alt.year - 1))}`, "Neu gegenüber alt, wetterbereinigt", `Heizarbeit je Gradtag ${G.neu.k < G.alt.k ? "−" : "+"}${pct(Math.abs(G.neu.k / G.alt.k - 1))}, Grundlast ${G.neu.base < G.alt.base ? "−" : "+"}${pct(Math.abs(G.neu.base / G.alt.base - 1))}`) : "";
   $("wx-wp").innerHTML = `<div class="grid g3" style="margin-top:10px">${kp}${cmp}</div><p class="note">Bezugswetter: ${nf(r.ref.gt)} Gradtage vom ${dde(r.ref.from)} bis ${dde(r.ref.to)} (Heizgrenze ${nf(+r.cfg.heatLimit, 1)} °C, Raum ${nf(+r.cfg.room, 1)} °C).</p>`;
-  const iv = r.intervals.filter(x => x.ok);
+  const { P: WP } = currentPeriods(), inP = x => x.to > WP.from && x.from <= WP.to;   // v0.13: Anzeige im Zeitraum, Modell mit allen Daten
+  const iv = r.intervals.filter(x => x.ok && inP(x));
   chart("wx-wp-chart", { type: "bar", data: { labels: iv.map(x => dde(x.to)), datasets: [
     { label: "Verbrauch kWh/Tag", data: iv.map(x => x.kwh / x.days), backgroundColor: css("--heat"), yAxisID: "y" },
     { type: "line", label: "Gradtage je Tag", data: iv.map(x => x.gt / x.days), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y1" }] },
     options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)}` } } }, scales: { y: { title: { display: true, text: "kWh/Tag" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "Gradtage/Tag" } } } } });
   const model = x => { const g = G[x.side] || G.alle; return g ? g.base * x.days + g.k * x.gt : null; };
   $("wx-wp-tbl").innerHTML = `<thead><tr><th>Zeitraum</th><th>Tage</th><th>kWh</th><th>kWh/Tag</th><th>Gradtage</th><th>Ø Temperatur</th><th>Modell kWh</th><th class="l">Gerät</th></tr></thead><tbody>${
-    [...r.intervals].reverse().map(x => `<tr><td>${dde(x.from)} – ${dde(x.to)}</td><td>${nf(x.days)}</td><td>${nf(x.kwh)}</td><td>${nf(x.kwh / x.days, 1)}</td><td>${x.ok ? nf(x.gt) : "–"}</td><td>${x.ok ? deg(x.tMean) : "–"}</td><td>${x.ok && model(x) != null ? nf(model(x)) : "–"}</td><td class="l">${{ alt: "alt", neu: "neu", gemischt: "Tausch im Intervall", alle: "" }[x.side]}</td></tr>`).join("")}</tbody>`;
+    [...r.intervals].filter(inP).reverse().map(x => `<tr><td>${dde(x.from)} – ${dde(x.to)}</td><td>${nf(x.days)}</td><td>${nf(x.kwh)}</td><td>${nf(x.kwh / x.days, 1)}</td><td>${x.ok ? nf(x.gt) : "–"}</td><td>${x.ok ? deg(x.tMean) : "–"}</td><td>${x.ok && model(x) != null ? nf(model(x)) : "–"}</td><td class="l">${{ alt: "alt", neu: "neu", gemischt: "Tausch im Intervall", alle: "" }[x.side]}</td></tr>`).join("")}</tbody>`;
 }
 
 function renderWxPv() {
@@ -1274,15 +1279,23 @@ function wireHpImport() {
   });
 }
 function renderHp() {
-  const y = C.hpYear(), months = C.hpMonths();
-  if (!y) { $("hp-flags").innerHTML = flag("Noch keine Gerätedaten: unter „Daten → Wärmepumpe: App-Export importieren“ die CSV-Datei hochladen.", true); $("hp-kpis").innerHTML = ""; $("hp-tbl").innerHTML = "";
-    chart("hp-month", { type: "bar", data: { labels: [], datasets: [] } }); chart("hp-day", { type: "bar", data: { labels: [], datasets: [] } }); return; }
-  const shDhw = y.el ? y.elDhw / y.el : null, perDayDhw = y.elDhw / (y.months * 30.4);
-  $("hp-flags").innerHTML = y.months < 12 ? flag(`Erst ${y.months} Monate mit Gerätedaten – Jahreswerte gelten für diesen Zeitraum.`, true) : "";
-  $("hp-kpis").innerHTML = kpi(kwh(y.el), "Strom Wärmepumpe", `${monthLabel(y.from)} bis ${monthLabel(y.to)}${y.aux ? `, davon Zuheizer ${kwh(y.aux)}` : ""}`)
-    + kpi(kwh(y.heat), "Erzeugte Wärme", `Heizung ${kwh(y.heatHeat)}, Warmwasser ${kwh(y.heatDhw)}`)
-    + kpi(y.cop != null ? nf(y.cop, 2) : "–", "Arbeitszahl", "Wärme ÷ Strom (ohne Kühlung); je höher, desto effizienter")
-    + kpi(shDhw != null ? pct(shDhw) : "–", "Anteil Warmwasser am Strom", `Ø ${nf(perDayDhw, 1)} kWh Strom pro Tag für Warmwasser`);
+  // v0.13: Kennzahlen, Grafiken und Tabelle für den oben gewählten Zeitraum, Vergleich falls gewählt
+  const { P, C: Cp } = currentPeriods(), all = C.hpMonths();
+  const noData = () => { $("hp-kpis").innerHTML = ""; $("hp-tbl").innerHTML = ""; $("hp-day-note").textContent = "";
+    chart("hp-month", { type: "bar", data: { labels: [], datasets: [] } }); chart("hp-day", { type: "bar", data: { labels: [], datasets: [] } }); };
+  if (!all.length) { $("hp-flags").innerHTML = flag("Noch keine Gerätedaten: unter „Daten → Wärmepumpe: App-Export importieren“ die CSV-Datei hochladen.", true); noData(); return; }
+  const p = C.hpPeriod(P.from, P.to), c = Cp ? C.hpPeriod(Cp.from, Cp.to) : null;
+  if (!p) { $("hp-flags").innerHTML = flag(`Keine Gerätedaten im gewählten Zeitraum. Vorhanden: ${monthLabel(all[0].k)} bis ${monthLabel(all[all.length - 1].k)}.`, true); noData(); return; }
+  const cov = q => q.days < q.total || q.estDays ? `Gerätedaten für ${nf(q.days)} von ${nf(q.total)} Tagen${q.estDays ? `, davon ${nf(q.estDays)} aus Monatswerten gleichmäßig verteilt` : ""}.` : "";
+  $("hp-flags").innerHTML = [cov(p), c ? (cov(c) ? `Vergleich: ${cov(c)}` : "") : ""].filter(Boolean).map(t => flag(t, true)).join("")
+    + (Cp && !c ? flag(`Für den Vergleichszeitraum (${esc(Cp.label)}) gibt es keine Gerätedaten.`, true) : "");
+  const dhwDay = q => q.days ? q.elDhw / q.days : null, sh = q => q.el ? q.elDhw / q.el : null;
+  const vs = (a, b, f, rel = true) => (c && b != null && a != null) ? ` · ${esc(Cp.label)}: ${f(b)}${rel && b ? ` (${a >= b ? "+" : "−"}${pct(Math.abs(a / b - 1))})` : ""}` : "";
+  $("hp-kpis").innerHTML = kpi(kwh(p.el), "Strom Wärmepumpe", `${esc(P.label)}${p.aux ? `, davon Zuheizer ${kwh(p.aux)}` : ""}${vs(p.el, c?.el, kwh)}`)
+    + kpi(kwh(p.heat), "Erzeugte Wärme", `Heizung ${kwh(p.heatHeat)}, Warmwasser ${kwh(p.heatDhw)}${vs(p.heat, c?.heat, kwh)}`)
+    + kpi(p.cop != null ? nf(p.cop, 2) : "–", "Arbeitszahl", `Wärme ÷ Strom (ohne Kühlung)${vs(p.cop, c?.cop, v => nf(v, 2))}`)
+    + kpi(nf(dhwDay(p), 1) + " kWh", "Warmwasser-Strom pro Tag", `Anteil am Strom ${pct(sh(p))}${vs(dhwDay(p), c ? dhwDay(c) : null, v => nf(v, 1) + " kWh")}`);
+  const mFrom = P.from.slice(0, 7), mTo = P.to.slice(0, 7), months = all.filter(m => m.k >= mFrom && m.k <= mTo);
   const lab = months.map(m => monthLabel(m.k));
   chart("hp-month", { type: "bar", data: { labels: lab, datasets: [
     { label: "Heizung", data: months.map(m => m.elHeat), backgroundColor: css("--heat"), stack: "s", yAxisID: "y" },
@@ -1292,13 +1305,18 @@ function renderHp() {
     { type: "line", label: "Arbeitszahl", data: months.map(m => m.cop), borderColor: css("--sun"), backgroundColor: css("--sun"), pointRadius: 2, yAxisID: "y1" }] },
     options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, c.dataset.yAxisID === "y1" ? 2 : 0)}${c.dataset.yAxisID === "y1" ? "" : " kWh"}` } } },
       scales: { x: { stacked: true }, y: { stacked: true, title: { display: true, text: "kWh" } }, y1: { position: "right", min: 0, grid: { drawOnChartArea: false }, title: { display: true, text: "Arbeitszahl" } } } } });
-  const dl = C.hpRows("day"), to = dl.length ? dl[dl.length - 1].ts : null, days = to ? C.hpDays(addDaysIso(to, -89), to) : [];
-  $("hp-day-note").textContent = days.length ? `(${dde(days[0].d)} bis ${dde(to)})` : "(keine Tageswerte)";
-  chart("hp-day", { type: "bar", data: { labels: days.map(x => dde(x.d).slice(0, 6)), datasets: [
-    { label: "Heizung", data: days.map(x => x.elHeat), backgroundColor: css("--heat"), stack: "s", yAxisID: "y" },
-    { label: "Warmwasser", data: days.map(x => x.elDhw), backgroundColor: css("--grid"), stack: "s", yAxisID: "y" },
-    { type: "line", label: "Außentemperatur", data: days.map(x => x.tWx ?? x.tOut), borderColor: css("--sun"), backgroundColor: css("--sun"), pointRadius: 0, yAxisID: "y1" }] },
-    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} ${c.dataset.yAxisID === "y1" ? "°C" : "kWh"}` } } },
+  // Tage: ganzer Zeitraum bis 92 Tage, sonst die letzten 90 Tage des Zeitraums mit Daten
+  const dEnd = p.to < P.to ? p.to : P.to, dFrom = diffDaysIso(P.from, P.to) <= 92 ? P.from : addDaysIso(dEnd, -89);
+  const days = C.hpDayRows(dFrom, dEnd);
+  $("hp-day-note").textContent = days.length ? `(${dde(days[0].d)} bis ${dde(days[days.length - 1].d)}${days.some(x => x.est) ? ", teils aus Monatswerten" : ""})` : "(keine Tageswerte)";
+  const one = x => ({ ...x, s: hpSumOne(x) });
+  const dd = days.map(one);
+  chart("hp-day", { type: "bar", data: { labels: dd.map(x => dde(x.d).slice(0, 6)), datasets: [
+    { label: "Heizung", data: dd.map(x => x.s.elHeat), backgroundColor: dd.map(x => x.est ? css("--loss") : css("--heat")), stack: "s", yAxisID: "y" },
+    { label: "Warmwasser", data: dd.map(x => x.s.elDhw), backgroundColor: dd.map(x => x.est ? css("--grid-soft") : css("--grid")), stack: "s", yAxisID: "y" },
+    { type: "line", label: "Außentemperatur", data: dd.map(x => C.W[x.d]?.t ?? x.t_out), borderColor: css("--sun"), backgroundColor: css("--sun"), pointRadius: 0, yAxisID: "y1" }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} ${c.dataset.yAxisID === "y1" ? "°C" : "kWh"}`,
+      footer: items => dd[items[0]?.dataIndex]?.est ? "aus Monatswert gleichmäßig verteilt" : "" } } },
       scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
   $("hp-tbl").innerHTML = `<thead><tr><th>Monat</th><th>Strom</th><th>Heizung</th><th>Warmwasser</th><th>Zuheizer</th><th>Wärme</th><th>Arbeitszahl</th><th>Gradtage</th><th>Heizung je Gradtag</th><th>Zähler</th><th>Ø außen</th></tr></thead><tbody>${
     [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;

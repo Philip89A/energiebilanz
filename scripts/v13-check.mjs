@@ -1,10 +1,11 @@
-// v0.11-Test: Import des Wärmepumpen-Exports (Upload, Speichern, Auswertung „Wärmepumpe laut Gerät“), PV und Wetter
-// je Tag, Wetter im Tooltip, App ohne hp_energy-Tabelle. Supabase und Open-Meteo simuliert, Datei tests/fixture_hp.csv.
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v11-check.mjs
+// v0.13-Test: Zeitraum auf „Zähler & Wärmepumpe“ (Leiste sichtbar, Gerätewerte, Vergleich, Monats- und Tagesgrafik,
+// wetterbereinigte Intervalle). Simuliertes Supabase mit data/seed_state.json und tests/fixture_hp.csv (erfunden).
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v13-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mapSeed } from '../js/import.js';
+import { parseHpCsv } from '../js/hp.js';
 const base = fileURLToPath(new URL('..', import.meta.url));
 const seed = JSON.parse(readFileSync(base + 'data/seed_state.json', 'utf8'));
 const m = mapSeed(seed), uid = '11111111-1111-4111-8111-111111111111';
@@ -59,58 +60,45 @@ async function open(page) {
 
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
-DB.weather_daily = []; DB.hp_energy = [];
-// Fixture-Daten liegen vor dem Gerätetausch im Seed: Tausch-Ereignis entfernen, sonst gelten sie als alte Wärmepumpe (v0.12)
-DB.events = DB.events.filter(e => !(e.grp === 'wp' && e.type === 'geraet'));
-DB.settings[0].data = { ...DB.settings[0].data, wx: { name: 'Teststadt', lat: 1.23, lon: 6.79 } };
+// Gerätedaten: Fixture-Monate auf 2026 verschoben (nach dem Tausch im Seed), synthetisch
+const hp = parseHpCsv(readFileSync(base + 'tests/fixture_hp.csv', 'utf8')).rows.map(r => ({ ...r, ts: r.ts.replace(/^2025/, '2026'), user_id: uid }));
+hp.push({ ...hp.find(r => r.grain === 'month'), ts: '2025-01' });   // Vergleichsmonat Vorjahr (vor dem Tausch → ignoriert)
+DB.hp_energy = hp; DB.weather_daily = [];
+const view = v => JSON.stringify({ view: { mode: 'all', key: '', from: '', to: '', cmp: 'none', cfrom: '', cto: '', ...v } });
 
-// 1 Meter-Seite ohne Gerätedaten: Hinweis
 let { p, ctx } = await open('meter');
-ok(!p.errs.length, 'Zähler-Seite ohne Fehler: ' + p.errs.join(' | '));
-ok((await txt(p, '#hp-flags')).includes('Noch keine Gerätedaten'), 'Hinweis ohne Gerätedaten');
-await ctx.close();
-
-// 2 Upload: Datei wählen → Vorschau → Speichern
-({ p, ctx } = await open('data'));
-await p.setInputFiles('#hp-file', base + 'tests/fixture_hp.csv'); await p.waitForTimeout(300);
-ok((await txt(p, '#hp-result')).includes('2 Monate, 2 Tage, 1 Stunden'), 'Vorschau zeigt Monate, Tage, Stunden');
-await p.click('#hp-save'); await p.waitForTimeout(800);
-ok(DB.hp_energy.length === 5 && DB.hp_energy.every(r => r.user_id && r.grain && r.ts), `5 Zeilen in Supabase (${DB.hp_energy.length})`);
-ok((await txt(p, '#hp-result')).includes('5 Zeilen gespeichert'), 'Meldung nach dem Speichern');
-// erneut hochladen überschreibt statt zu verdoppeln
-await p.setInputFiles('#hp-file', base + 'tests/fixture_hp.csv'); await p.waitForTimeout(300); await p.click('#hp-save'); await p.waitForTimeout(800);
-ok(DB.hp_energy.length === 5, 'Zweiter Upload überschreibt (keine Doppelten)');
-await p.setInputFiles('#hp-file', { name: 'x.csv', mimeType: 'text/csv', buffer: Buffer.from('Datum;Wert\n2025-01-01;1') }); await p.waitForTimeout(300);
-ok((await txt(p, '#hp-result')).includes('Unbekanntes Format'), 'Falsche Datei wird abgelehnt');
-await ctx.close();
-
-// 3 Auswertung auf der Zähler-Seite
-({ p, ctx } = await open('meter'));
-ok(!p.errs.length, 'Zähler-Seite mit Gerätedaten ohne Fehler: ' + p.errs.join(' | '));
-const k = await txt(p, '#hp-kpis');
-ok(/\d+ kWh/.test(k) && k.includes('Arbeitszahl') && k.includes('Warmwasser-Strom pro Tag'), 'Kennzahlen Strom, Arbeitszahl, Warmwasser pro Tag');
-ok(await p.evaluate(() => window.__ebCharts['hp-month']?.data.datasets.length) === 5, 'Monatsgrafik mit Heizung, Warmwasser, Kühlung, Zähler, Arbeitszahl');
-ok(await p.evaluate(() => window.__ebCharts['hp-day']?.data.labels.length) >= 2, 'Tagesgrafik mit Tagen (seit v0.13 inkl. aus Monatswerten verteilter Tage)');
-ok((await p.$$('#hp-tbl tbody tr')).length === 2, 'Monatstabelle');
-await ctx.close();
-
-// 4 PV und Wetter je Tag bei kurzem Zeitraum; Wetter im Tooltip der Tagesgrafik
-({ p, ctx } = await open('data')); await p.waitForTimeout(1500); await ctx.close();   // Wetter laden (simuliert)
-({ p, ctx } = await open('pv'));
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(400);
-ok((await txt(p, '#wx-pv-panel h2')).includes('je Tag'), 'PV und Wetter: Tagesauflösung bei einem Monat');
-const nDays = await p.evaluate(() => window.__ebCharts['wx-pv-chart']?.data.labels.length);
-ok(nDays >= 20 && nDays <= 31, `Tageswerte in der Grafik (${nDays})`);
-const foot = await p.evaluate(() => { const ch = window.__ebCharts['pv-yield']; const f = ch.options.plugins.tooltip.callbacks.footer; return f ? f([{ dataIndex: 0 }]) : ''; });
-ok(/Wetter: Ø .* °C/.test(foot), 'Tooltip zeigt das Wetter des Tages: ' + foot);
+ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
+ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Zähler & Wärmepumpe“ sichtbar');
+await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200);
+await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(400);
+let k = await txt(p, '#hp-kpis');
+ok(k.includes('Jan 2026') && k.includes('300 kWh'), 'Gerätewerte für Januar 2026: ' + k.slice(0, 80));
+ok((await txt(p, '#hp-flags')).includes('aus Monatswerten'), 'Hinweis: Tage teils aus Monatswerten');
+ok(await p.evaluate(() => window.__ebCharts['hp-month'].data.labels.length) === 1, 'Monatsgrafik nur mit Januar');
+ok(await p.evaluate(() => window.__ebCharts['hp-day'].data.labels.length) === 31, 'Tagesgrafik mit 31 Tagen');
+ok((await p.$$('#hp-tbl tbody tr')).length === 1, 'Tabelle nur mit Januar');
+ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Tag', 'Zähler-Monatsgrafik wird bei einem Monat zur Tagesgrafik');
+const nMt = await p.evaluate(() => window.__ebCharts['mt-month'].data.labels.length);
+ok(nMt >= 28 && nMt <= 31, `Zählergrafik: Tage im Januar (${nMt})`);
+const nIv = await p.$$eval('#wx-wp-tbl tbody tr', r => r.length).catch(() => 0);
+// Vergleich mit Vorjahreszeitraum: Jan 2025 hat im Seed keine neuen Gerätedaten (vor dem Tausch)
+await p.selectOption('#pb-cmp', 'yoy'); await p.waitForTimeout(400);
+ok((await txt(p, '#hp-flags')).includes('keine Gerätedaten'), 'Vergleich ohne Gerätedaten: Hinweis');
+// Vergleich Februar gegen Januar (Vorperiode)
+await p.selectOption('#pb-key', '2026-02'); await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
+k = await txt(p, '#hp-kpis');
+ok(/Jan 2026\): 300 kWh \(−17 %\)/.test(k), 'Vergleichswert und Abweichung: ' + k.slice(0, 120));
+// Zeitraum ohne Gerätedaten
+await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2025'); await p.selectOption('#pb-cmp', 'none'); await p.waitForTimeout(400);
+ok((await txt(p, '#hp-flags')).includes('Keine Gerätedaten im gewählten Zeitraum'), 'Hinweis bei Zeitraum ohne Gerätedaten');
+// Gesamter Zeitraum: Monatsgrafik der Zähler unverändert je Monat
 await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
-ok((await txt(p, '#wx-pv-panel h2')).includes('je Monat'), 'Gesamter Zeitraum: Monate');
-await ctx.close();
-
-// 5 Ohne Tabelle hp_energy: Hinweis auf SQL-Update, App läuft
-hpMissing = true;
-({ p, ctx } = await open('data'));
-ok(!p.errs.length && (await txt(p, '#hp-result')).includes('UPDATE_V11.sql'), 'Hinweis auf UPDATE_V11.sql');
+ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Monat', 'Gesamter Zeitraum: je Monat');
+// Zeitraum gilt auch auf anderen Seiten (gemeinsam)
+await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(400);
+ok((await txt(p, '#pb-info')).includes('Jan 2026'), 'Gemeinsamer Zeitraum: Überblick zeigt Januar 2026');
+ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 
 console.log(failures ? `${failures} Prüfung(en) fehlgeschlagen` : 'Alle Prüfungen bestanden');
