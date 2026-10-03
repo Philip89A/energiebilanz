@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.13.0">
-<link rel="stylesheet" href="css/style.css?v=0.13.0">
+<meta name="app-version" content="0.14.0">
+<link rel="stylesheet" href="css/style.css?v=0.14.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -64,6 +64,7 @@
 <main id="main">
 <p class="loading" id="loading">Lade Daten …</p>
 <p class="flag" id="offline-banner" hidden></p>
+<p class="flag info" id="guest-banner" hidden>Gastzugang – nur lesen. Eingaben und Importe sind gesperrt.</p>
 <p class="flag info" id="pending-banner" hidden></p>
 <p class="flag info" id="empty-hint" hidden>Noch keine Anker-Daten. Unter „Daten“ Startdaten oder einen Anker-Export importieren.</p>
 <div class="panel period" id="period-bar" hidden>
@@ -394,8 +395,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.13.0"></script>
-<script src="vendor/chart.umd.js?v=0.13.0"></script>
-<script type="module" src="js/app.js?v=0.13.0"></script>
+<script src="vendor/supabase.js?v=0.14.0"></script>
+<script src="vendor/chart.umd.js?v=0.14.0"></script>
+<script type="module" src="js/app.js?v=0.14.0"></script>
 </body>
 </html>

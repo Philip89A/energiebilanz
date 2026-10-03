@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.13.0';
-import { parseNum } from './queue.js?v=0.13.0';
-import { geocode, fetchDays } from './weather.js?v=0.13.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.13.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.14.0';
+import { parseNum } from './queue.js?v=0.14.0';
+import { geocode, fetchDays } from './weather.js?v=0.14.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.14.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -42,7 +42,7 @@ async function track(promise) {
   pending++; setSaveState('Speichert …');
   try {
     const r = await promise;
-    if (--pending === 0) setSaveState(r === 'queued' ? 'Offline gespeichert' : 'Gespeichert');
+    if (--pending === 0) setSaveState(r === 'readonly' ? 'Nur lesen' : r === 'queued' ? 'Offline gespeichert' : 'Gespeichert');
     return r === 'queued' ? 'queued' : 'saved';
   } catch (err) {
     pending--; setSaveState('Fehler');
@@ -729,13 +729,14 @@ function renderData(){
 }
 
 /* ---------- Nach jedem Rendern ---------- */
-// v0.4 nur Anzeige: alle Eingaben in den Seiten sperren, außer Zeitraum, Anzeige-Auswahl und Import
+// Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
+const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace"]);   // Importe sind Schreiben
 const VIEW_INPUTS = new Set(["hp-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   if(!document.body.classList.contains("ro")) return;
   document.querySelectorAll("#main input, #main select, #main button").forEach(el=>{
-    if(VIEW_INPUTS.has(el.id) || el.closest("#csv-result, #seed-result")) return;
+    if(VIEW_INPUTS.has(el.id) && !GUEST_DENY.has(el.id)) return;
     el.disabled = true;
   });
   document.querySelectorAll("#main button.x").forEach(el=>el.hidden=true);
@@ -1177,7 +1178,7 @@ function wireWeather() {
 // Fehlende Tage seit dem frühesten Datum (Anker oder Zählerstand Wärmepumpe) bis gestern holen und speichern
 export async function syncWeather(auto) {
   if (!S || !store?.saveWeather) return;
-  const c = S.wx || {}; if (c.lat == null || S.weatherError) return;
+  const c = S.wx || {}; if (c.lat == null || S.weatherError || document.body.classList.contains('ro')) return;
   if (auto && wxAutoDone) return; wxAutoDone = true;
   const today = iso(new Date()), yest = addDaysIso(today, -1);
   const wpFirst = C.groupSeries("wp").first, first = [A.dates[0], wpFirst].filter(Boolean).sort()[0];

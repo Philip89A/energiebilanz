@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.13.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.13.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.14.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.14.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -148,6 +148,8 @@ export async function loadAll() {
   try { db.weather_daily = await fetchAll('weather_daily', { order: 'day' }); } catch (e) { db.weather_daily = []; db.weatherError = e.message; }
   // Wärmepumpen-App (schema v6), ebenso tolerant
   try { db.hp_energy = await fetchAll('hp_energy'); } catch (e) { db.hp_energy = []; db.hpError = e.message; }
+  // Gastzugang (schema v7): ist der Nutzer als Gast eingetragen, nur lesen
+  try { const me = await uid(); db.readOnly = (await fetchAll('shares')).some(r => r.viewer_id === me); } catch (e) { db.readOnly = false; }
   return db;
 }
 
