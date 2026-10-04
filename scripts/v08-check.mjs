@@ -105,7 +105,7 @@ await ctx.close();
 
 // Handybreite: keine waagrechte Verschiebung der Seite
 ({ p, ctx } = await open('ausbau'));
-await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(300);
+await p.setViewportSize({ width: 390, height: 844 }); await p.waitForTimeout(800);   // Diagramme passen sich verzögert an
 const over = await p.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
 ok(over <= 0, `Handy: keine Überbreite (${over}px)`);
 await ctx.close();

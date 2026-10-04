@@ -229,3 +229,12 @@
   Erfassen, Importe und Bearbeiten gesperrt, kein Wetter-Abruf, keine Schreibanfragen; Zeitraum und Ansicht bleiben
   wählbar (nur auf dem Gerät gespeichert).
 - Tests: `scripts/v14-check.mjs` 15 Prüfungen; alle bisherigen Prüfungen und Seitenvergleich unverändert.
+
+## v0.15.0 – Stundenexporte der Wärmepumpe, Summen über den Balken
+- **Wärmepumpe:** Exporte, die nur Stundenwerte enthalten, werden jetzt ausgewertet. Vollständige Tage (mindestens
+  23 Stunden) werden aus den Stunden gebildet, Monate ohne Monatszeile aus den Tagen (in der Tabelle mit „bis …“
+  als unvollständig markiert). Echte Tages- und Monatszeilen haben Vorrang; abgeleitete Monate werden nicht auf
+  fehlende Tage verteilt. Grund: Ein Export vom 04.10. enthielt nur Stunden, die Anzeige endete deshalb am 01.10.
+- **Summen über den Balken** in allen Balkendiagrammen (gestapelt: Gesamtwert über dem Stapel), sobald die Balken
+  breit genug sind (mindestens 14 px – am Handy bei vielen Tagen daher ausgeblendet). Abschaltbar je Diagramm.
+- Tests: 70 Unit-Tests; `v13-check` prüft die Summen; `v08-check` wartet nach dem Verkleinern auf die Diagramme.

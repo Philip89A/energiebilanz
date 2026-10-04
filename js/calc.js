@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.14.0';
+import { hpSum } from './hp.js?v=0.15.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -106,8 +106,24 @@ export function createCalc(S) {
   /* Zähler: Tageswerte aus Ablesungen */
   const _gcache = new Map();
   // Gewicht eines Tages für die Wärmepumpe aus den Gerätedaten (Strom inkl. Zuheizer), null = unbekannt
+  // v0.15: Exporte mit nur Stundenwerten – vollständige Tage (mind. 23 Stunden, Sommerzeit) aus den Stunden bilden,
+  // Monate ohne Monatszeile aus den Tagen (partial = laufender bzw. unvollständiger Monat). Echte Zeilen haben Vorrang.
+  const HP_F = ['el_hp', 'el_heat', 'el_cool', 'el_dhw', 'el_aux', 'el_aux_heat', 'el_aux_dhw', 'heat_heat', 'heat_dhw', 'heat_cool'];
+  const HP = (() => {
+    const rows = S.hp || [], has = g => new Set(rows.filter(r => r.grain === g).map(r => r.ts));
+    const sumOf = (list, base) => { const o = { ...base }; for (const f of HP_F) o[f] = list.reduce((a, h) => a + (+h[f] || 0), 0);
+      const t = list.map(h => h.t_out).filter(v => v != null); o.t_out = t.length ? t.reduce((a, b) => a + b, 0) / t.length : null; return o; };
+    const days = has('day'), byDay = {};
+    for (const r of rows) if (r.grain === 'hour') (byDay[r.ts.slice(0, 10)] = byDay[r.ts.slice(0, 10)] || []).push(r);
+    const dAdd = Object.entries(byDay).filter(([d, hs]) => !days.has(d) && hs.length >= 23).map(([d, hs]) => sumOf(hs, { grain: 'day', ts: d, fromHours: true }));
+    const allDays = [...rows.filter(r => r.grain === 'day'), ...dAdd], months = has('month'), byMonth = {};
+    for (const r of allDays) (byMonth[r.ts.slice(0, 7)] = byMonth[r.ts.slice(0, 7)] || []).push(r);
+    const mAdd = Object.entries(byMonth).filter(([k]) => !months.has(k))
+      .map(([k, ds]) => sumOf(ds, { grain: 'month', ts: k, fromDays: true, partial: ds.length < +monthEnd(k).slice(8, 10) }));
+    return [...rows, ...dAdd, ...mAdd];
+  })();
   const _hpDay = {}, _hpMonth = {};
-  for (const r of S.hp || []) { const v = (+r.el_hp || 0) + (+r.el_aux || 0); if (r.grain === 'day') _hpDay[r.ts] = v; else if (r.grain === 'month') _hpMonth[r.ts] = v; }
+  for (const r of HP) { const v = (+r.el_hp || 0) + (+r.el_aux || 0); if (r.grain === 'day') _hpDay[r.ts] = v; else if (r.grain === 'month' && !r.fromDays) _hpMonth[r.ts] = v; }   // abgeleitete Monate nicht verteilen
   // Gerätedaten gelten erst ab dem Tausch (Ereignis wp/geraet): Tage davor gehören zur alten Wärmepumpe
   const _hpFrom = (S.events.find(e => e.type === 'geraet' && e.group === 'wp') || {}).d || '';
   function hpWeight(d) {
@@ -681,21 +697,20 @@ export function createCalc(S) {
   }
 
   /* Wärmepumpen-App (v0.11): Strom und Wärme nach Heizung/Warmwasser, Arbeitszahl, Abgleich mit dem Zähler */
-  const hpRows = g => (S.hp || []).filter(r => r.grain === g).sort((a, b) => a.ts.localeCompare(b.ts));
+  const hpRows = g => HP.filter(r => r.grain === g).sort((a, b) => a.ts.localeCompare(b.ts));
   function hpMonths() {
     const meter = {}; for (const [d, k] of Object.entries(groupSeries('wp').daily)) meter[monthKey(d)] = (meter[monthKey(d)] || 0) + k;
     const wl = S.weather?.length ? S.weather[S.weather.length - 1].d : null;
     return hpRows('month').map(r => {
       const s = hpSum([r]), from = `${r.ts}-01`, end = addDays(monthEnd(r.ts), 1), dd = S.weather?.length ? degreeDays(from, end) : null;
-      return { k: r.ts, ...s, tOut: r.t_out, tFlow: r.t_flow, tDhw: r.t_dhw, meter: meter[r.ts] ?? null,
+      return { k: r.ts, partial: !!r.partial, fromDays: !!r.fromDays, ...s, tOut: r.t_out, tFlow: r.t_flow, tDhw: r.t_dhw, meter: meter[r.ts] ?? null,
         gt: dd && dd.missing === 0 ? dd.gt : null, heatPerGt: dd && dd.missing === 0 && dd.gt >= 100 ? s.elHeat / dd.gt : null };
     });
   }
   // v0.13: Tageswerte für einen Zeitraum – echte Tageswerte, sonst Monatswert (abzüglich vorhandener Tage) gleichmäßig
   // auf die übrigen Tage des Monats ab dem Tauschtag verteilt (est = geschätzt). Tage ohne Daten fehlen.
-  const HP_F = ['el_hp', 'el_heat', 'el_cool', 'el_dhw', 'el_aux', 'el_aux_heat', 'el_aux_dhw', 'heat_heat', 'heat_dhw', 'heat_cool'];
   function hpDayRows(from, to) {
-    const days = Object.fromEntries(hpRows('day').map(r => [r.ts, r])), months = Object.fromEntries(hpRows('month').map(r => [r.ts, r]));
+    const days = Object.fromEntries(hpRows('day').map(r => [r.ts, r])), months = Object.fromEntries(hpRows('month').filter(r => !r.fromDays).map(r => [r.ts, r]));
     const spread = {}, out = [];
     for (let d = from; d <= to; d = addDays(d, 1)) {
       if (d < _hpFrom) continue;

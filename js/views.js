@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.14.0';
-import { parseNum } from './queue.js?v=0.14.0';
-import { geocode, fetchDays } from './weather.js?v=0.14.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.14.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.15.0';
+import { parseNum } from './queue.js?v=0.15.0';
+import { geocode, fetchDays } from './weather.js?v=0.15.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.15.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -252,6 +252,27 @@ function renderMeterExtras(){
 
 /* ---------- Charts ---------- */
 const charts = {};
+// v0.15: Summe über jedem Balken (gestapelt: Gesamtwert über dem Stapel), nur wenn der Balken breit genug ist.
+// Abschalten je Diagramm mit options.plugins.ebTotals = false. Linien und schwebende Balken werden ignoriert.
+const ebTotals = { id: "ebTotals", afterDatasetsDraw(ch) {
+  if (ch.config.type !== "bar" || ch.options.indexAxis === "y" || ch.options.plugins?.ebTotals === false) return;
+  const metas = ch.getSortedVisibleDatasetMetas().filter(m => m.type === "bar" && !m.hidden);
+  if (!metas.length || (metas[0].data[0]?.width || 0) < 14) return;
+  const ctx = ch.ctx, stacked = !!ch.options.scales?.x?.stacked, n = ch.data.labels.length, fmt = v => nf(v, Math.abs(v) >= 10 ? 0 : 1);
+  ctx.save(); ctx.font = "600 10px system-ui, sans-serif"; ctx.fillStyle = css("--ink"); ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  const put = (v, x, y) => { if (v == null || !isFinite(v) || Math.abs(v) < 0.05) return; ctx.fillText(fmt(v), x, y - 2); };
+  if (stacked) {
+    for (let i = 0; i < n; i++) {
+      let sum = 0, top = Infinity, x = null, any = false;
+      for (const m of metas) { const v = ch.data.datasets[m.index].data[i], el = m.data[i]; if (typeof v !== "number" || !el) continue;
+        sum += v; any = true; top = Math.min(top, el.y, el.base); x = el.x; }
+      if (any) put(sum, x, top);
+    }
+  } else {
+    for (const m of metas) m.data.forEach((el, i) => { const v = ch.data.datasets[m.index].data[i]; if (typeof v === "number") put(v, el.x, Math.min(el.y, el.base)); });
+  }
+  ctx.restore();
+} };
 function chart(id, cfg){
   if(charts[id]) charts[id].destroy();
   const ctx = $(id); if(!ctx || typeof Chart==="undefined") return;
@@ -260,6 +281,8 @@ function chart(id, cfg){
   Chart.defaults.borderColor = css("--line");
   cfg.options = Object.assign({responsive:true, maintainAspectRatio:false, locale:"de-DE", animation:{duration:250}, interaction:{mode:"index",intersect:false},
     plugins:{legend:{position:"bottom",labels:{boxWidth:10,boxHeight:10}}}}, cfg.options||{});
+  if(cfg.type==="bar" && !cfg.options.layout) cfg.options.layout = { padding: { top: 14 } };
+  cfg.plugins = [...(cfg.plugins||[]), ebTotals];
   charts[id] = new Chart(ctx, cfg);
 }
 const numTip = (unit,d=0) => ({callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,d)} ${unit}`}});
@@ -1320,5 +1343,5 @@ function renderHp() {
       footer: items => dd[items[0]?.dataIndex]?.est ? "aus Monatswert gleichmäßig verteilt" : "" } } },
       scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
   $("hp-tbl").innerHTML = `<thead><tr><th>Monat</th><th>Strom</th><th>Heizung</th><th>Warmwasser</th><th>Zuheizer</th><th>Wärme</th><th>Arbeitszahl</th><th>Gradtage</th><th>Heizung je Gradtag</th><th>Zähler</th><th>Ø außen</th></tr></thead><tbody>${
-    [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;
+    [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}${m.partial ? " <span class=\"pill\">bis " + dde(C.hpRows("day").filter(d => d.ts.startsWith(m.k)).pop()?.ts || "") + "</span>" : ""}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;
 }

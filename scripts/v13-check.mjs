@@ -77,6 +77,7 @@ ok((await txt(p, '#hp-flags')).includes('aus Monatswerten'), 'Hinweis: Tage teil
 ok(await p.evaluate(() => window.__ebCharts['hp-month'].data.labels.length) === 1, 'Monatsgrafik nur mit Januar');
 ok(await p.evaluate(() => window.__ebCharts['hp-day'].data.labels.length) === 31, 'Tagesgrafik mit 31 Tagen');
 ok((await p.$$('#hp-tbl tbody tr')).length === 1, 'Tabelle nur mit Januar');
+ok(await p.evaluate(() => window.__ebCharts['hp-month'].config.plugins.some(x => x.id === 'ebTotals')), 'v0.15: Summen über den Balken aktiv');
 ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Tag', 'Zähler-Monatsgrafik wird bei einem Monat zur Tagesgrafik');
 const nMt = await p.evaluate(() => window.__ebCharts['mt-month'].data.labels.length);
 ok(nMt >= 28 && nMt <= 31, `Zählergrafik: Tage im Januar (${nMt})`);
