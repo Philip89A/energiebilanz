@@ -112,3 +112,18 @@ test('v0.15: Export nur mit Stunden – Tage aus vollständigen Stunden, Monat a
   assert.ok(Math.abs(C.hpPeriod('2026-10-01', '2026-10-03').elDhw - 8) < 1e-9);
   assert.equal(C.hpPeriod('2026-10-01', '2026-10-31').days, 3, 'abgeleiteter Monat wird nicht auf fehlende Tage verteilt');
 });
+
+test('v0.19: Tagesprofil – Ladungen, Spitzentemperatur, Zuheizer, Laufstunden', () => {
+  const base = { anker_daily: [{ day: '2026-10-01', genutzt: 1 }], meters: [], settings: { data: { pv: { kwp: 1 }, battery: {}, amort: {} } } };
+  const h = (hr, o) => ({ grain: 'hour', ts: `2026-10-02T${String(hr).padStart(2, '0')}:00`, el_hp: 0, el_dhw: 0, el_heat: 0, el_aux: 0, t_dhw: 45, t_out: 10, ...o });
+  const hp = [h(0, {}), h(1, { el_hp: 0.1, el_dhw: 0.1 }), h(2, { el_hp: 2, el_dhw: 2, heat_dhw: 5 }), h(3, { t_dhw: 61 }), h(15, { el_hp: 1.3, el_dhw: 1.3, heat_dhw: 3 }), h(16, { el_aux: 0.4, el_aux_dhw: 0.4 })];
+  const C = createCalc(stateFromDb({ ...base, hp_energy: hp }));
+  assert.deepEqual(C.hpHourDays(), ['2026-10-02']);
+  const p = C.hpDayProfile('2026-10-02');
+  assert.equal(p.n, 6);
+  assert.deepEqual(p.loads.map(l => [l.from, l.to]), [[1, 2], [15, 16]]);
+  assert.ok(Math.abs(p.loads[0].kwh - 2.1) < 1e-9 && Math.abs(p.loads[1].kwh - 1.7) < 1e-9);
+  assert.deepEqual(p.peakDhw, { t: 61, h: 3 }); assert.equal(p.disinfection, true);
+  assert.ok(Math.abs(p.aux - 0.4) < 1e-9); assert.equal(p.runH, 3);
+  assert.equal(C.hpDayProfile('2026-10-03'), null);
+});

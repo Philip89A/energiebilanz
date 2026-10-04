@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.18.0';
+import { hpSum } from './hp.js?v=0.19.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -763,6 +763,23 @@ export function createCalc(S) {
     const rows = hpDayRows(from, to); if (!rows.length) return null;
     return { ...hpSum(rows), days: rows.length, estDays: rows.filter(r => r.est).length, total: diffDays(from, to) + 1, from: rows[0].d, to: rows[rows.length - 1].d };
   }
+  // v0.19: Tagesprofil aus Stundenwerten – Tage mit Stunden, je Stunde Strom/Wärme/Temperaturen, Auswertung des Tages
+  function hpHourDays() { return [...new Set(hpRows('hour').map(r => r.ts.slice(0, 10)))].sort(); }
+  function hpDayProfile(d) {
+    const rows = hpRows('hour').filter(r => r.ts.startsWith(d)); if (!rows.length) return null;
+    const hours = Array.from({ length: 24 }, (_, h) => rows.find(r => +r.ts.slice(11, 13) === h) || null);
+    const v = (r, f) => (r ? +r[f] || 0 : 0);
+    // Warmwasser-Ladungen: zusammenhängende Stunden mit Warmwasser-Strom ≥ 0,1 kWh
+    const loads = []; let cur = null;
+    hours.forEach((r, h) => { const e = v(r, 'el_dhw') + v(r, 'el_aux_dhw');
+      if (e >= 0.1) { if (cur && cur.to === h - 1) { cur.to = h; cur.kwh += e; } else { cur = { from: h, to: h, kwh: e }; loads.push(cur); } } });
+    const tDhw = rows.filter(r => r.t_dhw != null), peak = tDhw.length ? tDhw.reduce((a, r) => (r.t_dhw > a.t_dhw ? r : a)) : null;
+    const s = hpSum(rows), runH = hours.filter(r => v(r, 'el_hp') + v(r, 'el_aux') >= 0.15).length;
+    const tOut = rows.filter(r => r.t_out != null).map(r => r.t_out);
+    return { d, hours, n: rows.length, loads, peakDhw: peak ? { t: peak.t_dhw, h: +peak.ts.slice(11, 13) } : null,
+      disinfection: !!(peak && peak.t_dhw >= 58), aux: s.aux, runH, ...s,
+      tOutMin: tOut.length ? Math.min(...tOut) : null, tOutMax: tOut.length ? Math.max(...tOut) : null };
+  }
   // Letzte 12 Monate mit Daten (Monatswerte der App)
   function hpYear() {
     const m = hpRows('month'); if (!m.length) return null;
@@ -801,7 +818,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile,
   };
 }
 

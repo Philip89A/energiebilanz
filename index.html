@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.18.0">
-<link rel="stylesheet" href="css/style.css?v=0.18.0">
+<meta name="app-version" content="0.19.0">
+<link rel="stylesheet" href="css/style.css?v=0.19.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -168,7 +168,13 @@
       <div><h2 style="font-size:15px">Strom je Monat</h2><div class="chart"><canvas id="hp-month"></canvas></div></div>
       <div><h2 style="font-size:15px">Strom je Tag <span class="note" id="hp-day-note"></span></h2><div class="chart"><canvas id="hp-day"></canvas></div></div>
     </div>
-    <div class="tbl-wrap"><table id="hp-tbl"></table></div></div>
+    <div class="tbl-wrap"><table id="hp-tbl"></table></div>
+    <h2 style="margin-top:22px">Tagesprofil (Stundenwerte)</h2>
+    <p class="note">Ein Tag je Stunde, optional mit einem zweiten Tag zum Vergleich (z. B. vor und nach einer Einstellung). Nur Tage mit Stundenwerten aus dem Export; unabhängig vom Zeitraum oben. Gestrichelt: Vergleichstag.</p>
+    <div class="form" style="margin-top:8px;max-width:520px"><label class="f">Tag<select id="hpd-a"></select></label><label class="f">Vergleich mit<select id="hpd-b"></select></label></div>
+    <div id="hpd-flags"></div>
+    <div class="chart tall"><canvas id="hp-hours"></canvas></div>
+    <div class="tbl-wrap"><table id="hpd-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px" id="wx-wp-panel"><h2>Wärmepumpe wetterbereinigt</h2>
     <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar. Grafik und Tabelle zeigen die Ableseintervalle im oben gewählten Zeitraum, das Modell rechnet immer mit allen Daten.</p>
     <div id="wx-wp"></div><div class="chart"><canvas id="wx-wp-chart"></canvas></div><div class="tbl-wrap"><table id="wx-wp-tbl"></table></div></div>
@@ -395,8 +401,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.18.0"></script>
-<script src="vendor/chart.umd.js?v=0.18.0"></script>
-<script type="module" src="js/app.js?v=0.18.0"></script>
+<script src="vendor/supabase.js?v=0.19.0"></script>
+<script src="vendor/chart.umd.js?v=0.19.0"></script>
+<script type="module" src="js/app.js?v=0.19.0"></script>
 </body>
 </html>
