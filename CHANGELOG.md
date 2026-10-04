@@ -254,3 +254,10 @@
   am Tag nach dem Ende). Abschlag-Check, Abrechnung prüfen und Boni bleiben vertragsbezogen und sagen das jetzt dazu.
 - Seitenvergleich: neue, gewollte Abweichungen nur bei gewähltem Zeitraum (im Kopf von `compare.mjs` vermerkt).
 - Tests: `scripts/v16-check.mjs` 14 Prüfungen; `v08-check` wartet bis zu 4 s auf stabile Handybreite.
+
+## v0.17.0 – Auto-Vergleich: Räder, Überführung, THG-Prämie getrennt
+- Neue Fahrzeugbuch-Kategorien **„Räder/Reifen“** und **„Überführung“**. Die beiden bisher unter „Sonstiges“
+  gebuchten Einträge (Überführungskosten, Winterräder) wurden auf Wunsch in Supabase umgebucht.
+- **Auto-Vergleich:** Balken „Kosten über 36 Monate“ zeigt Räder (Räderwechsel + Räder/Reifen aus dem Fahrzeugbuch),
+  Überführung und **THG-Prämie (als Gutschrift, negativ)** getrennt statt in „Sonstiges“. Die Summen ändern sich
+  nicht. Die Überführung des Leon ist bereits bezahlt und zählt für die 36 Monate nicht mit.

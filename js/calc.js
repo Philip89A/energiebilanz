@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.16.0';
+import { hpSum } from './hp.js?v=0.17.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -37,7 +37,7 @@ export function carBucket(d, g) {
   if (g === 'quarter') return `${d.slice(0, 4)}-Q${Math.floor((+d.slice(5, 7) - 1) / 3) + 1}`; return d.slice(0, 4);
 }
 
-export const CAR_CATS = ['Kilometerstand', 'Versicherung', 'Kfz-Steuer', 'Räderwechsel', 'Wartung/Reparatur', 'Pflege', 'Sonstiges'];
+export const CAR_CATS = ['Kilometerstand', 'Versicherung', 'Kfz-Steuer', 'Räderwechsel', 'Räder/Reifen', 'Wartung/Reparatur', 'Pflege', 'Überführung', 'Sonstiges'];
 
 /* ---------- Supabase-Zeilen -> Referenzform ---------- */
 export function stateFromDb(db) {
@@ -586,9 +586,10 @@ export function createCalc(S) {
     const i = S.cars.ice, e = S.cars.ev, fs = fuelStats(), apAS = (currentTariff('as')?.ap || 33) / 100;
     const l100 = (i.useLog && fs.l100) ? fs.l100 : i.l100;
     const ip = icePrice(); const iceFuelY = i.km / 100 * l100 * ip.v;
-    let ins = i.ins, tax = i.tax, oth = i.other;
-    if (i.useLedger) { const L = ledger12('leon', today); ins = L['Versicherung'] || 0; tax = L['Kfz-Steuer'] || 0; oth = (L['Räderwechsel'] || 0) + (L['Wartung/Reparatur'] || 0) + (L['Pflege'] || 0) + (L['Sonstiges'] || 0); }
-    const iceM = i.rate + (iceFuelY + ins + tax + oth) / 12;
+    // v0.17: Räder (Räderwechsel, Räder/Reifen) getrennt von Sonstiges; Überführung ist einmalig und zählt beim Leon nicht für die Zukunft
+    let ins = i.ins, tax = i.tax, oth = i.other, wheels = 0;
+    if (i.useLedger) { const L = ledger12('leon', today); ins = L['Versicherung'] || 0; tax = L['Kfz-Steuer'] || 0; wheels = (L['Räderwechsel'] || 0) + (L['Räder/Reifen'] || 0); oth = (L['Wartung/Reparatur'] || 0) + (L['Pflege'] || 0) + (L['Sonstiges'] || 0); }
+    const iceM = i.rate + (iceFuelY + ins + tax + oth + wheels) / 12;
     const kwhY = e.km / 100 * e.kwh100 * (1 + e.loss / 100);
     const home = kwhY * e.shHome / 100, pv = home * e.shPV / 100, grid = home - pv, pub = kwhY - home;
     const evEnergyY = grid * apAS + pv * S.amort.feedin / 100 + pub * e.pricePublic;
@@ -596,8 +597,8 @@ export function createCalc(S) {
     const iceCum = [], evCum = []; let a = 0, b = +e.transfer || 0;
     for (let m = 0; m <= 36; m++) { if (m > 0) { a += iceM; b += evM; if (m % 12 === 0) b -= +e.thg || 0; } iceCum.push(a); evCum.push(b); }
     return { l100, ip, iceFuelY, kwhY, evEnergyY, iceCum, evCum, grid, pv, pub, fs, apAS,
-      blocks: { ice: { Leasing: i.rate * 36, Energie: iceFuelY * 3, Versicherung: ins * 3, Steuer: tax * 3, Sonstiges: oth * 3 },
-                ev: { Leasing: e.rate * 36, Energie: evEnergyY * 3, Versicherung: e.ins * 3, Steuer: e.tax * 3, Sonstiges: (+e.transfer || 0) - (+e.thg || 0) * 3 } } };
+      blocks: { ice: { Leasing: i.rate * 36, Energie: iceFuelY * 3, Versicherung: ins * 3, Steuer: tax * 3, 'Räder': wheels * 3, Sonstiges: oth * 3, 'Überführung': 0, 'THG-Prämie': 0 },
+                ev: { Leasing: e.rate * 36, Energie: evEnergyY * 3, Versicherung: e.ins * 3, Steuer: e.tax * 3, 'Räder': 0, Sonstiges: 0, 'Überführung': +e.transfer || 0, 'THG-Prämie': -(+e.thg || 0) * 3 } } };
   }
 
   /* Kosten & Ersparnisse */

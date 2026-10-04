@@ -95,6 +95,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.15: Wärmepumpen-Tage aus Stundenwerten, Monate aus Tagen (`HP` in createCalc); Summen über Balken (`ebTotals`).
    - ✅ v0.16: Zeitraumleiste überall außer Amortisation, Auto-Vergleich, Erfassen, Daten (`periodSel` in views.js);
      Tarifrechner hochgerechnet, Ausbau mit Basisjahr, Tanken & Laden mit Vergleich. Prüfung: `scripts/v16-check.mjs`.
+   - ✅ v0.17: Fahrzeugbuch-Kategorien Räder/Reifen und Überführung; Auto-Vergleich mit Räder, Überführung, THG-Prämie getrennt.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
