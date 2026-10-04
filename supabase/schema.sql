@@ -193,7 +193,7 @@ create index if not exists payments_day on payments (user_id, grp, day);
 -- v4 (App v0.9): Kategorie je Investition für die Amortisation (leer = PV/Speicher)
 alter table investments add column if not exists category text;
 alter table investments drop constraint if exists investments_category_check;
-alter table investments add constraint investments_category_check check (category in ('pv','wallbox','other'));
+alter table investments add constraint investments_category_check check (category in ('pv','wallbox','other','refund'));   -- refund ab v0.18
 
 -- Indizes für Abfragen nach Zeitraum
 create index if not exists meter_readings_day on meter_readings (user_id, meter_id, day);

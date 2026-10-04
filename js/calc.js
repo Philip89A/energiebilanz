@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.17.0';
+import { hpSum } from './hp.js?v=0.18.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -325,7 +325,7 @@ export function createCalc(S) {
 
   /* Amortisation entlang der Investitionsdaten */
   function amortTimeline() {
-    const am = S.amort, items = S.invest.map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
+    const am = S.amort, items = S.invest.filter(x => x.cat !== 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
     const startK = monthKey(items[0]?.date || A.dates[0]);
     const act = {}, feedK = {};
     A.dates.forEach((d, i) => {
@@ -342,27 +342,44 @@ export function createCalc(S) {
       const t = tariffAt('as', c.d) || currentTariff('as'); wbK[monthKey(c.d)] = (wbK[monthKey(c.d)] || 0) + (+c.k || 0) * ((+ev.pricePublic || 0) - (t ? t.ap : 0) / 100); }
     const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100;
     const wbYear = tb ? tb.evHome * ((+ev.pricePublic || 0) - apNow) : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
+    // Erstattungen/Gutschriften (v0.18): gebuchte Beträge als Ersparnis im Monat des Eingangs. Prognose für §14a (Wert der
+    // Ausbau-Seite, ab Wallbox und Übergabe) und THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils frühestens 12 Monate
+    // nach der letzten gebuchten Gutschrift dieser Art (Name enthält „14a“ bzw. „THG“), damit nichts doppelt zählt.
+    const refunds = S.invest.filter(x => x.cat === 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })), refK = {};
+    refunds.forEach(x => { const rk = monthKey(x.date); refK[rk] = (refK[rk] || 0) + (+x.cost || 0); });
+    const kindOf = x => (/14a/i.test(x.name || '') ? 's14a' : /thg/i.test(x.name || '') ? 'thg' : 'other');
+    const fcStart = (kind, startK) => { if (!startK) return null; const lb = refunds.filter(x => kindOf(x) === kind).map(x => x.date).sort().pop();
+      return [startK, lb ? monthKey(addMonths(lb, 12)) : null].filter(Boolean).sort().pop(); };
+    const au = { ...AUSBAU_DEFAULTS, ...(S.ausbau || {}) };
+    let s14Year = 0;
+    if (am.s14aFc !== false && au.s14a && wbFrom) {
+      if (au.s14aMod === 'manual') s14Year = +au.s14aEur || 0;
+      else { const w = tarifRechner(tariffBase(), { as: currentTariff('as'), wp: currentTariff('wp') }, S.tarif || {}).wallbox.find(x => x.key === au.s14aMod); s14Year = w ? Math.max(0, -w.vsNone) : 0; }
+    }
+    const thgYear = am.thg !== false ? (+ev.thg || 0) : 0;
+    const s14K = s14Year ? fcStart('s14a', wbStartK) : null, thgK = thgYear ? fcStart('thg', ev.start ? monthKey(ev.start) : null) : null;
     const prof = {}, profFeed = {}; let k = lastK;
     for (let j = 0; j < 12; j++) { const cm = k.slice(5, 7); if (prof[cm] === undefined) { prof[cm] = act[k] || 0; profFeed[cm] = feedK[k] || 0; } const y = +k.slice(0, 4), m = +k.slice(5, 7); k = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; }
     const labels = [], cumS = [], cumI = [], proj = []; let cs = 0, be = null; k = startK;
     const total = am.years * 12; let idxLast = null;
     for (let j = 0; j < total; j++) {
       let v;
-      if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0); if (k === lastK) idxLast = j; }
+      if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0) + (refK[k] || 0); if (k === lastK) idxLast = j; }
       else {
         const yrs = (j - (idxLast ?? j)) / 12, cm = k.slice(5, 7);
         v = (prof[cm] || 0) * Math.pow(1 + am.priceInc / 100, yrs) * Math.pow(1 - am.degr / 100, yrs);
         const fd = `${k}-15`; if (am.feedin && (!am.feedinFrom || fd >= am.feedinFrom)) v += (profFeed[cm] || 0) * am.feedin / 100;
         if (wbStartK && k >= wbStartK) v += wbYear / 12 * Math.pow(1 + am.priceInc / 100, yrs);
+        v += (refK[k] || 0) + (s14K && k >= s14K ? s14Year / 12 : 0) + (thgK && k >= thgK ? thgYear / 12 : 0);
       }
       cs += v; const me = monthEnd(k), ci = items.filter(x => x.date <= me).reduce((s, x) => s + (+x.cost || 0), 0);
       labels.push(k); cumS.push(cs); cumI.push(ci); proj.push(k > lastK);
       if (be === null && ci > 0 && cs >= ci && j > 0) be = k;
       k = nextMonth(k);
     }
-    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear };
+    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK };
   }
-  function investTotal() { return S.invest.reduce((a, b) => a + (+b.cost || 0), 0); }
+  function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
   /* Abschlag-Check je laufendem Vertrag */
   function abschlagAt(g, d) { const l = S.abschlaege.filter(a => a.group === g && a.from && a.from <= d).sort((a, b) => b.from.localeCompare(a.from))[0]; return l ? +l.amount : 0; }

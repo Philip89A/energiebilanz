@@ -261,3 +261,16 @@
 - **Auto-Vergleich:** Balken „Kosten über 36 Monate“ zeigt Räder (Räderwechsel + Räder/Reifen aus dem Fahrzeugbuch),
   Überführung und **THG-Prämie (als Gutschrift, negativ)** getrennt statt in „Sonstiges“. Die Summen ändern sich
   nicht. Die Überführung des Leon ist bereits bezahlt und zählt für die 36 Monate nicht mit.
+
+## v0.18.0 – Erstattungen und Gutschriften in der Amortisation
+- **Schema** (`docs/UPDATE_V18.sql`): Investitions-Kategorie `refund` erlaubt.
+- Neue Kategorie **„Erstattung/Gutschrift“**: Betrag positiv mit Datum des Geldeingangs (§14a-Gutschrift, Förderung,
+  THG-Prämie). Zählt als **Ersparnis** im Monat des Eingangs, nicht als Investition; Kennzahlen nennen den Anteil,
+  die Investitionstabelle zeigt die Summe getrennt. Abschlags-Erstattungen aus dem Zahlungsbuch zählen weiterhin nicht
+  (eigenes Geld zurück).
+- **Prognose:** §14a-Gutschrift (Wert der Ausbau-Seite, nur mit Wallbox-Investition, ab Übergabe des E-Autos) und
+  THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils als Jahresbetrag. Gebuchte Gutschriften mit „14a“ bzw. „THG“ im
+  Namen ersetzen die Prognose für die folgenden 12 Monate. Beide unter „Annahmen“ abschaltbar.
+- Die THG-Prämie ist auf Wunsch enthalten (Standard: an), wird aber ausdrücklich als „nicht durch die Investition
+  verursacht“ gekennzeichnet: Sie fällt für jedes E-Auto an und verschiebt den Break-even spürbar nach vorn.
+- Tests: 73 Unit-Tests (neu `tests/v18.test.mjs`), `scripts/v18-check.mjs` 10 Prüfungen; alles Übrige unverändert.

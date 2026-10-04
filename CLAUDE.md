@@ -96,6 +96,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.16: Zeitraumleiste überall außer Amortisation, Auto-Vergleich, Erfassen, Daten (`periodSel` in views.js);
      Tarifrechner hochgerechnet, Ausbau mit Basisjahr, Tanken & Laden mit Vergleich. Prüfung: `scripts/v16-check.mjs`.
    - ✅ v0.17: Fahrzeugbuch-Kategorien Räder/Reifen und Überführung; Auto-Vergleich mit Räder, Überführung, THG-Prämie getrennt.
+   - ✅ v0.18: Investitions-Kategorie `refund` (schema / `docs/UPDATE_V18.sql`) als Ersparnis; Prognose §14a (Ausbau-Seite)
+     und THG-Prämie (Auto-Vergleich) in amortTimeline, abschaltbar (`amort.s14aFc`, `amort.thg`). Prüfung: `v18-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

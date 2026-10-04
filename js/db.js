@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.17.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.17.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.18.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.18.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },

@@ -40,3 +40,10 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    „Gastzugang – nur lesen“.
 4. Gast entfernen: `delete from shares where viewer_id = (select id from auth.users where email = 'GAST@…');`
    und den Account unter Authentication → Users löschen.
+
+# Update v0.18 (Erstattungen/Gutschriften)
+1. SQL Editor → New query → Inhalt von `docs/UPDATE_V18.sql` → **Run** (Warnung bestätigen, betrifft nur die
+   Prüfregel). Kontrolle: Ausgabe enthält `'refund'`.
+2. Pull Request mergen, App neu laden (v0.18.0).
+3. Erstattungen unter **Amortisation → Investition** mit Kategorie „Erstattung/Gutschrift“, positivem Betrag und Datum
+   des Geldeingangs eintragen; für §14a und THG das Kürzel „14a“ bzw. „THG“ in den Namen schreiben.

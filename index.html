@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.17.0">
-<link rel="stylesheet" href="css/style.css?v=0.17.0">
+<meta name="app-version" content="0.18.0">
+<link rel="stylesheet" href="css/style.css?v=0.18.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -257,7 +257,7 @@
   <p class="lead">Wert einer selbst genutzten Solar-kWh ist der Arbeitspreis des Allgemeinstroms. Der Grundpreis fällt ohnehin an und zählt nicht als Ersparnis; mit umgelegtem Grundpreis sähe die Amortisation deutlich zu gut aus.</p>
   <div class="grid g4" id="am-kpis"></div><div id="am-wb-note"></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel" style="grid-column:1/-1"><h2>Investition</h2><p class="note">Kategorie „Wallbox“: ab dieser Investition zählt Laden zu Hause (Ort „zu Hause“ im Ladebuch) als Ersparnis gegenüber öffentlichem Laden.</p><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
+    <div class="panel" style="grid-column:1/-1"><h2>Investition</h2><p class="note">Kategorie „Wallbox“: ab dieser Investition zählt Laden zu Hause (Ort „zu Hause“ im Ladebuch) als Ersparnis gegenüber öffentlichem Laden. Kategorie „Erstattung/Gutschrift“: Betrag positiv mit Datum des Geldeingangs eintragen (z. B. §14a-Gutschrift, Förderung, THG-Prämie) – zählt als Ersparnis, nicht als Investition.</p><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
     <div class="panel"><h2>Annahmen</h2><div class="grid g2" id="am-sl" style="margin-top:10px"></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
@@ -395,8 +395,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.17.0"></script>
-<script src="vendor/chart.umd.js?v=0.17.0"></script>
-<script type="module" src="js/app.js?v=0.17.0"></script>
+<script src="vendor/supabase.js?v=0.18.0"></script>
+<script src="vendor/chart.umd.js?v=0.18.0"></script>
+<script type="module" src="js/app.js?v=0.18.0"></script>
 </body>
 </html>
