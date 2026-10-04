@@ -1,11 +1,10 @@
-// v0.13-Test: Zeitraum auf „Zähler & Wärmepumpe“ (Leiste sichtbar, Gerätewerte, Vergleich, Monats- und Tagesgrafik,
-// wetterbereinigte Intervalle). Simuliertes Supabase mit data/seed_state.json und tests/fixture_hp.csv (erfunden).
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v13-check.mjs
+// v0.18-Test: Erstattung/Gutschrift in der Amortisation (Kategorie, Ersparnis statt Investition), Prognose-Schalter
+// für §14a und THG-Prämie. Simuliertes Supabase mit data/seed_state.json, ohne private Werte im Skript.
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v18-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mapSeed } from '../js/import.js';
-import { parseHpCsv } from '../js/hp.js';
 const base = fileURLToPath(new URL('..', import.meta.url));
 const seed = JSON.parse(readFileSync(base + 'data/seed_state.json', 'utf8'));
 const m = mapSeed(seed), uid = '11111111-1111-4111-8111-111111111111';
@@ -13,7 +12,7 @@ const DB = { ...Object.fromEntries(Object.entries(m).filter(([k]) => k !== 'sett
 let failNext = false; const log = [];
 const b = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 let failures = 0;
-let weatherMissing = false, hpMissing = false, meteoCalls = [];
+let weatherMissing = false, meteoCalls = [];
 async function open(page) {
   const ctx = await b.newContext({ viewport: { width: 1300, height: 900 } });
   const now = Math.floor(Date.now() / 1000);
@@ -21,7 +20,6 @@ async function open(page) {
   await ctx.addInitScript(s => localStorage.setItem('sb-iweelkcxmqdycmotchxh-auth-token', s), JSON.stringify(session));
   await ctx.route('**/rest/v1/**', async route => {
     const req = route.request(), u = new URL(req.url()), t = u.pathname.split('/').pop();
-    if (t === 'hp_energy' && hpMissing) return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'relation "public.hp_energy" does not exist', code: '42P01' }) });
     if (t === 'weather_daily' && weatherMissing) return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'relation "public.weather_daily" does not exist', code: '42P01' }) });
     DB[t] ??= [];
     const H = { 'access-control-expose-headers': 'Content-Range' };
@@ -60,47 +58,31 @@ async function open(page) {
 
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
-// Gerätedaten: Fixture-Monate auf 2026 verschoben (nach dem Tausch im Seed), synthetisch
-const hp = parseHpCsv(readFileSync(base + 'tests/fixture_hp.csv', 'utf8')).rows.map(r => ({ ...r, ts: r.ts.replace(/^2025/, '2026'), user_id: uid }));
-hp.push({ ...hp.find(r => r.grain === 'month'), ts: '2025-01' });   // Vergleichsmonat Vorjahr (vor dem Tausch → ignoriert)
-DB.hp_energy = hp; DB.weather_daily = [];
-const view = v => JSON.stringify({ view: { mode: 'all', key: '', from: '', to: '', cmp: 'none', cfrom: '', cto: '', ...v } });
-
-let { p, ctx } = await open('meter');
-ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Zähler & Wärmepumpe“ sichtbar');
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200);
-await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(400);
-let k = await txt(p, '#hp-kpis');
-ok(k.includes('Jan 2026') && k.includes('300 kWh'), 'Gerätewerte für Januar 2026: ' + k.slice(0, 80));
-ok((await txt(p, '#hp-flags')).includes('aus Monatswerten'), 'Hinweis: Tage teils aus Monatswerten');
-ok(await p.evaluate(() => window.__ebCharts['hp-month'].data.labels.length) === 1, 'Monatsgrafik nur mit Januar');
-ok(await p.evaluate(() => window.__ebCharts['hp-day'].data.labels.length) === 31, 'Tagesgrafik mit 31 Tagen');
-ok((await p.$$('#hp-tbl tbody tr')).length === 1, 'Tabelle nur mit Januar');
-ok(await p.evaluate(() => window.__ebCharts['hp-month'].config.plugins.some(x => x.id === 'ebTotals')), 'v0.15: Summen über den Balken aktiv');
-ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Tag', 'Zähler-Monatsgrafik wird bei einem Monat zur Tagesgrafik');
-const nMt = await p.evaluate(() => window.__ebCharts['mt-month'].data.labels.length);
-ok(nMt >= 28 && nMt <= 31, `Zählergrafik: Tage im Januar (${nMt})`);
-const nIv = await p.$$eval('#wx-wp-tbl tbody tr', r => r.length).catch(() => 0);
-// Vergleich mit Vorjahreszeitraum: Jan 2025 hat im Seed keine neuen Gerätedaten (vor dem Tausch)
-await p.selectOption('#pb-cmp', 'yoy'); await p.waitForTimeout(400);
-ok((await txt(p, '#hp-flags')).includes('keine Gerätedaten'), 'Vergleich ohne Gerätedaten: Hinweis');
-// Vergleich Februar gegen Januar (Vorperiode)
-await p.selectOption('#pb-key', '2026-02'); await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
-k = await txt(p, '#hp-kpis');
-ok(/Jan 2026\): 300 kWh \(−17 %\)/.test(k), 'Vergleichswert und Abweichung: ' + k.slice(0, 120));
-// Zeitraum ohne Gerätedaten
-await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2025'); await p.selectOption('#pb-cmp', 'none'); await p.waitForTimeout(400);
-ok((await txt(p, '#hp-flags')).includes('Keine Gerätedaten im gewählten Zeitraum'), 'Hinweis bei Zeitraum ohne Gerätedaten');
-// Gesamter Zeitraum: Monatsgrafik der Zähler unverändert je Monat
-await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
-ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Monat', 'Gesamter Zeitraum: je Monat');
-// Zeitraum gilt auch auf anderen Seiten (gemeinsam)
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(300);
-await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(400);
-ok((await txt(p, '#pb-info')).includes('Jan 2026'), 'Gemeinsamer Zeitraum: Überblick zeigt Januar 2026');
-ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
+const num = s => +String(s).replace(/[^\d,−-]/g, '').replace('−', '-').replace(',', '.');
+DB.weather_daily = []; DB.hp_energy = [];
+const s0 = DB.settings[0].data; s0.cars.ev.thg = 300; s0.cars.ev.start = s0.cars.ev.start || '2026-12-15';
+let { p, ctx } = await open('amort');
+ok(!p.errs.length, 'Seite ohne Fehler ' + p.errs.join(' | '));
+const inv0 = num((await txt(p, '#am-kpis .kpi:nth-child(1) .v')));
+const done0 = num((await txt(p, '#am-kpis .kpi:nth-child(4) .v')));
+ok((await p.$$('#am-inv select[data-k="cat"] option[value="refund"]')).length > 0, 'Kategorie „Erstattung/Gutschrift“ wählbar');
+ok((await txt(p, '#am-wb-note')).includes('THG-Prämie 300'), 'Hinweis: THG-Prämie in der Prognose');
+const be0 = await txt(p, '#am-kpis .kpi:nth-child(3) .v');
+await p.uncheck('[data-amc="thg"]'); await p.waitForTimeout(1000);
+ok(!(await txt(p, '#am-wb-note')).includes('THG-Prämie'), 'THG-Prognose abschaltbar');
+ok(DB.settings[0].data.amort.thg === false, 'Schalter gespeichert');
+const be1 = await txt(p, '#am-kpis .kpi:nth-child(3) .v');
+console.log('     Break-even mit/ohne THG:', be0, '/', be1);
 await ctx.close();
-
+// Erstattung eintragen (Datum in den Anker-Daten) → Ersparnis steigt, Investition gleich
+const day = DB.anker_daily.map(x => x.day).sort()[10];
+DB.investments.push({ id: 'r1', user_id: uid, day, name: 'Förderung Test', cost: 100, category: 'refund' });
+({ p, ctx } = await open('amort'));
+ok(num(await txt(p, '#am-kpis .kpi:nth-child(1) .v')) === inv0, 'Investition unverändert');
+ok(Math.abs(num(await txt(p, '#am-kpis .kpi:nth-child(4) .v')) - done0 - 100) < 1.5, 'Bereits erwirtschaftet +100 €');
+ok((await txt(p, '#am-kpis')).includes('davon Erstattungen'), 'Kennzahl nennt Erstattungen');
+ok((await txt(p, '#am-inv tfoot')).includes('Erstattungen/Gutschriften'), 'Tabelle mit Zeile Erstattungen');
+ok(!p.errs.length, 'ohne Fehler ' + p.errs.join(' | '));
+await ctx.close();
 console.log(failures ? `${failures} Prüfung(en) fehlgeschlagen` : 'Alle Prüfungen bestanden');
 await b.close(); process.exit(failures ? 1 : 0);

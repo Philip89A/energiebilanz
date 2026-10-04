@@ -1,11 +1,10 @@
-// v0.13-Test: Zeitraum auf „Zähler & Wärmepumpe“ (Leiste sichtbar, Gerätewerte, Vergleich, Monats- und Tagesgrafik,
-// wetterbereinigte Intervalle). Simuliertes Supabase mit data/seed_state.json und tests/fixture_hp.csv (erfunden).
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v13-check.mjs
+// v0.16-Test: Zeitraum auf Tanken & Laden, Tarifrechner, Ausbau, Zahlungsbuch und Zählerstände-Liste.
+// Simuliertes Supabase mit data/seed_state.json, ohne private Werte im Skript.
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v16-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { mapSeed } from '../js/import.js';
-import { parseHpCsv } from '../js/hp.js';
 const base = fileURLToPath(new URL('..', import.meta.url));
 const seed = JSON.parse(readFileSync(base + 'data/seed_state.json', 'utf8'));
 const m = mapSeed(seed), uid = '11111111-1111-4111-8111-111111111111';
@@ -13,7 +12,7 @@ const DB = { ...Object.fromEntries(Object.entries(m).filter(([k]) => k !== 'sett
 let failNext = false; const log = [];
 const b = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 let failures = 0;
-let weatherMissing = false, hpMissing = false, meteoCalls = [];
+let weatherMissing = false, meteoCalls = [];
 async function open(page) {
   const ctx = await b.newContext({ viewport: { width: 1300, height: 900 } });
   const now = Math.floor(Date.now() / 1000);
@@ -21,7 +20,6 @@ async function open(page) {
   await ctx.addInitScript(s => localStorage.setItem('sb-iweelkcxmqdycmotchxh-auth-token', s), JSON.stringify(session));
   await ctx.route('**/rest/v1/**', async route => {
     const req = route.request(), u = new URL(req.url()), t = u.pathname.split('/').pop();
-    if (t === 'hp_energy' && hpMissing) return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'relation "public.hp_energy" does not exist', code: '42P01' }) });
     if (t === 'weather_daily' && weatherMissing) return route.fulfill({ status: 404, contentType: 'application/json', body: JSON.stringify({ message: 'relation "public.weather_daily" does not exist', code: '42P01' }) });
     DB[t] ??= [];
     const H = { 'access-control-expose-headers': 'Content-Range' };
@@ -60,47 +58,45 @@ async function open(page) {
 
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
-// Gerätedaten: Fixture-Monate auf 2026 verschoben (nach dem Tausch im Seed), synthetisch
-const hp = parseHpCsv(readFileSync(base + 'tests/fixture_hp.csv', 'utf8')).rows.map(r => ({ ...r, ts: r.ts.replace(/^2025/, '2026'), user_id: uid }));
-hp.push({ ...hp.find(r => r.grain === 'month'), ts: '2025-01' });   // Vergleichsmonat Vorjahr (vor dem Tausch → ignoriert)
-DB.hp_energy = hp; DB.weather_daily = [];
-const view = v => JSON.stringify({ view: { mode: 'all', key: '', from: '', to: '', cmp: 'none', cfrom: '', cto: '', ...v } });
+DB.weather_daily = []; DB.hp_energy = [];
+const lastFuel = DB.fuel_log.map(x => x.day).sort().at(-1) || '2026-01-15';
+const mk = lastFuel.slice(0, 7);
+DB.payments = [{ id: 'p1', user_id: uid, grp: 'as', day: `${mk}-05`, amount: 50, kind: 'abschlag', note: 'im Monat' }, { id: 'p2', user_id: uid, grp: 'as', day: '2024-01-05', amount: 40, kind: 'abschlag', note: 'alt' }];
 
-let { p, ctx } = await open('meter');
-ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Zähler & Wärmepumpe“ sichtbar');
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200);
-await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(400);
-let k = await txt(p, '#hp-kpis');
-ok(k.includes('Jan 2026') && k.includes('300 kWh'), 'Gerätewerte für Januar 2026: ' + k.slice(0, 80));
-ok((await txt(p, '#hp-flags')).includes('aus Monatswerten'), 'Hinweis: Tage teils aus Monatswerten');
-ok(await p.evaluate(() => window.__ebCharts['hp-month'].data.labels.length) === 1, 'Monatsgrafik nur mit Januar');
-ok(await p.evaluate(() => window.__ebCharts['hp-day'].data.labels.length) === 31, 'Tagesgrafik mit 31 Tagen');
-ok((await p.$$('#hp-tbl tbody tr')).length === 1, 'Tabelle nur mit Januar');
-ok(await p.evaluate(() => window.__ebCharts['hp-month'].config.plugins.some(x => x.id === 'ebTotals')), 'v0.15: Summen über den Balken aktiv');
-ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Tag', 'Zähler-Monatsgrafik wird bei einem Monat zur Tagesgrafik');
-const nMt = await p.evaluate(() => window.__ebCharts['mt-month'].data.labels.length);
-ok(nMt >= 28 && nMt <= 31, `Zählergrafik: Tage im Januar (${nMt})`);
-const nIv = await p.$$eval('#wx-wp-tbl tbody tr', r => r.length).catch(() => 0);
-// Vergleich mit Vorjahreszeitraum: Jan 2025 hat im Seed keine neuen Gerätedaten (vor dem Tausch)
-await p.selectOption('#pb-cmp', 'yoy'); await p.waitForTimeout(400);
-ok((await txt(p, '#hp-flags')).includes('keine Gerätedaten'), 'Vergleich ohne Gerätedaten: Hinweis');
-// Vergleich Februar gegen Januar (Vorperiode)
-await p.selectOption('#pb-key', '2026-02'); await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
-k = await txt(p, '#hp-kpis');
-ok(/Jan 2026\): 300 kWh \(−17 %\)/.test(k), 'Vergleichswert und Abweichung: ' + k.slice(0, 120));
-// Zeitraum ohne Gerätedaten
-await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2025'); await p.selectOption('#pb-cmp', 'none'); await p.waitForTimeout(400);
-ok((await txt(p, '#hp-flags')).includes('Keine Gerätedaten im gewählten Zeitraum'), 'Hinweis bei Zeitraum ohne Gerätedaten');
-// Gesamter Zeitraum: Monatsgrafik der Zähler unverändert je Monat
+let { p, ctx } = await open('log');
+ok(!p.errs.length, 'Seite ohne Fehler ' + p.errs.join(' | '));
+ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf Tanken & Laden');
+const allRows = await p.$$eval('#fu-tbl tbody tr', r => r.length);
+await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', mk).catch(() => {}); await p.waitForTimeout(400);
+const k = await txt(p, '#lg-kpis');
+ok(k.includes('Tankkosten im Zeitraum'), 'Kennzahlen für den Zeitraum');
+const mRows = await p.$$eval('#fu-tbl tbody tr', r => r.length);
+ok(mRows <= allRows, `Tankliste gefiltert (${mRows} von ${allRows})`);
+ok((await txt(p, '#lg-car-kpis')).includes('im Zeitraum'), 'Fahrzeug-Kennzahlen im Zeitraum');
+await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
+ok((await txt(p, '#lg-kpis')).includes('Vorperiode'), 'Vergleich mit Vorperiode angezeigt');
+// Tarifrechner: Monat → hochgerechnet mit Hinweis
+await p.goto('http://localhost:8000/#tarif'); await p.waitForTimeout(400);
+const tb = await txt(p, '#tr-base');
+ok(tb.includes('aufs Jahr hochgerechnet') && tb.includes('verzerren'), 'Tarifrechner: Hochrechnung mit Hinweis');
+// Ausbau: Monat → Hinweis, gerechnet mit 365 Tagen
+await p.goto('http://localhost:8000/#ausbau'); await p.waitForTimeout(400);
+ok((await txt(p, '#wb-flags')).includes('ganzes Jahr'), 'Ausbau: Hinweis auf ganzes Jahr');
+// Stromkosten: Zahlungsbuch gefiltert
+await p.goto('http://localhost:8000/#cost'); await p.waitForTimeout(400);
+const pay = await txt(p, '#pay-tbl');
+ok(pay.includes('im Monat') && !pay.includes('alt'), 'Zahlungsbuch zeigt nur den Zeitraum');
+// Gesamter Zeitraum: alles wie vorher
 await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
-ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Monat', 'Gesamter Zeitraum: je Monat');
-// Zeitraum gilt auch auf anderen Seiten (gemeinsam)
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(300);
-await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(400);
-ok((await txt(p, '#pb-info')).includes('Jan 2026'), 'Gemeinsamer Zeitraum: Überblick zeigt Januar 2026');
-ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
+const pay2 = await txt(p, '#pay-tbl');
+ok(pay2.includes('im Monat') && pay2.includes('alt'), 'Gesamter Zeitraum: Zahlungsbuch vollständig');
+await p.goto('http://localhost:8000/#tarif'); await p.waitForTimeout(400);
+ok((await txt(p, '#tr-base')).includes('365 Tage'), 'Gesamter Zeitraum: Tarifrechner mit 365 Tagen');
+await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(300);
+ok(await p.isHidden('#period-bar'), 'Amortisation ohne Zeitraumleiste');
+await p.goto('http://localhost:8000/#car'); await p.waitForTimeout(300);
+ok(await p.isHidden('#period-bar'), 'Auto-Vergleich ohne Zeitraumleiste');
+ok(!p.errs.length, 'ohne Fehler ' + p.errs.join(' | '));
 await ctx.close();
-
 console.log(failures ? `${failures} Prüfung(en) fehlgeschlagen` : 'Alle Prüfungen bestanden');
 await b.close(); process.exit(failures ? 1 : 0);

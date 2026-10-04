@@ -229,3 +229,48 @@
   Erfassen, Importe und Bearbeiten gesperrt, kein Wetter-Abruf, keine Schreibanfragen; Zeitraum und Ansicht bleiben
   wählbar (nur auf dem Gerät gespeichert).
 - Tests: `scripts/v14-check.mjs` 15 Prüfungen; alle bisherigen Prüfungen und Seitenvergleich unverändert.
+
+## v0.15.0 – Stundenexporte der Wärmepumpe, Summen über den Balken
+- **Wärmepumpe:** Exporte, die nur Stundenwerte enthalten, werden jetzt ausgewertet. Vollständige Tage (mindestens
+  23 Stunden) werden aus den Stunden gebildet, Monate ohne Monatszeile aus den Tagen (in der Tabelle mit „bis …“
+  als unvollständig markiert). Echte Tages- und Monatszeilen haben Vorrang; abgeleitete Monate werden nicht auf
+  fehlende Tage verteilt. Grund: Ein Export vom 04.10. enthielt nur Stunden, die Anzeige endete deshalb am 01.10.
+- **Summen über den Balken** in allen Balkendiagrammen (gestapelt: Gesamtwert über dem Stapel), sobald die Balken
+  breit genug sind (mindestens 14 px – am Handy bei vielen Tagen daher ausgeblendet). Abschaltbar je Diagramm.
+- Tests: 70 Unit-Tests; `v13-check` prüft die Summen; `v08-check` wartet nach dem Verkleinern auf die Diagramme.
+
+## v0.16.0 – Zeitraum für das ganze Tool (außer Amortisation und Auto-Vergleich)
+- Die Zeitraumleiste erscheint zusätzlich auf **Tanken & Laden**, **Tarifrechner** und **Ausbau (Weg B)**; sie gilt
+  weiterhin gemeinsam für alle Seiten. Ohne Leiste: Amortisation (ganze Laufzeit), Auto-Vergleich (Prognose),
+  Erfassen und Daten.
+- **Tanken & Laden:** Kennzahlen (Verbrauch, Spritpreis, Tankkosten, Ladepreis), Fahrzeug-Kennzahlen (km, Kosten,
+  ct/km), Grafiken und Listen im Zeitraum, mit Vergleichswert und Abweichung. „Gesamter Zeitraum“ zeigt alles wie
+  bisher (Fahrzeug-Kennzahlen dann weiter für die letzten 12 Monate).
+- **Tarifrechner:** bei Jahr, Quartal, Monat oder frei der Verbrauch des Zeitraums aufs Jahr hochgerechnet, mit
+  Hinweis unter 300 Tagen (Winter/Sommer verzerren); bei „Gesamt“ und „12 Monate“ wie bisher die letzten 365 Tage.
+- **Ausbau (Weg B):** bei „Jahr“ das gewählte Kalenderjahr als Basisjahr, wenn es vollständig in den Anker-Daten
+  liegt; sonst die letzten 365 Tage mit Hinweis.
+- **Stromkosten:** Zahlungsbuch-Liste im Zeitraum; **Zähler:** Liste der Ablesungen im Zeitraum (inklusive des Stands
+  am Tag nach dem Ende). Abschlag-Check, Abrechnung prüfen und Boni bleiben vertragsbezogen und sagen das jetzt dazu.
+- Seitenvergleich: neue, gewollte Abweichungen nur bei gewähltem Zeitraum (im Kopf von `compare.mjs` vermerkt).
+- Tests: `scripts/v16-check.mjs` 14 Prüfungen; `v08-check` wartet bis zu 4 s auf stabile Handybreite.
+
+## v0.17.0 – Auto-Vergleich: Räder, Überführung, THG-Prämie getrennt
+- Neue Fahrzeugbuch-Kategorien **„Räder/Reifen“** und **„Überführung“**. Die beiden bisher unter „Sonstiges“
+  gebuchten Einträge (Überführungskosten, Winterräder) wurden auf Wunsch in Supabase umgebucht.
+- **Auto-Vergleich:** Balken „Kosten über 36 Monate“ zeigt Räder (Räderwechsel + Räder/Reifen aus dem Fahrzeugbuch),
+  Überführung und **THG-Prämie (als Gutschrift, negativ)** getrennt statt in „Sonstiges“. Die Summen ändern sich
+  nicht. Die Überführung des Leon ist bereits bezahlt und zählt für die 36 Monate nicht mit.
+
+## v0.18.0 – Erstattungen und Gutschriften in der Amortisation
+- **Schema** (`docs/UPDATE_V18.sql`): Investitions-Kategorie `refund` erlaubt.
+- Neue Kategorie **„Erstattung/Gutschrift“**: Betrag positiv mit Datum des Geldeingangs (§14a-Gutschrift, Förderung,
+  THG-Prämie). Zählt als **Ersparnis** im Monat des Eingangs, nicht als Investition; Kennzahlen nennen den Anteil,
+  die Investitionstabelle zeigt die Summe getrennt. Abschlags-Erstattungen aus dem Zahlungsbuch zählen weiterhin nicht
+  (eigenes Geld zurück).
+- **Prognose:** §14a-Gutschrift (Wert der Ausbau-Seite, nur mit Wallbox-Investition, ab Übergabe des E-Autos) und
+  THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils als Jahresbetrag. Gebuchte Gutschriften mit „14a“ bzw. „THG“ im
+  Namen ersetzen die Prognose für die folgenden 12 Monate. Beide unter „Annahmen“ abschaltbar.
+- Die THG-Prämie ist auf Wunsch enthalten (Standard: an), wird aber ausdrücklich als „nicht durch die Investition
+  verursacht“ gekennzeichnet: Sie fällt für jedes E-Auto an und verschiebt den Break-even spürbar nach vorn.
+- Tests: 73 Unit-Tests (neu `tests/v18.test.mjs`), `scripts/v18-check.mjs` 10 Prüfungen; alles Übrige unverändert.

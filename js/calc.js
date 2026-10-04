@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.14.0';
+import { hpSum } from './hp.js?v=0.18.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -37,7 +37,7 @@ export function carBucket(d, g) {
   if (g === 'quarter') return `${d.slice(0, 4)}-Q${Math.floor((+d.slice(5, 7) - 1) / 3) + 1}`; return d.slice(0, 4);
 }
 
-export const CAR_CATS = ['Kilometerstand', 'Versicherung', 'Kfz-Steuer', 'Räderwechsel', 'Wartung/Reparatur', 'Pflege', 'Sonstiges'];
+export const CAR_CATS = ['Kilometerstand', 'Versicherung', 'Kfz-Steuer', 'Räderwechsel', 'Räder/Reifen', 'Wartung/Reparatur', 'Pflege', 'Überführung', 'Sonstiges'];
 
 /* ---------- Supabase-Zeilen -> Referenzform ---------- */
 export function stateFromDb(db) {
@@ -106,8 +106,24 @@ export function createCalc(S) {
   /* Zähler: Tageswerte aus Ablesungen */
   const _gcache = new Map();
   // Gewicht eines Tages für die Wärmepumpe aus den Gerätedaten (Strom inkl. Zuheizer), null = unbekannt
+  // v0.15: Exporte mit nur Stundenwerten – vollständige Tage (mind. 23 Stunden, Sommerzeit) aus den Stunden bilden,
+  // Monate ohne Monatszeile aus den Tagen (partial = laufender bzw. unvollständiger Monat). Echte Zeilen haben Vorrang.
+  const HP_F = ['el_hp', 'el_heat', 'el_cool', 'el_dhw', 'el_aux', 'el_aux_heat', 'el_aux_dhw', 'heat_heat', 'heat_dhw', 'heat_cool'];
+  const HP = (() => {
+    const rows = S.hp || [], has = g => new Set(rows.filter(r => r.grain === g).map(r => r.ts));
+    const sumOf = (list, base) => { const o = { ...base }; for (const f of HP_F) o[f] = list.reduce((a, h) => a + (+h[f] || 0), 0);
+      const t = list.map(h => h.t_out).filter(v => v != null); o.t_out = t.length ? t.reduce((a, b) => a + b, 0) / t.length : null; return o; };
+    const days = has('day'), byDay = {};
+    for (const r of rows) if (r.grain === 'hour') (byDay[r.ts.slice(0, 10)] = byDay[r.ts.slice(0, 10)] || []).push(r);
+    const dAdd = Object.entries(byDay).filter(([d, hs]) => !days.has(d) && hs.length >= 23).map(([d, hs]) => sumOf(hs, { grain: 'day', ts: d, fromHours: true }));
+    const allDays = [...rows.filter(r => r.grain === 'day'), ...dAdd], months = has('month'), byMonth = {};
+    for (const r of allDays) (byMonth[r.ts.slice(0, 7)] = byMonth[r.ts.slice(0, 7)] || []).push(r);
+    const mAdd = Object.entries(byMonth).filter(([k]) => !months.has(k))
+      .map(([k, ds]) => sumOf(ds, { grain: 'month', ts: k, fromDays: true, partial: ds.length < +monthEnd(k).slice(8, 10) }));
+    return [...rows, ...dAdd, ...mAdd];
+  })();
   const _hpDay = {}, _hpMonth = {};
-  for (const r of S.hp || []) { const v = (+r.el_hp || 0) + (+r.el_aux || 0); if (r.grain === 'day') _hpDay[r.ts] = v; else if (r.grain === 'month') _hpMonth[r.ts] = v; }
+  for (const r of HP) { const v = (+r.el_hp || 0) + (+r.el_aux || 0); if (r.grain === 'day') _hpDay[r.ts] = v; else if (r.grain === 'month' && !r.fromDays) _hpMonth[r.ts] = v; }   // abgeleitete Monate nicht verteilen
   // Gerätedaten gelten erst ab dem Tausch (Ereignis wp/geraet): Tage davor gehören zur alten Wärmepumpe
   const _hpFrom = (S.events.find(e => e.type === 'geraet' && e.group === 'wp') || {}).d || '';
   function hpWeight(d) {
@@ -309,7 +325,7 @@ export function createCalc(S) {
 
   /* Amortisation entlang der Investitionsdaten */
   function amortTimeline() {
-    const am = S.amort, items = S.invest.map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
+    const am = S.amort, items = S.invest.filter(x => x.cat !== 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
     const startK = monthKey(items[0]?.date || A.dates[0]);
     const act = {}, feedK = {};
     A.dates.forEach((d, i) => {
@@ -326,27 +342,44 @@ export function createCalc(S) {
       const t = tariffAt('as', c.d) || currentTariff('as'); wbK[monthKey(c.d)] = (wbK[monthKey(c.d)] || 0) + (+c.k || 0) * ((+ev.pricePublic || 0) - (t ? t.ap : 0) / 100); }
     const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100;
     const wbYear = tb ? tb.evHome * ((+ev.pricePublic || 0) - apNow) : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
+    // Erstattungen/Gutschriften (v0.18): gebuchte Beträge als Ersparnis im Monat des Eingangs. Prognose für §14a (Wert der
+    // Ausbau-Seite, ab Wallbox und Übergabe) und THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils frühestens 12 Monate
+    // nach der letzten gebuchten Gutschrift dieser Art (Name enthält „14a“ bzw. „THG“), damit nichts doppelt zählt.
+    const refunds = S.invest.filter(x => x.cat === 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })), refK = {};
+    refunds.forEach(x => { const rk = monthKey(x.date); refK[rk] = (refK[rk] || 0) + (+x.cost || 0); });
+    const kindOf = x => (/14a/i.test(x.name || '') ? 's14a' : /thg/i.test(x.name || '') ? 'thg' : 'other');
+    const fcStart = (kind, startK) => { if (!startK) return null; const lb = refunds.filter(x => kindOf(x) === kind).map(x => x.date).sort().pop();
+      return [startK, lb ? monthKey(addMonths(lb, 12)) : null].filter(Boolean).sort().pop(); };
+    const au = { ...AUSBAU_DEFAULTS, ...(S.ausbau || {}) };
+    let s14Year = 0;
+    if (am.s14aFc !== false && au.s14a && wbFrom) {
+      if (au.s14aMod === 'manual') s14Year = +au.s14aEur || 0;
+      else { const w = tarifRechner(tariffBase(), { as: currentTariff('as'), wp: currentTariff('wp') }, S.tarif || {}).wallbox.find(x => x.key === au.s14aMod); s14Year = w ? Math.max(0, -w.vsNone) : 0; }
+    }
+    const thgYear = am.thg !== false ? (+ev.thg || 0) : 0;
+    const s14K = s14Year ? fcStart('s14a', wbStartK) : null, thgK = thgYear ? fcStart('thg', ev.start ? monthKey(ev.start) : null) : null;
     const prof = {}, profFeed = {}; let k = lastK;
     for (let j = 0; j < 12; j++) { const cm = k.slice(5, 7); if (prof[cm] === undefined) { prof[cm] = act[k] || 0; profFeed[cm] = feedK[k] || 0; } const y = +k.slice(0, 4), m = +k.slice(5, 7); k = m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`; }
     const labels = [], cumS = [], cumI = [], proj = []; let cs = 0, be = null; k = startK;
     const total = am.years * 12; let idxLast = null;
     for (let j = 0; j < total; j++) {
       let v;
-      if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0); if (k === lastK) idxLast = j; }
+      if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0) + (refK[k] || 0); if (k === lastK) idxLast = j; }
       else {
         const yrs = (j - (idxLast ?? j)) / 12, cm = k.slice(5, 7);
         v = (prof[cm] || 0) * Math.pow(1 + am.priceInc / 100, yrs) * Math.pow(1 - am.degr / 100, yrs);
         const fd = `${k}-15`; if (am.feedin && (!am.feedinFrom || fd >= am.feedinFrom)) v += (profFeed[cm] || 0) * am.feedin / 100;
         if (wbStartK && k >= wbStartK) v += wbYear / 12 * Math.pow(1 + am.priceInc / 100, yrs);
+        v += (refK[k] || 0) + (s14K && k >= s14K ? s14Year / 12 : 0) + (thgK && k >= thgK ? thgYear / 12 : 0);
       }
       cs += v; const me = monthEnd(k), ci = items.filter(x => x.date <= me).reduce((s, x) => s + (+x.cost || 0), 0);
       labels.push(k); cumS.push(cs); cumI.push(ci); proj.push(k > lastK);
       if (be === null && ci > 0 && cs >= ci && j > 0) be = k;
       k = nextMonth(k);
     }
-    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear };
+    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK };
   }
-  function investTotal() { return S.invest.reduce((a, b) => a + (+b.cost || 0), 0); }
+  function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
   /* Abschlag-Check je laufendem Vertrag */
   function abschlagAt(g, d) { const l = S.abschlaege.filter(a => a.group === g && a.from && a.from <= d).sort((a, b) => b.from.localeCompare(a.from))[0]; return l ? +l.amount : 0; }
@@ -483,13 +516,21 @@ export function createCalc(S) {
   }
 
   /* Tarifrechner (Stufe A): Jahresverbrauch der letzten 365 Tage, Angebote, Wallbox nach §14a, iMSys */
-  function tariffBase() {
-    const as = last365Cost('as'), wp = last365Cost('wp'), e = S.cars.ev || {};
+  // Verbrauch eines Zeitraums aufs Jahr hochgerechnet (v0.16, Tarifrechner mit gewähltem Zeitraum)
+  function periodKwhYear(group, from, to) {
+    const g = groupSeries(group); if (!g.last) return null; let kw = 0, days = 0;
+    for (const [d, k] of Object.entries(g.daily)) { if (d < from || d > to) continue; kw += k; days++; }
+    return days ? { kwh: kw * 365 / days, raw: kw, days, from, to } : null;
+  }
+  function tariffBase(from, to) {
+    const e = S.cars.ev || {}, pr = from && to;
+    const as = pr ? periodKwhYear('as', from, to) : last365Cost('as'), wp = pr ? periodKwhYear('wp', from, to) : last365Cost('wp');
     const evYear = (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100);
     const evHome = evYear * (+e.shHome || 0) / 100, evGrid = evHome * (1 - (+e.shPV || 0) / 100);
     // Laden zu Hause steckt ab v0.9 schon im Zählerwert: Netzanteil abziehen, damit „inkl. E-Auto“ nicht doppelt zählt
-    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) : 0;
-    return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid };
+    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) * (pr ? 365 / as.days : 1) : 0;
+    return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid,
+      annualized: !!pr, days: pr ? Math.max(as?.days || 0, wp?.days || 0) : 365 };
   }
 
   /* Fahrzeuge */
@@ -538,6 +579,14 @@ export function createCalc(S) {
     const kmT = intervals.reduce((a, b) => a + b.km, 0), lT = intervals.reduce((a, b) => a + b.l, 0);
     return { intervals, L, E, avgPrice: L ? E / L : null, l100: kmT ? lT / kmT * 100 : null, n: f.length };
   }
+  // Tankbuch für einen Zeitraum (v0.16): Mengen nach Datum, Verbrauch aus Volltank-Intervallen mit Ende im Zeitraum
+  function fuelStatsIn(from, to) {
+    const all = fuelStats(), f = S.fuel.filter(x => x.d >= from && x.d <= to);
+    const L = f.reduce((a, b) => a + (+b.l || 0), 0), E = f.reduce((a, b) => a + (+b.e || 0), 0);
+    const intervals = all.intervals.filter(iv => iv.to.d >= from && iv.to.d <= to);
+    const kmT = intervals.reduce((a, b) => a + b.km, 0), lT = intervals.reduce((a, b) => a + b.l, 0);
+    return { intervals, L, E, avgPrice: L ? E / L : null, l100: kmT ? lT / kmT * 100 : null, n: f.length };
+  }
   function fuelPrice(n) {
     const f = [...S.fuel].filter(x => +x.l > 0).sort((a, b) => b.d.localeCompare(a.d) || b.km - a.km);
     const sel = n ? f.slice(0, n) : f;
@@ -554,9 +603,10 @@ export function createCalc(S) {
     const i = S.cars.ice, e = S.cars.ev, fs = fuelStats(), apAS = (currentTariff('as')?.ap || 33) / 100;
     const l100 = (i.useLog && fs.l100) ? fs.l100 : i.l100;
     const ip = icePrice(); const iceFuelY = i.km / 100 * l100 * ip.v;
-    let ins = i.ins, tax = i.tax, oth = i.other;
-    if (i.useLedger) { const L = ledger12('leon', today); ins = L['Versicherung'] || 0; tax = L['Kfz-Steuer'] || 0; oth = (L['Räderwechsel'] || 0) + (L['Wartung/Reparatur'] || 0) + (L['Pflege'] || 0) + (L['Sonstiges'] || 0); }
-    const iceM = i.rate + (iceFuelY + ins + tax + oth) / 12;
+    // v0.17: Räder (Räderwechsel, Räder/Reifen) getrennt von Sonstiges; Überführung ist einmalig und zählt beim Leon nicht für die Zukunft
+    let ins = i.ins, tax = i.tax, oth = i.other, wheels = 0;
+    if (i.useLedger) { const L = ledger12('leon', today); ins = L['Versicherung'] || 0; tax = L['Kfz-Steuer'] || 0; wheels = (L['Räderwechsel'] || 0) + (L['Räder/Reifen'] || 0); oth = (L['Wartung/Reparatur'] || 0) + (L['Pflege'] || 0) + (L['Sonstiges'] || 0); }
+    const iceM = i.rate + (iceFuelY + ins + tax + oth + wheels) / 12;
     const kwhY = e.km / 100 * e.kwh100 * (1 + e.loss / 100);
     const home = kwhY * e.shHome / 100, pv = home * e.shPV / 100, grid = home - pv, pub = kwhY - home;
     const evEnergyY = grid * apAS + pv * S.amort.feedin / 100 + pub * e.pricePublic;
@@ -564,8 +614,8 @@ export function createCalc(S) {
     const iceCum = [], evCum = []; let a = 0, b = +e.transfer || 0;
     for (let m = 0; m <= 36; m++) { if (m > 0) { a += iceM; b += evM; if (m % 12 === 0) b -= +e.thg || 0; } iceCum.push(a); evCum.push(b); }
     return { l100, ip, iceFuelY, kwhY, evEnergyY, iceCum, evCum, grid, pv, pub, fs, apAS,
-      blocks: { ice: { Leasing: i.rate * 36, Energie: iceFuelY * 3, Versicherung: ins * 3, Steuer: tax * 3, Sonstiges: oth * 3 },
-                ev: { Leasing: e.rate * 36, Energie: evEnergyY * 3, Versicherung: e.ins * 3, Steuer: e.tax * 3, Sonstiges: (+e.transfer || 0) - (+e.thg || 0) * 3 } } };
+      blocks: { ice: { Leasing: i.rate * 36, Energie: iceFuelY * 3, Versicherung: ins * 3, Steuer: tax * 3, 'Räder': wheels * 3, Sonstiges: oth * 3, 'Überführung': 0, 'THG-Prämie': 0 },
+                ev: { Leasing: e.rate * 36, Energie: evEnergyY * 3, Versicherung: e.ins * 3, Steuer: e.tax * 3, 'Räder': 0, Sonstiges: 0, 'Überführung': +e.transfer || 0, 'THG-Prämie': -(+e.thg || 0) * 3 } } };
   }
 
   /* Kosten & Ersparnisse */
@@ -681,21 +731,20 @@ export function createCalc(S) {
   }
 
   /* Wärmepumpen-App (v0.11): Strom und Wärme nach Heizung/Warmwasser, Arbeitszahl, Abgleich mit dem Zähler */
-  const hpRows = g => (S.hp || []).filter(r => r.grain === g).sort((a, b) => a.ts.localeCompare(b.ts));
+  const hpRows = g => HP.filter(r => r.grain === g).sort((a, b) => a.ts.localeCompare(b.ts));
   function hpMonths() {
     const meter = {}; for (const [d, k] of Object.entries(groupSeries('wp').daily)) meter[monthKey(d)] = (meter[monthKey(d)] || 0) + k;
     const wl = S.weather?.length ? S.weather[S.weather.length - 1].d : null;
     return hpRows('month').map(r => {
       const s = hpSum([r]), from = `${r.ts}-01`, end = addDays(monthEnd(r.ts), 1), dd = S.weather?.length ? degreeDays(from, end) : null;
-      return { k: r.ts, ...s, tOut: r.t_out, tFlow: r.t_flow, tDhw: r.t_dhw, meter: meter[r.ts] ?? null,
+      return { k: r.ts, partial: !!r.partial, fromDays: !!r.fromDays, ...s, tOut: r.t_out, tFlow: r.t_flow, tDhw: r.t_dhw, meter: meter[r.ts] ?? null,
         gt: dd && dd.missing === 0 ? dd.gt : null, heatPerGt: dd && dd.missing === 0 && dd.gt >= 100 ? s.elHeat / dd.gt : null };
     });
   }
   // v0.13: Tageswerte für einen Zeitraum – echte Tageswerte, sonst Monatswert (abzüglich vorhandener Tage) gleichmäßig
   // auf die übrigen Tage des Monats ab dem Tauschtag verteilt (est = geschätzt). Tage ohne Daten fehlen.
-  const HP_F = ['el_hp', 'el_heat', 'el_cool', 'el_dhw', 'el_aux', 'el_aux_heat', 'el_aux_dhw', 'heat_heat', 'heat_dhw', 'heat_cool'];
   function hpDayRows(from, to) {
-    const days = Object.fromEntries(hpRows('day').map(r => [r.ts, r])), months = Object.fromEntries(hpRows('month').map(r => [r.ts, r]));
+    const days = Object.fromEntries(hpRows('day').map(r => [r.ts, r])), months = Object.fromEntries(hpRows('month').filter(r => !r.fromDays).map(r => [r.ts, r]));
     const spread = {}, out = [];
     for (let d = from; d <= to; d = addDays(d, 1)) {
       if (d < _hpFrom) continue;
@@ -736,8 +785,8 @@ export function createCalc(S) {
   }
 
   // Ausbau-Szenario: Tageswerte der letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler) und Rahmenwerte
-  function ausbauBase() {
-    const r = last12(), as = groupSeries('as').daily, days = [];
+  function ausbauBase(from, to) {
+    const r = from && to ? { from, to } : last12(), as = groupSeries('as').daily, days = [];
     A.dates.forEach((d, i) => { if (d < r.from || d > r.to) return;
       days.push({ d, gen: A.c.gen[i] || 0, use: A.c.use[i] || 0, bch: A.c.bch[i] || 0, bdis: A.c.bdis[i] || 0, asGrid: as[d] ?? null }); });
     const b = S.battery, e = S.cars.ev || {}, tb = tariffBase();
@@ -751,7 +800,7 @@ export function createCalc(S) {
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
-    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
+    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
     W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod,
   };
 }

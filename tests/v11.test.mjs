@@ -97,3 +97,18 @@ test('v0.13: Gerätewerte für Zeiträume – Tageswerte, sonst Monatsrest gleic
   assert.ok(Math.abs(C.hpPeriod('2025-01-21', '2025-01-30').el - 30) < 1e-9);
   assert.equal(C.hpPeriod('2024-01-01', '2024-12-31'), null);
 });
+
+test('v0.15: Export nur mit Stunden – Tage aus vollständigen Stunden, Monat aus Tagen (unvollständig markiert)', () => {
+  const base = { anker_daily: [{ day: '2026-10-01', genutzt: 1 }], meters: [], settings: { data: { pv: { kwp: 1 }, battery: {}, amort: {} } } };
+  const hours = d => Array.from({ length: 24 }, (_, h) => ({ grain: 'hour', ts: `${d}T${String(h).padStart(2, '0')}:00`, el_hp: h === 2 ? 2 : 0.1, el_dhw: h === 2 ? 2 : 0, el_aux: 0, heat_dhw: h === 2 ? 5 : 0, t_out: 10 }));
+  const hp = [{ grain: 'day', ts: '2026-10-01', el_hp: 5, el_dhw: 4, el_aux: 0, heat_dhw: 9 }, ...hours('2026-10-02'), ...hours('2026-10-03'), ...hours('2026-10-04').slice(0, 6)];
+  const C = createCalc(stateFromDb({ ...base, hp_energy: hp }));
+  const days = C.hpRows('day');
+  assert.deepEqual(days.map(d => d.ts), ['2026-10-01', '2026-10-02', '2026-10-03'], 'unvollständiger 04.10. fehlt');
+  assert.ok(Math.abs(days[1].el_hp - (2 + 23 * 0.1)) < 1e-9 && days[1].fromHours);
+  const m = C.hpMonths();
+  assert.equal(m.length, 1); assert.equal(m[0].partial, true);
+  assert.ok(Math.abs(m[0].el - (5 + 2 * 4.3)) < 1e-9);
+  assert.ok(Math.abs(C.hpPeriod('2026-10-01', '2026-10-03').elDhw - 8) < 1e-9);
+  assert.equal(C.hpPeriod('2026-10-01', '2026-10-31').days, 3, 'abgeleiteter Monat wird nicht auf fehlende Tage verteilt');
+});

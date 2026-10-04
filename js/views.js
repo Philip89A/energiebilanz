@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.14.0';
-import { parseNum } from './queue.js?v=0.14.0';
-import { geocode, fetchDays } from './weather.js?v=0.14.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.14.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.18.0';
+import { parseNum } from './queue.js?v=0.18.0';
+import { geocode, fetchDays } from './weather.js?v=0.18.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.18.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -116,7 +116,9 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost","p-tarif","p-ausbau","p-log"];
+// v0.16: Zeitraum für Listen und Fahrzeugdaten; „Gesamter Zeitraum“ filtert nicht (Einträge können außerhalb der Energiedaten liegen)
+function periodSel(){ const {P,C:Cp}=currentPeriods(), all=S.view.mode==="all"; return {P,Cp,all,inP:d=>all||(d>=P.from&&d<=P.to),inC:d=>!!Cp&&d>=Cp.from&&d<=Cp.to}; }
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
 function keyLabel(mode,k){ return mode==="quarter" ? `Q${k.slice(6)} ${k.slice(0,4)}` : mode==="month" ? `${MON[+k.slice(5,7)-1]} ${k.slice(0,4)}` : k; }
@@ -175,35 +177,36 @@ function gran(from,to){ return diffDays(from,to)<=62 ? "day" : "month"; }
 function bucketOf(d,g){ return g==="day"?d:monthKey(d); }
 function bucketLabel(k,g){ return g==="day" ? k.slice(8,10)+"."+k.slice(5,7)+"." : monthLabel(k); }
 
-const CAR_CATS=["Kilometerstand","Versicherung","Kfz-Steuer","Räderwechsel","Wartung/Reparatur","Pflege","Sonstiges"];
+const CAR_CATS=["Kilometerstand","Versicherung","Kfz-Steuer","Räderwechsel","Räder/Reifen","Wartung/Reparatur","Pflege","Überführung","Sonstiges"];
 const CARS={leon:"Cupra Leon", tavascan:"Cupra Tavascan"};
 
 function carBucketLabel(k,g){ if(g==="week") return "Wo. "+k.slice(8,10)+"."+k.slice(5,7)+"."+k.slice(2,4); if(g==="month") return monthLabel(k); if(g==="quarter") return `Q${k.slice(6)} ${k.slice(0,4)}`; return k; }
 
 function renderCarAnalytics(){
-  const car=S.ui.logCar, g=S.ui.logGran;
+  const car=S.ui.logCar, g=S.ui.logGran, PS=periodSel();
   $("lg-car").value=car; $("lg-gran").value=g;
-  const kd=kmDaily(car), b={}; Object.entries(kd).forEach(([d,v])=>{ const k=carBucket(d,g); b[k]=(b[k]||0)+v; });
+  const kd=kmDaily(car), b={}; Object.entries(kd).forEach(([d,v])=>{ if(!PS.inP(d)) return; const k=carBucket(d,g); b[k]=(b[k]||0)+v; });
   const ks=Object.keys(b).sort();
   chart("lg-km",{type:"bar",data:{labels:ks.map(k=>carBucketLabel(k,g)),datasets:[{label:"Kilometer",data:ks.map(k=>b[k]),backgroundColor:css("--grid")}]},
     options:{plugins:{legend:{display:false},tooltip:numTip("km")},scales:{x:{ticks:{maxTicksLimit:16}},y:{title:{display:true,text:"km"}}}}});
   $("lg-km-note").textContent = ks.length ? `Aus ${odoPoints(car).length} Kilometerständen (Tanken, Laden und Fahrzeugbuch), zwischen zwei Ständen gleichmäßig verteilt.` : "Mindestens zwei Kilometerstände nötig (Tankvorgang, Ladevorgang oder Eintrag „Kilometerstand“ im Fahrzeugbuch).";
   const items=carCostItems(car), cats=[...new Set(items.map(x=>x.cat))], cb={};
-  items.forEach(x=>{ const k=carBucket(x.d,g); cb[k]=cb[k]||{}; cb[k][x.cat]=(cb[k][x.cat]||0)+x.e; });
+  items.forEach(x=>{ if(!PS.inP(x.d)) return; const k=carBucket(x.d,g); cb[k]=cb[k]||{}; cb[k][x.cat]=(cb[k][x.cat]||0)+x.e; });
   const ck=Object.keys(cb).sort(), pal=["--sun","--grid","--heat","--batt","--warn","--muted","--loss","--feed"];
   chart("lg-cost",{type:"bar",data:{labels:ck.map(k=>carBucketLabel(k,g)),datasets:cats.map((c,i)=>({label:c,data:ck.map(k=>cb[k][c]||0),backgroundColor:css(pal[i%pal.length]),stack:"s"}))},
     options:{plugins:{tooltip:numTip("€",2)},scales:{x:{stacked:true,ticks:{maxTicksLimit:16}},y:{stacked:true,title:{display:true,text:"€"}}}}});
-  const fs=fuelStats();
+  const fs=PS.all?fuelStats():C.fuelStatsIn(PS.P.from,PS.P.to);
   chart("lg-fuel",{type:"line",data:{labels:fs.intervals.map(iv=>dde(iv.to.d)),datasets:[
     {label:"l/100 km",data:fs.intervals.map(iv=>iv.l100),borderColor:css("--warn"),backgroundColor:css("--warn"),yAxisID:"y",pointRadius:3},
     {label:"€/l",data:fs.intervals.map(iv=>iv.to.e/iv.to.l),borderColor:css("--grid"),backgroundColor:css("--grid"),yAxisID:"y1",pointRadius:3}]},
     options:{scales:{y:{title:{display:true,text:"l/100 km"}},y1:{position:"right",grid:{drawOnChartArea:false},title:{display:true,text:"€/l"}}}}});
   // Fahrzeugbuch-Tabelle
-  const rows=S.carlog.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
+  const rows=S.carlog.map((x,i)=>({...x,i})).filter(x=>PS.inP(x.d)).sort((a,b)=>b.d.localeCompare(a.d));
   $("cl-tbl").innerHTML = rows.length ? `<thead><tr><th>Datum</th><th class="l">Fahrzeug</th><th class="l">Kategorie</th><th>km</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
     rows.map(x=>`<tr><td>${dde(x.d)}</td><td class="l">${CARS[x.car]||x.car}</td><td class="l">${esc(x.cat)}</td><td>${x.km?nf(x.km):"–"}</td><td>${x.e?eur(x.e,2):"–"}</td><td class="l">${esc(x.note||"")}</td><td><button class="x" data-del-cl="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Einträge. Hier landen Kilometerstände ohne Tanken, Versicherung, Steuer, Räderwechsel und alles Weitere mit Datum.</td></tr></tbody>`;
-  // KPIs Fahrzeug
+  // KPIs Fahrzeug: gesamter Zeitraum → letzte 12 Monate (wie bisher), sonst der gewählte Zeitraum mit Vergleich
+  if(!PS.all){ renderCarPeriodKpis(car,kd,items,PS); return; }
   const to=iso(new Date()), from=addDays(to,-364);
   const km12=Object.entries(kd).filter(([d])=>d>=from&&d<=to).reduce((s,[,v])=>s+v,0);
   const span=Object.keys(kd).filter(d=>d>=from&&d<=to).length;
@@ -252,6 +255,27 @@ function renderMeterExtras(){
 
 /* ---------- Charts ---------- */
 const charts = {};
+// v0.15: Summe über jedem Balken (gestapelt: Gesamtwert über dem Stapel), nur wenn der Balken breit genug ist.
+// Abschalten je Diagramm mit options.plugins.ebTotals = false. Linien und schwebende Balken werden ignoriert.
+const ebTotals = { id: "ebTotals", afterDatasetsDraw(ch) {
+  if (ch.config.type !== "bar" || ch.options.indexAxis === "y" || ch.options.plugins?.ebTotals === false) return;
+  const metas = ch.getSortedVisibleDatasetMetas().filter(m => m.type === "bar" && !m.hidden);
+  if (!metas.length || (metas[0].data[0]?.width || 0) < 14) return;
+  const ctx = ch.ctx, stacked = !!ch.options.scales?.x?.stacked, n = ch.data.labels.length, fmt = v => nf(v, Math.abs(v) >= 10 ? 0 : 1);
+  ctx.save(); ctx.font = "600 10px system-ui, sans-serif"; ctx.fillStyle = css("--ink"); ctx.textAlign = "center"; ctx.textBaseline = "bottom";
+  const put = (v, x, y) => { if (v == null || !isFinite(v) || Math.abs(v) < 0.05) return; ctx.fillText(fmt(v), x, y - 2); };
+  if (stacked) {
+    for (let i = 0; i < n; i++) {
+      let sum = 0, top = Infinity, x = null, any = false;
+      for (const m of metas) { const v = ch.data.datasets[m.index].data[i], el = m.data[i]; if (typeof v !== "number" || !el) continue;
+        sum += v; any = true; top = Math.min(top, el.y, el.base); x = el.x; }
+      if (any) put(sum, x, top);
+    }
+  } else {
+    for (const m of metas) m.data.forEach((el, i) => { const v = ch.data.datasets[m.index].data[i]; if (typeof v === "number") put(v, el.x, Math.min(el.y, el.base)); });
+  }
+  ctx.restore();
+} };
 function chart(id, cfg){
   if(charts[id]) charts[id].destroy();
   const ctx = $(id); if(!ctx || typeof Chart==="undefined") return;
@@ -260,6 +284,8 @@ function chart(id, cfg){
   Chart.defaults.borderColor = css("--line");
   cfg.options = Object.assign({responsive:true, maintainAspectRatio:false, locale:"de-DE", animation:{duration:250}, interaction:{mode:"index",intersect:false},
     plugins:{legend:{position:"bottom",labels:{boxWidth:10,boxHeight:10}}}}, cfg.options||{});
+  if(cfg.type==="bar" && !cfg.options.layout) cfg.options.layout = { padding: { top: 14 } };
+  cfg.plugins = [...(cfg.plugins||[]), ebTotals];
   charts[id] = new Chart(ctx, cfg);
 }
 const numTip = (unit,d=0) => ({callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,d)} ${unit}`}});
@@ -432,7 +458,8 @@ function renderMeters(){
   const mOpts = S.meters.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   $("rd-m").innerHTML = mOpts;
   renderMeterExtras();
-  const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
+  const RP = periodSel();   // v0.16: Ablesungen im Zeitraum, einschließlich des Stands am Tag nach dem Ende
+  const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).filter(r=>RP.all||(r.d>=RP.P.from&&r.d<=addDaysIso(RP.P.to,1))).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
   $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Zähler</th><th>Stand kWh</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
     rs.map(r=>`<tr><td>${dde(r.d)}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,1)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
   // Abgleich
@@ -597,19 +624,21 @@ function slider(host, obj, key, label, min, max, step, unit, dec=1){
   host.appendChild(wrap);
 }
 function renderAmort(first){
-  const inv = S.invest.reduce((a,b)=>a+(+b.cost||0),0);
+  const inv = C.investTotal(), nInv = S.invest.filter(x=>x.cat!=="refund").length;   // v0.18: Erstattungen zählen als Ersparnis
   const {from,to}=last12(), base=pvSavings(from,to).eur, am=S.amort;
   const realized = pvSavings(A.dates[0], to).eur, tl=amortTimeline();
   const beYears = tl.be ? (diffDays(`${tl.startK}-01`,`${tl.be}-01`)/365.25) : null;
   const wb12 = tl.wbFrom ? C.homeCharging([from,tl.wbFrom].sort()[1], to).saving : 0, wbAll = tl.wbFrom ? C.homeCharging(tl.wbFrom, to).saving : 0;
+  const refIn = (f,t)=>tl.refunds.filter(x=>x.date>=f&&x.date<=t).reduce((a,x)=>a+(+x.cost||0),0), ref12=refIn(from,to), refAll=refIn("0000",to);
   $("am-kpis").innerHTML =
-    kpi(eur(inv,2),"Investition gesamt", `${S.invest.length} Positionen, Verkäufe abgezogen`) +
-    kpi(eur(base+wb12),"Ersparnis letzte 12 Monate", tl.wbFrom ? `PV ${eur(base)} zum Arbeitspreis, Wallbox ${eur(wb12)} gegenüber öffentlichem Laden` : "Nur Arbeitspreis") +
+    kpi(eur(inv,2),"Investition gesamt", `${nInv} Positionen, Verkäufe abgezogen`) +
+    kpi(eur(base+wb12+ref12),"Ersparnis letzte 12 Monate", (tl.wbFrom ? `PV ${eur(base)} zum Arbeitspreis, Wallbox ${eur(wb12)} gegenüber öffentlichem Laden` : "Nur Arbeitspreis")+(ref12?`, Erstattungen ${eur(ref12)}`:"")) +
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
-    kpi(eur(realized+wbAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}`);
-  $("am-wb-note").innerHTML = tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "";
+    kpi(eur(realized+wbAll+refAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll+refAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}${refAll?`, davon Erstattungen ${eur(refAll)}`:""}`);
+  const fc=[tl.s14K?`§14a-Gutschrift ${eur(tl.s14Year)} pro Jahr ab ${monthLabel(tl.s14K)} (Wert der Ausbau-Seite)`:"", tl.thgK?`THG-Prämie ${eur(tl.thgYear)} pro Jahr ab ${monthLabel(tl.thgK)} – nicht durch die Investition verursacht, sie gibt es für jedes E-Auto`:""].filter(Boolean);
+  $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "");
   $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
-    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr></tfoot>`;
+    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td><td></td></tr>`:""}</tfoot>`;
   if(first){
     const h=$("am-sl"); h.innerHTML="";
     slider(h,am,"priceInc","Strompreissteigerung pro Jahr",0,8,0.5,"%");
@@ -618,6 +647,11 @@ function renderAmort(first){
     slider(h,am,"feedin","Einspeisevergütung",0,10,0.5,"ct/kWh");
     const l=document.createElement("label"); l.className="f"; l.textContent="Einspeisevergütung gilt ab"; const i=document.createElement("input"); i.type="date"; i.value=am.feedinFrom||"";
     i.addEventListener("change",()=>{ am.feedinFrom=i.value; persist(); rerender(); }); l.appendChild(i); h.appendChild(l);
+    // v0.18: Prognose von Gutschriften an/aus
+    [["s14aFc","§14a-Gutschrift in der Prognose (Wert der Ausbau-Seite)"],["thg","THG-Prämie in der Prognose (nicht durch die Investition verursacht)"]].forEach(([k,t])=>{
+      const c=document.createElement("label"); c.className="f check"; c.style.gridColumn="1/-1";
+      c.innerHTML=`<input type="checkbox" data-amc="${k}" ${am[k]!==false?"checked":""}> ${t}`;
+      c.querySelector("input").addEventListener("change",ev=>{ am[k]=ev.target.checked; persist(); rerender(); }); h.appendChild(c); });
   }
   const lab=tl.labels.map(monthLabel), li=tl.proj.indexOf(true);
   chart("am-chart",{type:"line",data:{labels:lab,datasets:[
@@ -651,7 +685,7 @@ function renderCar(first){
     const cb=document.createElement("label"); cb.className="f"; cb.style.flexDirection="row"; cb.style.alignItems="center"; cb.style.color="var(--ink)";
     cb.innerHTML=`<input type="checkbox" ${i.useLog?"checked":""}> Verbrauch aus Tankbuch`; cb.querySelector("input").addEventListener("change",ev=>{i.useLog=ev.target.checked;persist();renderCar(false);}); hi.appendChild(cb);
     const cb2=document.createElement("label"); cb2.className="f"; cb2.style.flexDirection="row"; cb2.style.alignItems="center"; cb2.style.color="var(--ink)";
-    cb2.innerHTML=`<input type="checkbox" ${i.useLedger?"checked":""}> Versicherung, Steuer, Sonstiges aus Fahrzeugbuch (12 Monate)`; cb2.querySelector("input").addEventListener("change",ev=>{i.useLedger=ev.target.checked;persist();renderCar(false);}); hi.appendChild(cb2);
+    cb2.innerHTML=`<input type="checkbox" ${i.useLedger?"checked":""}> Versicherung, Steuer, Räder, Sonstiges aus Fahrzeugbuch (12 Monate)`; cb2.querySelector("input").addEventListener("change",ev=>{i.useLedger=ev.target.checked;persist();renderCar(false);}); hi.appendChild(cb2);
     const he=$("car-ev"); he.innerHTML="";
     { const l=document.createElement("label"); l.className="f"; l.textContent="Übergabe geplant"; const i=document.createElement("input"); i.type="date"; i.value=e.start||"";
       i.addEventListener("change",()=>{ e.start=i.value; persist(); }); l.appendChild(i); he.appendChild(l); }
@@ -673,7 +707,7 @@ function renderCar(first){
     {label:"Vorteil Tavascan",data:r.iceCum.map((v,m)=>v-r.evCum[m]),borderColor:css("--batt"),backgroundColor:"transparent",pointRadius:0,borderWidth:2,fill:{target:"origin",above:css("--batt")+"33",below:css("--warn")+"33"}},
     {label:"Nulllinie",data:r.iceCum.map(()=>0),borderColor:css("--muted"),pointRadius:0,borderWidth:1,borderDash:[4,3]}]},
     options:{plugins:{legend:{display:false},tooltip:numTip("€")},scales:{x:{ticks:{maxTicksLimit:7}},y:{title:{display:true,text:"€"}}}}});
-  const keys=Object.keys(r.blocks.ice), cols=["--grid","--sun","--heat","--muted","--loss"];
+  const keys=Object.keys(r.blocks.ice), cols=["--grid","--sun","--heat","--muted","--batt","--loss","--feed","--ok"];   // v0.17: Räder, Überführung, THG-Prämie getrennt
   chart("car-bar",{type:"bar",data:{labels:["Leon","Tavascan"],datasets:keys.map((k,j)=>({label:k,data:[r.blocks.ice[k],r.blocks.ev[k]],backgroundColor:css(cols[j]),stack:"s"}))},
     options:{indexAxis:"y",plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${eur(c.parsed.x)}`}}},scales:{x:{stacked:true,title:{display:true,text:"€"}},y:{stacked:true}}}});
 }
@@ -682,6 +716,8 @@ function renderCar(first){
 function renderLog(){
   if(!$("cl-cat").options.length) $("cl-cat").innerHTML=CAR_CATS.map(c=>`<option>${c}</option>`).join("");
   renderCarAnalytics();
+  const PS=periodSel();
+  if(!PS.all){ renderLogPeriod(PS); return; }
   const fs=fuelStats(), ch=S.charges, kW=ch.reduce((a,b)=>a+(+b.k||0),0), cE=ch.reduce((a,b)=>a+(+b.e||0),0);
   $("lg-kpis").innerHTML =
     kpi(fs.l100?nf(fs.l100,2)+" l":"–","Ø Verbrauch je 100 km",fs.intervals.length?`${fs.intervals.length} Volltank-Intervalle`:"Zwei Volltankungen nötig") +
@@ -986,7 +1022,7 @@ function renderPayments() {
   $("pay-bonus").innerHTML = bonusOptions(g).map(o => `<option>${esc(o)}</option>`).join("");
   $("pay-bonus-wrap").hidden = k !== "bonus";
   $("pay-a").placeholder = k === "abschlag" ? String(C.abschlagAt(g, today()) || "") : "";
-  const rows = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d));
+  const PS = periodSel(), rows = [...(S.payments || [])].filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
   $("pay-tbl").innerHTML = rows.length
     ? `<thead><tr><th>Datum</th><th class="l">Zählpunkt</th><th class="l">Art</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
       rows.map(p => `<tr><td>${dde(p.d)}</td><td class="l">${GRP_LABEL[p.group] || esc(p.group)}</td><td class="l">${KIND_LABEL[p.kind] || esc(p.kind)}</td><td>${eur(p.amount, 2)}</td><td class="l">${esc(p.note || "")}</td><td><button class="x" data-del-pay="${p.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
@@ -1035,9 +1071,13 @@ const TR_FIELDS = [["m1Eur", "Modul 1: Pauschale €/Jahr"], ["neAp", "Netzentge
   ["shNt", "Anteil Laden im Niedertarif %"], ["shHt", "Anteil Laden im Hochtarif %"], ["imsysNew", "Intelligentes Messsystem €/Jahr"], ["imsysOld", "Bisheriger Zähler €/Jahr"]];
 function renderTarif() {
   const p = S.tarif = S.tarif || {}; if (p.withEv === undefined) p.withEv = true; p.offers = p.offers || [];
-  const base = C.tariffBase(), cur = { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, r = tarifRechner(base, cur, p), ev = S.cars.ev || {};
-  $("tr-base").innerHTML = kpi(kwh(base.asKwh), "Allgemeinstrom aus dem Netz", base.to ? `365 Tage bis ${dde(base.to)}` : "")
-    + kpi(kwh(base.wpKwh), "Wärmepumpe", "365 Tage laut Zähler")
+  // v0.16: Jahr, Quartal, Monat, frei → Verbrauch des Zeitraums aufs Jahr hochgerechnet; gesamt/12 Monate → letzte 365 Tage
+  const { P: TP } = currentPeriods(), useP = !["all", "r12"].includes(S.view.mode);
+  const base = useP ? C.tariffBase(TP.from, TP.to) : C.tariffBase(), cur = { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, r = tarifRechner(base, cur, p), ev = S.cars.ev || {};
+  const basisTxt = useP ? `${esc(TP.label)}, aufs Jahr hochgerechnet (${nf(base.days)} Tage)` : (base.to ? `365 Tage bis ${dde(base.to)}` : "");
+  $("tr-base").innerHTML = (useP && base.days < 300 ? flag(`Hochgerechnet aus ${nf(base.days)} Tagen: Winter und Sommer verzerren das Ergebnis. Für Tarifvergleiche besser ein ganzes Jahr oder „12 Monate“ wählen.`, true) : "")
+    + kpi(kwh(base.asKwh), "Allgemeinstrom aus dem Netz pro Jahr", basisTxt)
+    + kpi(kwh(base.wpKwh), "Wärmepumpe pro Jahr", useP ? basisTxt : "365 Tage laut Zähler")
     + kpi(kwh(base.evGrid), "E-Auto zu Hause aus dem Netz", `aus „Auto-Vergleich“: ${kwh(base.evYear)} im Jahr, ${nf(+ev.shHome || 0)} % zu Hause, davon ${nf(+ev.shPV || 0)} % aus PV`);
   $("tr-withev").checked = !!p.withEv;
   const row = (g, o, isCur) => `<tr><td class="l">${isCur ? `<b>${esc(o.name)}</b> <span class="pill">aktuell</span>` : `<input type="text" value="${esc(o.name || "")}" data-tro="${o.idx}" data-k="name" style="min-width:150px">`}</td>
@@ -1081,7 +1121,9 @@ const WB_FIELDS = {
     ["s14aEur", "Eigener Betrag €/Jahr"]],
 };
 function renderAusbau() {
-  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
+  // v0.16: Basisjahr – bei „Jahr“ das gewählte Kalenderjahr, wenn es vollständig in den Anker-Daten liegt, sonst die letzten 365 Tage
+  const yk = S.view.mode === "year" ? S.view.key : null, yFull = yk && A.dates[0] <= `${yk}-01-01` && A.dates[A.n - 1] >= `${yk}-12-31`;
+  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = yFull ? C.ausbauBase(`${yk}-01-01`, `${yk}-12-31`) : C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
   for (const [host, fields] of Object.entries(WB_FIELDS)) {
     const h = $(host);
     if (!h.children.length) h.innerHTML = fields.map(([k, l, t]) => t === "check" ? `<label class="f check wide"><input type="checkbox" data-wb="${k}"> ${l}</label>`
@@ -1118,6 +1160,7 @@ function renderAusbau() {
     rows.map(([l, k, , a, b]) => `<tr><td>${l}</td><td>${k0(k)}</td><td>${a == null ? "–" : eur(a)}</td><td>${eur(b)}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td>Gesamt</td><td></td><td>${eur(nc.total)}</td><td>${eur(y.total)}</td></tr></tfoot>`;
   const fl = [];
+  if (S.view.mode !== "all" && S.view.mode !== "r12" && !yFull) fl.push(flag(`Das Modell braucht ein ganzes Jahr: ${yk ? `das Jahr ${yk} ist in den Anker-Daten nicht vollständig, daher` : "gerechnet wird mit"} den letzten 365 Tagen. Ein vollständiges Kalenderjahr lässt sich über „Jahr“ wählen.`, true));
   if (!(r.invest.total > 0)) fl.push(flag("Noch keine Kosten eingetragen: unten unter „Kosten“ Hardware und Handwerker aus dem Angebot eintragen, sonst ist die Amortisation 0 Jahre."));
   if (v("s14a") && v("s14aMod") !== "manual" && !(m14a[v("s14aMod")] > 0)) fl.push(flag("§14a: Im Tarifrechner fehlen die Werte deines Netzbetreibers, deshalb zählt das Modul mit 0 €. Werte dort eintragen oder „Eigener Betrag“ wählen."));
   if (v("s14a") && v("s14aMod") === "manual") fl.push(flag("§14a mit eigenem Betrag: Schätzwert, bis die Werte des Netzbetreibers im Tarifrechner stehen.", true));
@@ -1138,7 +1181,7 @@ function renderAusbau() {
 }
 
 /* ---------- E-Auto zu Hause und Abschlag-Hinweis (v0.9) ---------- */
-const INV_CATS = [["pv", "PV/Speicher"], ["wallbox", "Wallbox"], ["other", "Sonstiges"]];
+const INV_CATS = [["pv", "PV/Speicher"], ["wallbox", "Wallbox"], ["other", "Sonstiges"], ["refund", "Erstattung/Gutschrift"]];
 function renderEvHome() {
   const tb = C.tariffBase(), e = S.cars.ev || {}, h = tb.to ? C.homeCharging(tb.from, tb.to) : { kwh: 0, saving: 0 }, all = C.homeCharging("0000", "9999");
   $("evh-kpis").innerHTML = kpi(kwh(h.kwh), "Geladen zu Hause", tb.to ? `365 Tage bis ${dde(tb.to)}, laut Ladebuch` : "")
@@ -1320,5 +1363,40 @@ function renderHp() {
       footer: items => dd[items[0]?.dataIndex]?.est ? "aus Monatswert gleichmäßig verteilt" : "" } } },
       scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
   $("hp-tbl").innerHTML = `<thead><tr><th>Monat</th><th>Strom</th><th>Heizung</th><th>Warmwasser</th><th>Zuheizer</th><th>Wärme</th><th>Arbeitszahl</th><th>Gradtage</th><th>Heizung je Gradtag</th><th>Zähler</th><th>Ø außen</th></tr></thead><tbody>${
-    [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;
+    [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}${m.partial ? " <span class=\"pill\">bis " + dde(C.hpRows("day").filter(d => d.ts.startsWith(m.k)).pop()?.ts || "") + "</span>" : ""}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;
+}
+
+/* ---------- Tanken & Laden im gewählten Zeitraum (v0.16) ---------- */
+const vsTxt = (a, b, f, label) => (b == null || a == null) ? "" : ` · ${esc(label)}: ${f(b)}${b ? ` (${a >= b ? "+" : "−"}${pct(Math.abs(a / b - 1))})` : ""}`;
+function renderLogPeriod(PS) {
+  const { P, Cp } = PS, fs = C.fuelStatsIn(P.from, P.to), fc = Cp ? C.fuelStatsIn(Cp.from, Cp.to) : null;
+  const chIn = (f, t) => S.charges.filter(x => x.d >= f && x.d <= t), ch = chIn(P.from, P.to), chc = Cp ? chIn(Cp.from, Cp.to) : null;
+  const kW = ch.reduce((a, b) => a + (+b.k || 0), 0), cE = ch.reduce((a, b) => a + (+b.e || 0), 0);
+  const kWc = chc ? chc.reduce((a, b) => a + (+b.k || 0), 0) : null, cEc = chc ? chc.reduce((a, b) => a + (+b.e || 0), 0) : null;
+  $("lg-kpis").innerHTML =
+    kpi(fs.l100 ? nf(fs.l100, 2) + " l" : "–", "Ø Verbrauch je 100 km", (fs.intervals.length ? `${fs.intervals.length} Volltank-Intervalle im Zeitraum` : "Keine Volltank-Intervalle im Zeitraum") + (Cp ? vsTxt(fs.l100, fc.l100, v => nf(v, 2) + " l", Cp.label) : "")) +
+    kpi(fs.avgPrice ? nf(fs.avgPrice, 3) + " €/l" : "–", "Ø Spritpreis im Zeitraum", `${nf(fs.L, 1)} l getankt` + (Cp ? vsTxt(fs.avgPrice, fc.avgPrice, v => nf(v, 3) + " €/l", Cp.label) : "")) +
+    kpi(eur(fs.E, 2), "Tankkosten im Zeitraum", `${fs.n} Einträge, ${esc(P.label)}` + (Cp ? vsTxt(fs.E, fc.E, v => eur(v, 2), Cp.label) : "")) +
+    kpi(kW ? nf(cE / kW, 2) + " €/kWh" : "–", "Ø Ladepreis im Zeitraum", `${nf(kW, 1)} kWh, ${eur(cE, 2)}` + (Cp ? vsTxt(cE, cEc, v => eur(v, 2), Cp.label) : ""));
+  const all = fuelStats(), ivMap = new Map(all.intervals.map(iv => [iv.to, iv]));
+  const fr = S.fuel.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
+  $("fu-tbl").innerHTML = fr.length ? `<thead><tr><th>Datum</th><th>km</th><th>Liter</th><th>Betrag</th><th>€/l</th><th class="l">Sorte</th><th>voll</th><th>l/100 km</th><th></th></tr></thead><tbody>${
+    fr.map(x => { const iv = ivMap.get(S.fuel[x.i]); return `<tr><td>${dde(x.d)}</td><td>${nf(x.km)}</td><td>${nf(x.l, 2)}</td><td>${eur(x.e, 2)}</td><td>${nf(x.e / x.l, 3)}</td><td class="l">${esc(x.s)}</td><td>${x.full ? "ja" : "nein"}</td><td>${iv ? nf(iv.l100, 2) : ""}</td><td><button class="x" data-del-fu="${x.i}" aria-label="Löschen">×</button></td></tr>`; }).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Tankvorgänge im Zeitraum.</td></tr></tbody>`;
+  const cr = S.charges.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
+  $("ch-tbl").innerHTML = cr.length ? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
+    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Ladevorgänge im Zeitraum.</td></tr></tbody>`;
+}
+function renderCarPeriodKpis(car, kd, items, PS) {
+  const { P, Cp } = PS, lease = car === "leon" ? S.cars.ice.rate : S.cars.ev.rate;
+  const sum = (f, t) => { const km = Object.entries(kd).filter(([d]) => d >= f && d <= t).reduce((s, [, v]) => s + v, 0);
+    const span = Object.keys(kd).filter(d => d >= f && d <= t).length, cost = items.filter(x => x.d >= f && x.d <= t).reduce((s, x) => s + x.e, 0);
+    return { km, span, cost, perKm: km ? cost / km * 100 : null, perKmL: km ? (cost + lease * span / 30.4375) / km * 100 : null }; };
+  const a = sum(P.from, P.to), c = Cp ? sum(Cp.from, Cp.to) : null, L = Cp ? Cp.label : "";
+  $("lg-car-kpis").innerHTML =
+    kpi(a.km ? nf(a.km) + " km" : "–", "Gefahren im Zeitraum", (a.km ? esc(P.label) : "Kilometerstände fehlen") + (c ? vsTxt(a.km, c.km, v => nf(v) + " km", L) : "")) +
+    kpi(eur(a.cost, 0), "Kosten ohne Leasing", "Sprit bzw. Laden und Fahrzeugbuch" + (c ? vsTxt(a.cost, c.cost, v => eur(v, 0), L) : "")) +
+    kpi(a.perKm != null ? nf(a.perKm, 1) + " ct" : "–", "Je km ohne Leasing", c ? vsTxt(a.perKm, c.perKm, v => nf(v, 1) + " ct", L).replace(/^ · /, "") : "") +
+    kpi(a.perKmL != null ? nf(a.perKmL, 1) + " ct" : "–", "Je km mit Leasing", `Leasing ${eur(lease, 2)} pro Monat, anteilig für ${nf(a.span)} Tage mit Kilometerdaten`);
 }
