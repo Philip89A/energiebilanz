@@ -93,6 +93,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.14: Gastzugang nur lesen (`shares`, `eb_can_read`/`eb_can_write`, Regeln eb_* statt own_rows, schema v7 /
      `docs/UPDATE_V14.sql`; App `body.ro` bei Eintrag als viewer). Prüfung: `scripts/v14-check.mjs`, SQL lokal.
    - ✅ v0.15: Wärmepumpen-Tage aus Stundenwerten, Monate aus Tagen (`HP` in createCalc); Summen über Balken (`ebTotals`).
+   - ✅ v0.16: Zeitraumleiste überall außer Amortisation, Auto-Vergleich, Erfassen, Daten (`periodSel` in views.js);
+     Tarifrechner hochgerechnet, Ausbau mit Basisjahr, Tanken & Laden mit Vergleich. Prüfung: `scripts/v16-check.mjs`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

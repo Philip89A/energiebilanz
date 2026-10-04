@@ -238,3 +238,19 @@
 - **Summen über den Balken** in allen Balkendiagrammen (gestapelt: Gesamtwert über dem Stapel), sobald die Balken
   breit genug sind (mindestens 14 px – am Handy bei vielen Tagen daher ausgeblendet). Abschaltbar je Diagramm.
 - Tests: 70 Unit-Tests; `v13-check` prüft die Summen; `v08-check` wartet nach dem Verkleinern auf die Diagramme.
+
+## v0.16.0 – Zeitraum für das ganze Tool (außer Amortisation und Auto-Vergleich)
+- Die Zeitraumleiste erscheint zusätzlich auf **Tanken & Laden**, **Tarifrechner** und **Ausbau (Weg B)**; sie gilt
+  weiterhin gemeinsam für alle Seiten. Ohne Leiste: Amortisation (ganze Laufzeit), Auto-Vergleich (Prognose),
+  Erfassen und Daten.
+- **Tanken & Laden:** Kennzahlen (Verbrauch, Spritpreis, Tankkosten, Ladepreis), Fahrzeug-Kennzahlen (km, Kosten,
+  ct/km), Grafiken und Listen im Zeitraum, mit Vergleichswert und Abweichung. „Gesamter Zeitraum“ zeigt alles wie
+  bisher (Fahrzeug-Kennzahlen dann weiter für die letzten 12 Monate).
+- **Tarifrechner:** bei Jahr, Quartal, Monat oder frei der Verbrauch des Zeitraums aufs Jahr hochgerechnet, mit
+  Hinweis unter 300 Tagen (Winter/Sommer verzerren); bei „Gesamt“ und „12 Monate“ wie bisher die letzten 365 Tage.
+- **Ausbau (Weg B):** bei „Jahr“ das gewählte Kalenderjahr als Basisjahr, wenn es vollständig in den Anker-Daten
+  liegt; sonst die letzten 365 Tage mit Hinweis.
+- **Stromkosten:** Zahlungsbuch-Liste im Zeitraum; **Zähler:** Liste der Ablesungen im Zeitraum (inklusive des Stands
+  am Tag nach dem Ende). Abschlag-Check, Abrechnung prüfen und Boni bleiben vertragsbezogen und sagen das jetzt dazu.
+- Seitenvergleich: neue, gewollte Abweichungen nur bei gewähltem Zeitraum (im Kopf von `compare.mjs` vermerkt).
+- Tests: `scripts/v16-check.mjs` 14 Prüfungen; `v08-check` wartet bis zu 4 s auf stabile Handybreite.

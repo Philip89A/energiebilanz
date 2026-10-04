@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.15.0">
-<link rel="stylesheet" href="css/style.css?v=0.15.0">
+<meta name="app-version" content="0.16.0">
+<link rel="stylesheet" href="css/style.css?v=0.16.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -208,7 +208,7 @@
     <div class="grid g4" id="evh-kpis" style="margin-top:10px"></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Zahlungsbuch</h2>
-    <p class="note">Tatsächliche Geldflüsse. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme „12 Abschläge ab einem Monat nach Lieferbeginn“. Erstattungen und Nachzahlungen sind Geldflüsse, keine Kostensenkung.</p>
+    <p class="note">Liste im oben gewählten Zeitraum. Tatsächliche Geldflüsse. Erfasste Abschläge ersetzen im Abschlag-Check die Annahme „12 Abschläge ab einem Monat nach Lieferbeginn“. Erstattungen und Nachzahlungen sind Geldflüsse, keine Kostensenkung.</p>
     <div class="form" style="margin-top:10px">
       <label class="f">Zählpunkt<select id="pay-g"><option value="as">Allgemeinstrom</option><option value="wp">Wärmepumpe</option></select></label>
       <label class="f">Art<select id="pay-k"><option value="abschlag">Abschlag</option><option value="erstattung">Erstattung</option><option value="bonus">Bonus</option><option value="nachzahlung">Nachzahlung</option></select></label>
@@ -222,11 +222,11 @@
     <div class="tbl-wrap"><table id="pay-tbl"></table></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Abrechnung prüfen</h2>
-    <p class="note">Je Abrechnungsjahr: Kosten laut Verbrauch × Tarif abzüglich Boni gegen das, was netto geflossen ist (Abschläge + Nachzahlung − Erstattung − separat erhaltene Boni). Erstattung bzw. Nachzahlung wird dem zuletzt beendeten Jahr zugeordnet.</p>
+    <p class="note">Unabhängig vom oben gewählten Zeitraum. Je Abrechnungsjahr: Kosten laut Verbrauch × Tarif abzüglich Boni gegen das, was netto geflossen ist (Abschläge + Nachzahlung − Erstattung − separat erhaltene Boni). Erstattung bzw. Nachzahlung wird dem zuletzt beendeten Jahr zugeordnet.</p>
     <div class="tbl-wrap"><table id="bill-tbl"></table></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Boni je Vertrag</h2>
-    <p class="note">Einzelne Posten mit optionaler Mengenbedingung (z. B. voller Neukundenbonus erst ab einer Jahresmenge). Für das laufende Vertragsjahr zählt die Prognose aus dem Abschlag-Check. „Erhalten“ kommt aus dem Zahlungsbuch (Art „Bonus“).</p>
+    <p class="note">Unabhängig vom oben gewählten Zeitraum, je Vertrag. Einzelne Posten mit optionaler Mengenbedingung (z. B. voller Neukundenbonus erst ab einer Jahresmenge). Für das laufende Vertragsjahr zählt die Prognose aus dem Abschlag-Check. „Erhalten“ kommt aus dem Zahlungsbuch (Art „Bonus“).</p>
     <div class="tbl-wrap"><table id="boni-tbl"></table></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kosten je Tarifperiode</h2><div class="tbl-wrap"><table id="ct-tbl"></table></div><div id="ct-flags"></div></div>
@@ -395,8 +395,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.15.0"></script>
-<script src="vendor/chart.umd.js?v=0.15.0"></script>
-<script type="module" src="js/app.js?v=0.15.0"></script>
+<script src="vendor/supabase.js?v=0.16.0"></script>
+<script src="vendor/chart.umd.js?v=0.16.0"></script>
+<script type="module" src="js/app.js?v=0.16.0"></script>
 </body>
 </html>

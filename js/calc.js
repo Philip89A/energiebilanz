@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.15.0';
+import { hpSum } from './hp.js?v=0.16.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -499,13 +499,21 @@ export function createCalc(S) {
   }
 
   /* Tarifrechner (Stufe A): Jahresverbrauch der letzten 365 Tage, Angebote, Wallbox nach §14a, iMSys */
-  function tariffBase() {
-    const as = last365Cost('as'), wp = last365Cost('wp'), e = S.cars.ev || {};
+  // Verbrauch eines Zeitraums aufs Jahr hochgerechnet (v0.16, Tarifrechner mit gewähltem Zeitraum)
+  function periodKwhYear(group, from, to) {
+    const g = groupSeries(group); if (!g.last) return null; let kw = 0, days = 0;
+    for (const [d, k] of Object.entries(g.daily)) { if (d < from || d > to) continue; kw += k; days++; }
+    return days ? { kwh: kw * 365 / days, raw: kw, days, from, to } : null;
+  }
+  function tariffBase(from, to) {
+    const e = S.cars.ev || {}, pr = from && to;
+    const as = pr ? periodKwhYear('as', from, to) : last365Cost('as'), wp = pr ? periodKwhYear('wp', from, to) : last365Cost('wp');
     const evYear = (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100);
     const evHome = evYear * (+e.shHome || 0) / 100, evGrid = evHome * (1 - (+e.shPV || 0) / 100);
     // Laden zu Hause steckt ab v0.9 schon im Zählerwert: Netzanteil abziehen, damit „inkl. E-Auto“ nicht doppelt zählt
-    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) : 0;
-    return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid };
+    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) * (pr ? 365 / as.days : 1) : 0;
+    return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid,
+      annualized: !!pr, days: pr ? Math.max(as?.days || 0, wp?.days || 0) : 365 };
   }
 
   /* Fahrzeuge */
@@ -551,6 +559,14 @@ export function createCalc(S) {
     const f = [...S.fuel].sort((a, b) => a.km - b.km); let intervals = [], acc = 0, lastFull = null;
     f.forEach(x => { if (lastFull !== null) { acc += +x.l; if (x.full) { const km = x.km - lastFull.km; if (km > 0) intervals.push({ from: lastFull, to: x, km, l: acc, l100: acc / km * 100 }); acc = 0; lastFull = x; } } else if (x.full) { lastFull = x; } });
     const L = f.reduce((a, b) => a + (+b.l || 0), 0), E = f.reduce((a, b) => a + (+b.e || 0), 0);
+    const kmT = intervals.reduce((a, b) => a + b.km, 0), lT = intervals.reduce((a, b) => a + b.l, 0);
+    return { intervals, L, E, avgPrice: L ? E / L : null, l100: kmT ? lT / kmT * 100 : null, n: f.length };
+  }
+  // Tankbuch für einen Zeitraum (v0.16): Mengen nach Datum, Verbrauch aus Volltank-Intervallen mit Ende im Zeitraum
+  function fuelStatsIn(from, to) {
+    const all = fuelStats(), f = S.fuel.filter(x => x.d >= from && x.d <= to);
+    const L = f.reduce((a, b) => a + (+b.l || 0), 0), E = f.reduce((a, b) => a + (+b.e || 0), 0);
+    const intervals = all.intervals.filter(iv => iv.to.d >= from && iv.to.d <= to);
     const kmT = intervals.reduce((a, b) => a + b.km, 0), lT = intervals.reduce((a, b) => a + b.l, 0);
     return { intervals, L, E, avgPrice: L ? E / L : null, l100: kmT ? lT / kmT * 100 : null, n: f.length };
   }
@@ -751,8 +767,8 @@ export function createCalc(S) {
   }
 
   // Ausbau-Szenario: Tageswerte der letzten 365 Tage (Anker + Netzbezug Allgemeinstrom laut Zähler) und Rahmenwerte
-  function ausbauBase() {
-    const r = last12(), as = groupSeries('as').daily, days = [];
+  function ausbauBase(from, to) {
+    const r = from && to ? { from, to } : last12(), as = groupSeries('as').daily, days = [];
     A.dates.forEach((d, i) => { if (d < r.from || d > r.to) return;
       days.push({ d, gen: A.c.gen[i] || 0, use: A.c.use[i] || 0, bch: A.c.bch[i] || 0, bdis: A.c.bdis[i] || 0, asGrid: as[d] ?? null }); });
     const b = S.battery, e = S.cars.ev || {}, tb = tariffBase();
@@ -766,7 +782,7 @@ export function createCalc(S) {
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
-    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, wallboxFrom, evAbschlagHint,
+    paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
     W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod,
   };
 }

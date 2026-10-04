@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.15.0';
-import { parseNum } from './queue.js?v=0.15.0';
-import { geocode, fetchDays } from './weather.js?v=0.15.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.15.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.16.0';
+import { parseNum } from './queue.js?v=0.16.0';
+import { geocode, fetchDays } from './weather.js?v=0.16.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.16.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -116,7 +116,9 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost","p-tarif","p-ausbau","p-log"];
+// v0.16: Zeitraum für Listen und Fahrzeugdaten; „Gesamter Zeitraum“ filtert nicht (Einträge können außerhalb der Energiedaten liegen)
+function periodSel(){ const {P,C:Cp}=currentPeriods(), all=S.view.mode==="all"; return {P,Cp,all,inP:d=>all||(d>=P.from&&d<=P.to),inC:d=>!!Cp&&d>=Cp.from&&d<=Cp.to}; }
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
 
 function keyLabel(mode,k){ return mode==="quarter" ? `Q${k.slice(6)} ${k.slice(0,4)}` : mode==="month" ? `${MON[+k.slice(5,7)-1]} ${k.slice(0,4)}` : k; }
@@ -181,29 +183,30 @@ const CARS={leon:"Cupra Leon", tavascan:"Cupra Tavascan"};
 function carBucketLabel(k,g){ if(g==="week") return "Wo. "+k.slice(8,10)+"."+k.slice(5,7)+"."+k.slice(2,4); if(g==="month") return monthLabel(k); if(g==="quarter") return `Q${k.slice(6)} ${k.slice(0,4)}`; return k; }
 
 function renderCarAnalytics(){
-  const car=S.ui.logCar, g=S.ui.logGran;
+  const car=S.ui.logCar, g=S.ui.logGran, PS=periodSel();
   $("lg-car").value=car; $("lg-gran").value=g;
-  const kd=kmDaily(car), b={}; Object.entries(kd).forEach(([d,v])=>{ const k=carBucket(d,g); b[k]=(b[k]||0)+v; });
+  const kd=kmDaily(car), b={}; Object.entries(kd).forEach(([d,v])=>{ if(!PS.inP(d)) return; const k=carBucket(d,g); b[k]=(b[k]||0)+v; });
   const ks=Object.keys(b).sort();
   chart("lg-km",{type:"bar",data:{labels:ks.map(k=>carBucketLabel(k,g)),datasets:[{label:"Kilometer",data:ks.map(k=>b[k]),backgroundColor:css("--grid")}]},
     options:{plugins:{legend:{display:false},tooltip:numTip("km")},scales:{x:{ticks:{maxTicksLimit:16}},y:{title:{display:true,text:"km"}}}}});
   $("lg-km-note").textContent = ks.length ? `Aus ${odoPoints(car).length} Kilometerständen (Tanken, Laden und Fahrzeugbuch), zwischen zwei Ständen gleichmäßig verteilt.` : "Mindestens zwei Kilometerstände nötig (Tankvorgang, Ladevorgang oder Eintrag „Kilometerstand“ im Fahrzeugbuch).";
   const items=carCostItems(car), cats=[...new Set(items.map(x=>x.cat))], cb={};
-  items.forEach(x=>{ const k=carBucket(x.d,g); cb[k]=cb[k]||{}; cb[k][x.cat]=(cb[k][x.cat]||0)+x.e; });
+  items.forEach(x=>{ if(!PS.inP(x.d)) return; const k=carBucket(x.d,g); cb[k]=cb[k]||{}; cb[k][x.cat]=(cb[k][x.cat]||0)+x.e; });
   const ck=Object.keys(cb).sort(), pal=["--sun","--grid","--heat","--batt","--warn","--muted","--loss","--feed"];
   chart("lg-cost",{type:"bar",data:{labels:ck.map(k=>carBucketLabel(k,g)),datasets:cats.map((c,i)=>({label:c,data:ck.map(k=>cb[k][c]||0),backgroundColor:css(pal[i%pal.length]),stack:"s"}))},
     options:{plugins:{tooltip:numTip("€",2)},scales:{x:{stacked:true,ticks:{maxTicksLimit:16}},y:{stacked:true,title:{display:true,text:"€"}}}}});
-  const fs=fuelStats();
+  const fs=PS.all?fuelStats():C.fuelStatsIn(PS.P.from,PS.P.to);
   chart("lg-fuel",{type:"line",data:{labels:fs.intervals.map(iv=>dde(iv.to.d)),datasets:[
     {label:"l/100 km",data:fs.intervals.map(iv=>iv.l100),borderColor:css("--warn"),backgroundColor:css("--warn"),yAxisID:"y",pointRadius:3},
     {label:"€/l",data:fs.intervals.map(iv=>iv.to.e/iv.to.l),borderColor:css("--grid"),backgroundColor:css("--grid"),yAxisID:"y1",pointRadius:3}]},
     options:{scales:{y:{title:{display:true,text:"l/100 km"}},y1:{position:"right",grid:{drawOnChartArea:false},title:{display:true,text:"€/l"}}}}});
   // Fahrzeugbuch-Tabelle
-  const rows=S.carlog.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
+  const rows=S.carlog.map((x,i)=>({...x,i})).filter(x=>PS.inP(x.d)).sort((a,b)=>b.d.localeCompare(a.d));
   $("cl-tbl").innerHTML = rows.length ? `<thead><tr><th>Datum</th><th class="l">Fahrzeug</th><th class="l">Kategorie</th><th>km</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
     rows.map(x=>`<tr><td>${dde(x.d)}</td><td class="l">${CARS[x.car]||x.car}</td><td class="l">${esc(x.cat)}</td><td>${x.km?nf(x.km):"–"}</td><td>${x.e?eur(x.e,2):"–"}</td><td class="l">${esc(x.note||"")}</td><td><button class="x" data-del-cl="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Einträge. Hier landen Kilometerstände ohne Tanken, Versicherung, Steuer, Räderwechsel und alles Weitere mit Datum.</td></tr></tbody>`;
-  // KPIs Fahrzeug
+  // KPIs Fahrzeug: gesamter Zeitraum → letzte 12 Monate (wie bisher), sonst der gewählte Zeitraum mit Vergleich
+  if(!PS.all){ renderCarPeriodKpis(car,kd,items,PS); return; }
   const to=iso(new Date()), from=addDays(to,-364);
   const km12=Object.entries(kd).filter(([d])=>d>=from&&d<=to).reduce((s,[,v])=>s+v,0);
   const span=Object.keys(kd).filter(d=>d>=from&&d<=to).length;
@@ -455,7 +458,8 @@ function renderMeters(){
   const mOpts = S.meters.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   $("rd-m").innerHTML = mOpts;
   renderMeterExtras();
-  const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
+  const RP = periodSel();   // v0.16: Ablesungen im Zeitraum, einschließlich des Stands am Tag nach dem Ende
+  const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).filter(r=>RP.all||(r.d>=RP.P.from&&r.d<=addDaysIso(RP.P.to,1))).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
   $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Zähler</th><th>Stand kWh</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
     rs.map(r=>`<tr><td>${dde(r.d)}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,1)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
   // Abgleich
@@ -705,6 +709,8 @@ function renderCar(first){
 function renderLog(){
   if(!$("cl-cat").options.length) $("cl-cat").innerHTML=CAR_CATS.map(c=>`<option>${c}</option>`).join("");
   renderCarAnalytics();
+  const PS=periodSel();
+  if(!PS.all){ renderLogPeriod(PS); return; }
   const fs=fuelStats(), ch=S.charges, kW=ch.reduce((a,b)=>a+(+b.k||0),0), cE=ch.reduce((a,b)=>a+(+b.e||0),0);
   $("lg-kpis").innerHTML =
     kpi(fs.l100?nf(fs.l100,2)+" l":"–","Ø Verbrauch je 100 km",fs.intervals.length?`${fs.intervals.length} Volltank-Intervalle`:"Zwei Volltankungen nötig") +
@@ -1009,7 +1015,7 @@ function renderPayments() {
   $("pay-bonus").innerHTML = bonusOptions(g).map(o => `<option>${esc(o)}</option>`).join("");
   $("pay-bonus-wrap").hidden = k !== "bonus";
   $("pay-a").placeholder = k === "abschlag" ? String(C.abschlagAt(g, today()) || "") : "";
-  const rows = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d));
+  const PS = periodSel(), rows = [...(S.payments || [])].filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
   $("pay-tbl").innerHTML = rows.length
     ? `<thead><tr><th>Datum</th><th class="l">Zählpunkt</th><th class="l">Art</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
       rows.map(p => `<tr><td>${dde(p.d)}</td><td class="l">${GRP_LABEL[p.group] || esc(p.group)}</td><td class="l">${KIND_LABEL[p.kind] || esc(p.kind)}</td><td>${eur(p.amount, 2)}</td><td class="l">${esc(p.note || "")}</td><td><button class="x" data-del-pay="${p.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
@@ -1058,9 +1064,13 @@ const TR_FIELDS = [["m1Eur", "Modul 1: Pauschale €/Jahr"], ["neAp", "Netzentge
   ["shNt", "Anteil Laden im Niedertarif %"], ["shHt", "Anteil Laden im Hochtarif %"], ["imsysNew", "Intelligentes Messsystem €/Jahr"], ["imsysOld", "Bisheriger Zähler €/Jahr"]];
 function renderTarif() {
   const p = S.tarif = S.tarif || {}; if (p.withEv === undefined) p.withEv = true; p.offers = p.offers || [];
-  const base = C.tariffBase(), cur = { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, r = tarifRechner(base, cur, p), ev = S.cars.ev || {};
-  $("tr-base").innerHTML = kpi(kwh(base.asKwh), "Allgemeinstrom aus dem Netz", base.to ? `365 Tage bis ${dde(base.to)}` : "")
-    + kpi(kwh(base.wpKwh), "Wärmepumpe", "365 Tage laut Zähler")
+  // v0.16: Jahr, Quartal, Monat, frei → Verbrauch des Zeitraums aufs Jahr hochgerechnet; gesamt/12 Monate → letzte 365 Tage
+  const { P: TP } = currentPeriods(), useP = !["all", "r12"].includes(S.view.mode);
+  const base = useP ? C.tariffBase(TP.from, TP.to) : C.tariffBase(), cur = { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, r = tarifRechner(base, cur, p), ev = S.cars.ev || {};
+  const basisTxt = useP ? `${esc(TP.label)}, aufs Jahr hochgerechnet (${nf(base.days)} Tage)` : (base.to ? `365 Tage bis ${dde(base.to)}` : "");
+  $("tr-base").innerHTML = (useP && base.days < 300 ? flag(`Hochgerechnet aus ${nf(base.days)} Tagen: Winter und Sommer verzerren das Ergebnis. Für Tarifvergleiche besser ein ganzes Jahr oder „12 Monate“ wählen.`, true) : "")
+    + kpi(kwh(base.asKwh), "Allgemeinstrom aus dem Netz pro Jahr", basisTxt)
+    + kpi(kwh(base.wpKwh), "Wärmepumpe pro Jahr", useP ? basisTxt : "365 Tage laut Zähler")
     + kpi(kwh(base.evGrid), "E-Auto zu Hause aus dem Netz", `aus „Auto-Vergleich“: ${kwh(base.evYear)} im Jahr, ${nf(+ev.shHome || 0)} % zu Hause, davon ${nf(+ev.shPV || 0)} % aus PV`);
   $("tr-withev").checked = !!p.withEv;
   const row = (g, o, isCur) => `<tr><td class="l">${isCur ? `<b>${esc(o.name)}</b> <span class="pill">aktuell</span>` : `<input type="text" value="${esc(o.name || "")}" data-tro="${o.idx}" data-k="name" style="min-width:150px">`}</td>
@@ -1104,7 +1114,9 @@ const WB_FIELDS = {
     ["s14aEur", "Eigener Betrag €/Jahr"]],
 };
 function renderAusbau() {
-  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
+  // v0.16: Basisjahr – bei „Jahr“ das gewählte Kalenderjahr, wenn es vollständig in den Anker-Daten liegt, sonst die letzten 365 Tage
+  const yk = S.view.mode === "year" ? S.view.key : null, yFull = yk && A.dates[0] <= `${yk}-01-01` && A.dates[A.n - 1] >= `${yk}-12-31`;
+  const p = S.ausbau = S.ausbau || {}, today = iso(new Date()), base = yFull ? C.ausbauBase(`${yk}-01-01`, `${yk}-12-31`) : C.ausbauBase(), v = k => (p[k] ?? AUSBAU_DEFAULTS[k]);
   for (const [host, fields] of Object.entries(WB_FIELDS)) {
     const h = $(host);
     if (!h.children.length) h.innerHTML = fields.map(([k, l, t]) => t === "check" ? `<label class="f check wide"><input type="checkbox" data-wb="${k}"> ${l}</label>`
@@ -1141,6 +1153,7 @@ function renderAusbau() {
     rows.map(([l, k, , a, b]) => `<tr><td>${l}</td><td>${k0(k)}</td><td>${a == null ? "–" : eur(a)}</td><td>${eur(b)}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td>Gesamt</td><td></td><td>${eur(nc.total)}</td><td>${eur(y.total)}</td></tr></tfoot>`;
   const fl = [];
+  if (S.view.mode !== "all" && S.view.mode !== "r12" && !yFull) fl.push(flag(`Das Modell braucht ein ganzes Jahr: ${yk ? `das Jahr ${yk} ist in den Anker-Daten nicht vollständig, daher` : "gerechnet wird mit"} den letzten 365 Tagen. Ein vollständiges Kalenderjahr lässt sich über „Jahr“ wählen.`, true));
   if (!(r.invest.total > 0)) fl.push(flag("Noch keine Kosten eingetragen: unten unter „Kosten“ Hardware und Handwerker aus dem Angebot eintragen, sonst ist die Amortisation 0 Jahre."));
   if (v("s14a") && v("s14aMod") !== "manual" && !(m14a[v("s14aMod")] > 0)) fl.push(flag("§14a: Im Tarifrechner fehlen die Werte deines Netzbetreibers, deshalb zählt das Modul mit 0 €. Werte dort eintragen oder „Eigener Betrag“ wählen."));
   if (v("s14a") && v("s14aMod") === "manual") fl.push(flag("§14a mit eigenem Betrag: Schätzwert, bis die Werte des Netzbetreibers im Tarifrechner stehen.", true));
@@ -1344,4 +1357,39 @@ function renderHp() {
       scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
   $("hp-tbl").innerHTML = `<thead><tr><th>Monat</th><th>Strom</th><th>Heizung</th><th>Warmwasser</th><th>Zuheizer</th><th>Wärme</th><th>Arbeitszahl</th><th>Gradtage</th><th>Heizung je Gradtag</th><th>Zähler</th><th>Ø außen</th></tr></thead><tbody>${
     [...months].reverse().map(m => `<tr><td>${monthLabel(m.k)}${m.partial ? " <span class=\"pill\">bis " + dde(C.hpRows("day").filter(d => d.ts.startsWith(m.k)).pop()?.ts || "") + "</span>" : ""}</td><td>${kwh(m.el)}</td><td>${nf(m.elHeat)}</td><td>${nf(m.elDhw)}</td><td>${m.aux ? nf(m.aux, 1) : "–"}</td><td>${kwh(m.heat)}</td><td>${m.cop != null ? nf(m.cop, 2) : "–"}</td><td>${m.gt != null ? nf(m.gt) : "–"}</td><td>${m.heatPerGt != null ? nf(m.heatPerGt, 2) + " kWh" : "–"}</td><td>${m.meter != null ? kwh(m.meter) : "–"}</td><td>${deg(m.tOut)}</td></tr>`).join("")}</tbody>`;
+}
+
+/* ---------- Tanken & Laden im gewählten Zeitraum (v0.16) ---------- */
+const vsTxt = (a, b, f, label) => (b == null || a == null) ? "" : ` · ${esc(label)}: ${f(b)}${b ? ` (${a >= b ? "+" : "−"}${pct(Math.abs(a / b - 1))})` : ""}`;
+function renderLogPeriod(PS) {
+  const { P, Cp } = PS, fs = C.fuelStatsIn(P.from, P.to), fc = Cp ? C.fuelStatsIn(Cp.from, Cp.to) : null;
+  const chIn = (f, t) => S.charges.filter(x => x.d >= f && x.d <= t), ch = chIn(P.from, P.to), chc = Cp ? chIn(Cp.from, Cp.to) : null;
+  const kW = ch.reduce((a, b) => a + (+b.k || 0), 0), cE = ch.reduce((a, b) => a + (+b.e || 0), 0);
+  const kWc = chc ? chc.reduce((a, b) => a + (+b.k || 0), 0) : null, cEc = chc ? chc.reduce((a, b) => a + (+b.e || 0), 0) : null;
+  $("lg-kpis").innerHTML =
+    kpi(fs.l100 ? nf(fs.l100, 2) + " l" : "–", "Ø Verbrauch je 100 km", (fs.intervals.length ? `${fs.intervals.length} Volltank-Intervalle im Zeitraum` : "Keine Volltank-Intervalle im Zeitraum") + (Cp ? vsTxt(fs.l100, fc.l100, v => nf(v, 2) + " l", Cp.label) : "")) +
+    kpi(fs.avgPrice ? nf(fs.avgPrice, 3) + " €/l" : "–", "Ø Spritpreis im Zeitraum", `${nf(fs.L, 1)} l getankt` + (Cp ? vsTxt(fs.avgPrice, fc.avgPrice, v => nf(v, 3) + " €/l", Cp.label) : "")) +
+    kpi(eur(fs.E, 2), "Tankkosten im Zeitraum", `${fs.n} Einträge, ${esc(P.label)}` + (Cp ? vsTxt(fs.E, fc.E, v => eur(v, 2), Cp.label) : "")) +
+    kpi(kW ? nf(cE / kW, 2) + " €/kWh" : "–", "Ø Ladepreis im Zeitraum", `${nf(kW, 1)} kWh, ${eur(cE, 2)}` + (Cp ? vsTxt(cE, cEc, v => eur(v, 2), Cp.label) : ""));
+  const all = fuelStats(), ivMap = new Map(all.intervals.map(iv => [iv.to, iv]));
+  const fr = S.fuel.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
+  $("fu-tbl").innerHTML = fr.length ? `<thead><tr><th>Datum</th><th>km</th><th>Liter</th><th>Betrag</th><th>€/l</th><th class="l">Sorte</th><th>voll</th><th>l/100 km</th><th></th></tr></thead><tbody>${
+    fr.map(x => { const iv = ivMap.get(S.fuel[x.i]); return `<tr><td>${dde(x.d)}</td><td>${nf(x.km)}</td><td>${nf(x.l, 2)}</td><td>${eur(x.e, 2)}</td><td>${nf(x.e / x.l, 3)}</td><td class="l">${esc(x.s)}</td><td>${x.full ? "ja" : "nein"}</td><td>${iv ? nf(iv.l100, 2) : ""}</td><td><button class="x" data-del-fu="${x.i}" aria-label="Löschen">×</button></td></tr>`; }).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Tankvorgänge im Zeitraum.</td></tr></tbody>`;
+  const cr = S.charges.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
+  $("ch-tbl").innerHTML = cr.length ? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
+    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Ladevorgänge im Zeitraum.</td></tr></tbody>`;
+}
+function renderCarPeriodKpis(car, kd, items, PS) {
+  const { P, Cp } = PS, lease = car === "leon" ? S.cars.ice.rate : S.cars.ev.rate;
+  const sum = (f, t) => { const km = Object.entries(kd).filter(([d]) => d >= f && d <= t).reduce((s, [, v]) => s + v, 0);
+    const span = Object.keys(kd).filter(d => d >= f && d <= t).length, cost = items.filter(x => x.d >= f && x.d <= t).reduce((s, x) => s + x.e, 0);
+    return { km, span, cost, perKm: km ? cost / km * 100 : null, perKmL: km ? (cost + lease * span / 30.4375) / km * 100 : null }; };
+  const a = sum(P.from, P.to), c = Cp ? sum(Cp.from, Cp.to) : null, L = Cp ? Cp.label : "";
+  $("lg-car-kpis").innerHTML =
+    kpi(a.km ? nf(a.km) + " km" : "–", "Gefahren im Zeitraum", (a.km ? esc(P.label) : "Kilometerstände fehlen") + (c ? vsTxt(a.km, c.km, v => nf(v) + " km", L) : "")) +
+    kpi(eur(a.cost, 0), "Kosten ohne Leasing", "Sprit bzw. Laden und Fahrzeugbuch" + (c ? vsTxt(a.cost, c.cost, v => eur(v, 0), L) : "")) +
+    kpi(a.perKm != null ? nf(a.perKm, 1) + " ct" : "–", "Je km ohne Leasing", c ? vsTxt(a.perKm, c.perKm, v => nf(v, 1) + " ct", L).replace(/^ · /, "") : "") +
+    kpi(a.perKmL != null ? nf(a.perKmL, 1) + " ct" : "–", "Je km mit Leasing", `Leasing ${eur(lease, 2)} pro Monat, anteilig für ${nf(a.span)} Tage mit Kilometerdaten`);
 }

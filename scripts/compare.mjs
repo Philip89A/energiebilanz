@@ -3,7 +3,8 @@
 // Diagramme für 9 Seiten × 6 Ansichten. Bericht: data/compare-report.json (privat).
 // Gewollte Abweichungen: neutralisierte Textstellen in #ov-todo, #mt-wp, #mt-rec, #ct-flags (v0.4);
 // einheitlicher Break-even in #ov-kpis und #fin-inv, Quelle und nächster Abschlag in #ab-tbl (v0.7);
-// Diagramm mt-month folgt dem gewählten Zeitraum, bis 62 Tage je Tag (v0.13; „Gesamter Zeitraum“ unverändert).
+// Diagramm mt-month folgt dem gewählten Zeitraum, bis 62 Tage je Tag (v0.13; „Gesamter Zeitraum“ unverändert);
+// #rd-tbl, #lg-kpis, #lg-car-kpis, #fu-tbl, #ch-tbl (und #cl-tbl) folgen dem Zeitraum (v0.16; „Gesamter Zeitraum“ unverändert).
 // Aufruf:  python3 -m http.server 8000 &   dann   npx -y -p playwright node scripts/compare.mjs
 // Optional: CHROMIUM_PATH=/pfad/zu/chrome, CHROMIUM_ARGS="--flag1 --flag2"
 import { chromium } from 'playwright';
