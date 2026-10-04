@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.18.0';
-import { parseNum } from './queue.js?v=0.18.0';
-import { geocode, fetchDays } from './weather.js?v=0.18.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.18.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.19.0';
+import { parseNum } from './queue.js?v=0.19.0';
+import { geocode, fetchDays } from './weather.js?v=0.19.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.19.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -751,7 +751,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -767,7 +767,7 @@ function renderData(){
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
 const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["hp-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
+const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   if(!document.body.classList.contains("ro")) return;
@@ -796,6 +796,8 @@ export function startViews(){
     wireEditing();
     wireWeather();
     wireHpImport();
+    $("hpd-a").addEventListener("change",e=>{ S.ui.hpdA=e.target.value; persist(); renderHpDay(); });
+    $("hpd-b").addEventListener("change",e=>{ S.ui.hpdB=e.target.value; persist(); renderHpDay(); });
     window.addEventListener("hashchange",route);
     if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>rerender());
   }
@@ -1399,4 +1401,40 @@ function renderCarPeriodKpis(car, kd, items, PS) {
     kpi(eur(a.cost, 0), "Kosten ohne Leasing", "Sprit bzw. Laden und Fahrzeugbuch" + (c ? vsTxt(a.cost, c.cost, v => eur(v, 0), L) : "")) +
     kpi(a.perKm != null ? nf(a.perKm, 1) + " ct" : "–", "Je km ohne Leasing", c ? vsTxt(a.perKm, c.perKm, v => nf(v, 1) + " ct", L).replace(/^ · /, "") : "") +
     kpi(a.perKmL != null ? nf(a.perKmL, 1) + " ct" : "–", "Je km mit Leasing", `Leasing ${eur(lease, 2)} pro Monat, anteilig für ${nf(a.span)} Tage mit Kilometerdaten`);
+}
+
+/* ---------- Tagesprofil Wärmepumpe aus Stundenwerten (v0.19) ---------- */
+function renderHpDay() {
+  const days = C.hpHourDays();
+  if (!days.length) { $("hpd-a").innerHTML = ""; $("hpd-b").innerHTML = ""; $("hpd-tbl").innerHTML = "";
+    $("hpd-flags").innerHTML = flag("Noch keine Stundenwerte: in der Wärmepumpen-App den Export „letzte 3 Tage“ wählen und unter „Daten“ hochladen.", true);
+    chart("hp-hours", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const a = days.includes(S.ui.hpdA) ? S.ui.hpdA : days[days.length - 1], b = days.includes(S.ui.hpdB) && S.ui.hpdB !== a ? S.ui.hpdB : "";
+  const opt = d => `<option value="${d}">${dde(d)}</option>`;
+  $("hpd-a").innerHTML = [...days].reverse().map(opt).join(""); $("hpd-a").value = a;
+  $("hpd-b").innerHTML = `<option value="">kein Vergleich</option>` + [...days].reverse().filter(d => d !== a).map(opt).join(""); $("hpd-b").value = b;
+  const A_ = C.hpDayProfile(a), B_ = b ? C.hpDayProfile(b) : null;
+  $("hpd-flags").innerHTML = [A_, B_].filter(Boolean).filter(x => x.n < 24).map(x => flag(`${dde(x.d)}: nur ${x.n} von 24 Stunden im Export.`, true)).join("");
+  const lab = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")} h`), val = (p, f) => p.hours.map(r => r ? (+r[f] || 0) : null);
+  const ds = [];
+  const bars = (p, st, alpha) => [["Heizung", r => r ? (+r.el_heat || 0) : null, "--heat"], ["Warmwasser", r => r ? (+r.el_dhw || 0) : null, "--grid"], ["Zuheizer", r => r ? (+r.el_aux || 0) : null, "--warn"]]
+    .forEach(([l, f, c]) => ds.push({ label: `${l} ${dde(p.d).slice(0, 6)}`, data: p.hours.map(f), backgroundColor: alpha ? `color-mix(in srgb, ${css(c)} 45%, transparent)` : css(c), stack: st, yAxisID: "y" }));
+  bars(A_, "a", false); if (B_) bars(B_, "b", true);
+  const line = (p, f, l, c, dash, hidden) => ds.push({ type: "line", label: `${l} ${dde(p.d).slice(0, 6)}`, data: p.hours.map(r => r && r[f] != null ? +r[f] : null), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 2, yAxisID: "y1", spanGaps: true, ...(dash ? { borderDash: [5, 4] } : {}), ...(hidden ? { hidden: true } : {}) });
+  line(A_, "t_dhw", "Warmwasser °C", "--batt", false); line(A_, "t_out", "Außen °C", "--sun", false); line(A_, "t_flow", "Vorlauf °C", "--muted", false, true);
+  if (B_) { line(B_, "t_dhw", "Warmwasser °C", "--batt", true); line(B_, "t_out", "Außen °C", "--sun", true); }
+  chart("hp-hours", { type: "bar", data: { labels: lab, datasets: ds },
+    options: { plugins: { ebTotals: false, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} ${c.dataset.yAxisID === "y1" ? "" : "kWh"}` } } },
+      scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh Strom" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
+  const hh = h => `${String(h).padStart(2, "0")}:00`;
+  const loads = p => p.loads.length ? p.loads.map(l => `${hh(l.from)}${l.to > l.from ? "–" + hh(l.to + 1) : ""} (${nf(l.kwh, 1)} kWh)`).join(", ") : "keine";
+  const rows = [
+    ["Strom gesamt", p => kwh(p.el, 1)], ["davon Heizung", p => kwh(p.elHeat, 1)], ["davon Warmwasser", p => kwh(p.elDhw, 1)],
+    ["Zuheizer", p => p.aux >= 0.05 ? `<b>${kwh(p.aux, 1)}</b>` : "nein"], ["Erzeugte Wärme", p => kwh(p.heat, 1)], ["Arbeitszahl", p => p.cop != null ? nf(p.cop, 2) : "–"],
+    ["Warmwasser-Ladungen", p => `${p.loads.length}: ${loads(p)}`],
+    ["Höchste Warmwassertemperatur", p => p.peakDhw ? `${nf(p.peakDhw.t, 1)} °C um ${hh(p.peakDhw.h)}${p.disinfection ? " – Desinfektion/Hochtemperatur" : ""}` : "–"],
+    ["Laufstunden", p => `${p.runH} h`], ["Außentemperatur", p => p.tOutMin != null ? `${nf(p.tOutMin, 1)} bis ${nf(p.tOutMax, 1)} °C` : "–"],
+    ["Stunden im Export", p => `${p.n} von 24`]];
+  $("hpd-tbl").innerHTML = `<thead><tr><th class="l">Auswertung</th><th class="l">${dde(a)}</th>${B_ ? `<th class="l">${dde(b)}</th>` : ""}</tr></thead><tbody>${
+    rows.map(([l, f]) => `<tr><td class="l">${l}</td><td class="l" style="white-space:normal">${f(A_)}</td>${B_ ? `<td class="l" style="white-space:normal">${f(B_)}</td>` : ""}</tr>`).join("")}</tbody>`;
 }

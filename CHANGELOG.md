@@ -274,3 +274,17 @@
 - Die THG-Prämie ist auf Wunsch enthalten (Standard: an), wird aber ausdrücklich als „nicht durch die Investition
   verursacht“ gekennzeichnet: Sie fällt für jedes E-Auto an und verschiebt den Break-even spürbar nach vorn.
 - Tests: 73 Unit-Tests (neu `tests/v18.test.mjs`), `scripts/v18-check.mjs` 10 Prüfungen; alles Übrige unverändert.
+
+## v0.19.0 – Tagesprofil Wärmepumpe
+- Neuer Abschnitt **„Tagesprofil (Stundenwerte)“** unter „Wärmepumpe laut Gerät“ (Seite Zähler & Wärmepumpe):
+  ein Tag je Stunde als gestapelte Balken Heizung/Warmwasser/Zuheizer, dazu Linien Warmwasser-, Außen- und
+  Vorlauftemperatur (Vorlauf ausgeblendet, per Legende zuschaltbar). Keine Summen über den Stundenbalken.
+- **Vergleichstag:** zweiter Tag als eigener, halbtransparenter Stapel, Temperaturlinien gestrichelt; Tabelle mit
+  beiden Tagen nebeneinander. Auswahl wird je Gerät gespeichert.
+- Auswertung je Tag: Strom gesamt / Heizung / Warmwasser, Zuheizer, erzeugte Wärme, Arbeitszahl,
+  **Warmwasser-Ladungen** mit Uhrzeit und kWh (zusammenhängende Stunden), höchste Warmwassertemperatur mit Uhrzeit
+  und Kennzeichnung ab 58 °C (Desinfektion/Hochtemperatur), Laufstunden, Außentemperatur, Stunden im Export.
+- Unabhängig von der Zeitraumleiste (es gibt nur wenige Tage mit Stundenwerten); Tage mit weniger als 24 Stunden
+  werden markiert. Ohne Stundenwerte erscheint ein Hinweis auf den Export „letzte 3 Tage“.
+- Kein Datenbank-Update nötig (Stundenwerte liegen seit v0.11 in `hp_energy`).
+- Tests: 74 Unit-Tests, neu `scripts/v19-check.mjs` 23 Prüfungen; alles Übrige unverändert.
