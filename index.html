@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.20.0">
-<link rel="stylesheet" href="css/style.css?v=0.20.0">
+<meta name="app-version" content="0.21.0">
+<link rel="stylesheet" href="css/style.css?v=0.21.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -158,7 +158,7 @@
   <h1>Zählerstände</h1>
   <p class="lead">Zwei Zählpunkte: Allgemeinstrom und Wärmepumpe (Zähler- und Gerätetausch siehe Ereignisse unter „Daten“). Zwischen zwei Ablesungen wird der Verbrauch der Wärmepumpe nach dem Geräteprofil aus der Wärmepumpen-App verteilt (Tageswerte, sonst Monatswerte), ohne Gerätedaten gleichmäßig. Beim Allgemeinstrom richtet sich die Verteilung nach dem täglichen Anker-Netzbezug (ab <span data-sm></span>), damit Winter und Sommer richtig abgebildet sind.</p>
   <div class="grid g2">
-    <div class="panel"><h2>Verbrauch pro Tag zwischen den Ablesungen</h2><div class="chart tall"><canvas id="mt-rate"></canvas></div></div>
+    <div class="panel"><h2>Verbrauch pro Tag zwischen den Ablesungen</h2><div class="chart tall"><canvas id="mt-rate"></canvas></div><div id="mt-rate-note"></div></div>
     <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
   </div>
   <div class="panel" style="margin-top:16px" id="hp-panel"><h2>Wärmepumpe laut Gerät</h2>
@@ -402,8 +402,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.20.0"></script>
-<script src="vendor/chart.umd.js?v=0.20.0"></script>
-<script type="module" src="js/app.js?v=0.20.0"></script>
+<script src="vendor/supabase.js?v=0.21.0"></script>
+<script src="vendor/chart.umd.js?v=0.21.0"></script>
+<script type="module" src="js/app.js?v=0.21.0"></script>
 </body>
 </html>
