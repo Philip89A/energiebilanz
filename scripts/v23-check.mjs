@@ -1,6 +1,6 @@
-// v0.22-Test: Trendlinien (Verbrauch zwischen Ablesungen, Tankbuch) und Spritpreis je Tankvorgang inkl. Teilbetankungen.
-// Simuliertes Supabase mit data/seed_state.json, zusätzlich erfundene Tankvorgänge.
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v22-check.mjs
+// v0.23-Test: gleitender 30-Tage-Durchschnitt statt Trendgerade in „Verbrauch pro Tag zwischen den Ablesungen“ und
+// Wärmepumpe je Gradtag. Simuliertes Supabase mit data/seed_state.json und synthetischen Wetterdaten.
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v23-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -59,41 +59,44 @@ async function open(page) {
 
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
-DB.hp_energy = []; DB.weather_daily = [];
-// erfundene Tankvorgänge: zwei Volltankungen mit einer Teilbetankung dazwischen
-DB.fuel_log = [...(DB.fuel_log || []),
-  { id: 'f1', user_id: uid, day: '2030-01-05', odometer: 900000, liters: 40, amount: 72, fuel_type: 'Super E10', full_tank: true },
-  { id: 'f2', user_id: uid, day: '2030-01-20', odometer: 900300, liters: 20, amount: 38, fuel_type: 'Super E10', full_tank: false },
-  { id: 'f3', user_id: uid, day: '2030-02-04', odometer: 900700, liters: 25, amount: 50, fuel_type: 'Super E10', full_tank: true }];
-const fuel = p => p.evaluate(() => { const c = window.__ebCharts['lg-fuel']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.map(d => ({ l: d.label, data: d.data, bg: d.pointBackgroundColor, dash: d.borderDash })) }; });
+DB.hp_energy = [];
+// synthetisches Wetter für den ganzen Zeitraum der Ablesungen: Jahresgang 10 ± 10 °C
+DB.weather_daily = []; for (let t = Date.parse('2024-06-01'); t <= Date.parse('2026-12-31'); t += 864e5) {
+  const d = new Date(t).toISOString().slice(0, 10), doy = (t - Date.parse(d.slice(0, 4) + '-01-01')) / 864e5;
+  DB.weather_daily.push({ user_id: uid, day: d, temp_mean: +(10 + 10 * Math.sin((doy - 110) / 365 * 2 * Math.PI)).toFixed(1), rad_kwh: 3, sun_h: 5 }); }
+const ma = p => p.evaluate(() => window.__ebCharts['mt-rate'].data.datasets.map(d => ({ l: d.label, n: d.data.length, min: Math.min(...d.data.map(q => q.y)), dash: d.borderDash })));
 
-let { p, ctx } = await open('log');
+let { p, ctx } = await open('meter');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-let f = await fuel(p);
-const nFill = DB.fuel_log.filter(x => +x.liters > 0).length;
-const price = f.ds.find(d => d.l === '€/l je Tankvorgang');
-ok(price && price.data.length === nFill, `€/l für jeden Tankvorgang (${price?.data.length} von ${nFill})`);
-ok(f.ds.some(d => d.l === 'Ø €/l im Zeitraum') && f.ds.some(d => d.l === 'Trend €/l'), 'Ø-Linie und Trend €/l vorhanden');
-ok(f.labels.length > 2 && f.labels.every((d, i, a) => !i || a[i - 1] < d), 'Datumsachse sortiert');
-// Zeitraum: Januar bis Februar 2030 (erfundene Werte)
-await p.selectOption('#pb-mode', 'custom'); await p.waitForTimeout(150);
-await p.fill('#pb-from', '2030-01-01'); await p.dispatchEvent('#pb-from', 'change'); await p.fill('#pb-to', '2030-02-28'); await p.dispatchEvent('#pb-to', 'change'); await p.waitForTimeout(400);
-f = await fuel(p);
-const pr = f.ds.find(d => d.l === '€/l je Tankvorgang');
-ok(JSON.stringify(pr.data.map(q => [q.x, +q.y.toFixed(3), q.full])) === JSON.stringify([['2030-01-05', 1.8, true], ['2030-01-20', 1.9, false], ['2030-02-04', 2, true]]), 'Zeitraum: drei Preise inkl. Teilbetankung');
-ok(pr.bg[1] !== pr.bg[0] && pr.bg[0] === pr.bg[2], 'Teilbetankung als hohler Punkt');
-const avg = f.ds.find(d => d.l === 'Ø €/l im Zeitraum');
-ok(Math.abs(avg.data[0].y - 160 / 85) < 1e-9, 'Ø nach Litern gewichtet (160 € / 85 l)');
-const tr = f.ds.find(d => d.l === 'Trend €/l');
-ok(tr.data[0].x === '2030-01-05' && tr.data[1].x === '2030-02-04' && tr.data[1].y > tr.data[0].y, 'Trend €/l steigend über den Zeitraum');
-const c100 = f.ds.find(d => d.l === 'l/100 km');
-ok(c100.data.length === 1 && Math.abs(c100.data[0].y - 45 / 700 * 100) < 1e-9, 'l/100 km nur zwischen Volltankungen (45 l / 700 km)');
-ok(!f.ds.some(d => d.l === 'Trend l/100 km'), 'kein Verbrauchstrend bei nur einem Intervall');
-let t = await txt(p, '#lg-fuel-note');
-ok(t.includes('3 Tankvorgänge, davon 1 Teilbetankung (hohler Punkt)') && t.includes('Trend Spritpreis +'), 'Hinweis: ' + t.slice(0, 160));
+let d = await ma(p);
+ok(!d.some(x => x.l.startsWith('Trend')), 'keine Trendgerade mehr beim Strom');
+const mA = d.find(x => x.l === 'Ø 30 Tage Allgemeinstrom'), mW = d.find(x => x.l === 'Ø 30 Tage Wärmepumpe');
+ok(mA && mW && mA.n > 30 && mW.n > 30 && mA.dash && mW.dash, `gleitender Durchschnitt je Zählpunkt (${mA?.n} / ${mW?.n} Tage), gepunktet`);
+ok(mA.min >= 0 && mW.min >= 0, 'nie negativ');
+let t = await txt(p, '#mt-rate-note');
+ok(t.includes('gleitender Durchschnitt der letzten 30 Tage') && /Allgemeinstrom: [\d,]+ kWh\/Tag bis/.test(t), 'Hinweis mit 30-Tage-Wert: ' + t.slice(0, 160));
+ok(t.includes('Wärmepumpe wetterbereinigt'), 'Hinweis Wärmepumpe wetterbereinigt');
+// Wintermonat und Sommermonat mit Ablesungen
+const lab = await p.evaluate(() => window.__ebCharts['mt-rate'].data.datasets[1].data.map(q => q.x));
+const months = [...new Set(lab.map(x => x.slice(0, 7)))];
+const win = months.find(m => ['12', '01', '02'].includes(m.slice(5))), sum = months.find(m => ['06', '07', '08'].includes(m.slice(5)));
+await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200);
+if (win) { await p.selectOption('#pb-key', win); await p.waitForTimeout(400); t = await txt(p, '#mt-rate-note');
+  ok(/Heizung [\d,]+ kWh je Gradtag bei \d+ Gradtagen/.test(t), `Winter ${win}: kWh je Gradtag – ` + (t.match(/Wärmepumpe wetterbereinigt[^.]*/) || [''])[0]); }
+else ok(false, 'kein Wintermonat in den Seed-Ablesungen');
+if (sum) { await p.selectOption('#pb-key', sum); await p.waitForTimeout(400); t = await txt(p, '#mt-rate-note');
+  ok(t.includes('nicht aussagekräftig'), `Sommer ${sum}: Hinweis außerhalb der Heizzeit`); }
+d = await ma(p);
+ok(d.filter(x => x.l.startsWith('Ø 30 Tage')).every(x => x.n >= 1), 'Monat: Durchschnitt auch am Monatsanfang (Fenster reicht in den Vormonat)');
+ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
+await ctx.close();
+// ohne Wetterdaten: kein Gradtag-Hinweis, kein Fehler
+DB.weather_daily = [];
+({ p, ctx } = await open('meter'));
+t = await txt(p, '#mt-rate-note');
+ok(!t.includes('wetterbereinigt') && t.includes('gleitender Durchschnitt'), 'ohne Wetter: nur Durchschnitt');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 
-// v0.23: in „Verbrauch pro Tag zwischen den Ablesungen“ ersetzt der gleitende Durchschnitt die Trendgerade (scripts/v23-check.mjs)
 console.log(failures ? `${failures} Prüfung(en) fehlgeschlagen` : 'Alle Prüfungen bestanden');
 await b.close(); process.exit(failures ? 1 : 0);

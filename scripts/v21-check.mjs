@@ -60,7 +60,7 @@ async function open(page) {
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
 DB.hp_energy = []; DB.weather_daily = [];
-const rate = p => p.evaluate(() => { const c = window.__ebCharts['mt-rate']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.filter(d => !d.label.startsWith('Trend')).map(d => ({ l: d.label, n: d.data.length, dash: !!d.borderDash, xs: d.data.map(q => q.x), os: d.data.map(q => q.o) })) }; });
+const rate = p => p.evaluate(() => { const c = window.__ebCharts['mt-rate']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.filter(d => !d.label.startsWith('Ø 30 Tage')).map(d => ({ l: d.label, n: d.data.length, dash: !!d.borderDash, xs: d.data.map(q => q.x), os: d.data.map(q => q.o) })) }; });
 
 let { p, ctx } = await open('meter');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));

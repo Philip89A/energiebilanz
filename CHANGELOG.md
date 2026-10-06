@@ -322,3 +322,15 @@
   Zeiträumen über mehrere Jahreszeiten der Hinweis, dass der Trend vor allem die Jahreszeit zeigt.
 - Rechenkern: `linTrend` (reine Funktion). Kein Datenbank-Update nötig.
 - Tests: 82 Unit-Tests (neu `tests/v22.test.mjs`), neu `scripts/v22-check.mjs` 16 Prüfungen; alles Übrige unverändert.
+
+## v0.23.0 – Gleitender Durchschnitt statt Trendgerade beim Strom
+- „Verbrauch pro Tag zwischen den Ablesungen“: Die Trendgerade aus v0.22 lief bei Daten über mehrere Jahreszeiten
+  rechnerisch gegen 0. Ersetzt durch den **gleitenden Durchschnitt der letzten 30 Tage** je Zählpunkt (gepunktet,
+  Tageswerte wie in „Verbrauch pro Monat“, mindestens 15 Tage mit Wert). Das Fenster reicht vor den Zeitraumbeginn,
+  damit die Linie am Anfang nicht fehlt. Hinweis: Ø der letzten 30 Tage gegenüber den 30 Tagen davor.
+- **Wärmepumpe wetterbereinigt:** Heizung in kWh je Gradtag für die letzten 30 Tage (Grundlast laut Wetter-Modell
+  abgezogen, passende Seite des Gerätetauschs), Vergleich mit den 30 Tagen davor. Unter 20 Gradtagen (Sommer) kein
+  Wert, sondern ein Hinweis. Ohne Wetterdaten entfällt die Zeile.
+- Tanken: Trendgeraden für Spritpreis und Verbrauch bleiben (keine Jahreszeit-Abhängigkeit wie beim Strom).
+- Rechenkern: `movingAvg` (reine Funktion), `wpDegreeDay` in createCalc. Kein Datenbank-Update nötig.
+- Tests: 83 Unit-Tests, neu `scripts/v23-check.mjs` 12 Prüfungen; alles Übrige unverändert.

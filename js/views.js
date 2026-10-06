@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, linTrend, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.22.0';
-import { parseNum } from './queue.js?v=0.22.0';
-import { geocode, fetchDays } from './weather.js?v=0.22.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.22.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, linTrend, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.23.0';
+import { parseNum } from './queue.js?v=0.23.0';
+import { geocode, fetchDays } from './weather.js?v=0.23.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.23.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -457,15 +457,17 @@ function renderMeters(){
     return [{ x: cap(addDaysIso(a, shift)), y: iv.rate, ...(shift ? { o: a } : {}) }, { x: cap(addDaysIso(b, shift)), y: iv.rate, ...(shift ? { o: b } : {}) }]; }).filter((q, i, arr) => !shift || q.x <= addDaysIso(RS.P.to, 1));
   const rateDs = [["as", as, "Allgemeinstrom", "--grid"], ["wp", wp, "Wärmepumpe", "--heat"]];
   const ds = rateDs.map(([, g, l, c]) => ({ label: l, data: step(g, RS.P.from, RS.P.to), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 2 }));
-  // v0.22: Trendlinie je Zählpunkt (nach Tagen gewichtet, Intervallmitte), gepunktet
-  const trends = rateDs.map(([gk, g, l, c], i) => {
-    const pts = ds[i].data, from = RS.all ? null : RS.P.from, to = RS.all ? null : addDaysIso(RS.P.to, 1);
-    const tr = linTrend(ivIn(g, RS.P.from, RS.P.to).map(iv => { const a = from && iv.from < from ? from : iv.from, b = to && iv.to > to ? to : iv.to, n = diffDays(a, b);
-      return { d: addDaysIso(a, Math.floor(n / 2)), y: iv.rate, w: n }; }));
-    if (!tr || pts.length < 2) return null;
-    const x0 = pts[0].x, x1 = pts[pts.length - 1].x;
-    ds.push({ label: `Trend ${l}`, data: [{ x: x0, y: tr.at(x0) }, { x: x1, y: tr.at(x1) }], borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 1.5, borderDash: [2, 3] });
-    return [l, tr]; }).filter(Boolean);
+  // v0.23: gleitender 30-Tage-Durchschnitt je Zählpunkt (Tageswerte wie „Verbrauch pro Monat“), gepunktet
+  const lastDaily = g => Object.keys(g.daily).sort().pop();
+  const mas = rateDs.map(([gk, g, l, c], i) => {
+    const pts = ds[i].data; if (pts.length < 2) return null;
+    const d0 = RS.all ? pts[0].x : RS.P.from, d1 = [RS.all ? pts[pts.length - 1].x : RS.P.to, lastDaily(g)].filter(Boolean).sort()[0];
+    const days = []; for (let d = d0; d <= d1; d = addDaysIso(d, 1)) days.push(d);
+    const v = movingAvg(g.daily, days, 30, 15);
+    ds.push({ label: `Ø 30 Tage ${l}`, data: days.map((d, j) => ({ x: d, y: v[j] })).filter(q => q.y != null), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 1.5, borderDash: [2, 3] });
+    const ma1 = t => movingAvg(g.daily, [t], 30, 15)[0];
+    return { gk, l, now: ma1(d1), prev: ma1(addDaysIso(d1, -30)), end: d1 };
+  }).filter(Boolean);
   if (!RS.all && RS.Cp) rateDs.forEach(([, g, l, c]) => ds.push({ label: `${l} ${RS.Cp.label}`, data: step(g, RS.Cp.from, RS.Cp.to, sh), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 1.5, borderDash: [5, 4] }));
   const allD = [...new Set(ds.flatMap(d => d.data.map(p => p.x)))].sort();
   chart("mt-rate",{type:"line",data:{datasets:ds},
@@ -476,10 +478,14 @@ function renderMeters(){
     const iv = ivIn(g, RS.P.from, RS.P.to), nR = S.readings.filter(r => S.meters.find(m => m.id === r.m)?.group === gk && r.d >= RS.P.from && r.d <= addDaysIso(RS.P.to, 1)).length;
     const edge = iv.filter(x => x.from < RS.P.from || x.to > addDaysIso(RS.P.to, 1));
     rn.push(`${l}: ${nR ? `${nf(nR)} Ablesung${nR === 1 ? "" : "en"} im Zeitraum` : "keine Ablesung im Zeitraum"}${edge.length ? `; ${edge.map(x => `Intervall ${dde(x.from)}–${dde(x.to)} reicht über den Rand, Wert = Durchschnitt über ${nf(x.days)} Tage`).join("; ")}` : ""}.`); });
-  const span = RS.all ? diffDays(allD[0] || RS.P.from, allD[allD.length - 1] || RS.P.to) : diffDays(RS.P.from, RS.P.to);
-  const trTxt = trends.length ? `<p class="note">Trend (gepunktet, lineare Ausgleichsgerade nach Tagen gewichtet): ${trends.map(([l, t]) => `${l} ${t.perMonth >= 0 ? "+" : "−"}${nf(Math.abs(t.perMonth), 2)} kWh/Tag je Monat`).join(", ")}.${span > 92 ? " Über mehrere Jahreszeiten zeigt der Trend vor allem die Jahreszeit, nicht eine echte Veränderung." : ""}</p>` : "";
+  const chg = (a, b) => a != null && b ? ` (${a >= b ? "+" : "−"}${pct(Math.abs(a / b - 1))})` : "";
+  const maTxt = mas.length ? `<p class="note">Gepunktet: gleitender Durchschnitt der letzten 30 Tage. ${mas.map(m => `${m.l}: ${m.now != null ? `${nf(m.now, 1)} kWh/Tag bis ${dde(m.end)}` : "–"}${m.prev != null ? `, 30 Tage davor ${nf(m.prev, 1)}${chg(m.now, m.prev)}` : ""}`).join("; ")}.</p>` : "";
+  const wEnd = mas.find(m => m.gk === "wp")?.end, wd = wEnd ? C.wpDegreeDay(addDaysIso(wEnd, -29), wEnd) : null, wdp = wEnd ? C.wpDegreeDay(addDaysIso(wEnd, -59), addDaysIso(wEnd, -30)) : null;
+  const wdTxt = !S.weather?.length ? "" : wd ? `<p class="note">Wärmepumpe wetterbereinigt (letzte 30 Tage bis ${dde(wEnd)}): ${wd.perGt != null
+      ? `Heizung ${nf(wd.perGt, 2)} kWh je Gradtag bei ${nf(wd.gt)} Gradtagen${wd.base != null ? `, Grundlast ${nf(wd.base, 1)} kWh/Tag laut Wetter-Modell abgezogen` : ", ohne Abzug einer Grundlast (Wetter-Modell fehlt)"}${wdp?.perGt != null ? `; 30 Tage davor ${nf(wdp.perGt, 2)}${chg(wd.perGt, wdp.perGt)}` : ""}. Weniger kWh je Gradtag = effizienter, unabhängig vom Wetter.`
+      : `nur ${nf(wd.gt)} Gradtage – außerhalb der Heizzeit ist der Wert nicht aussagekräftig.`}</p>` : "";
   $("mt-rate-note").innerHTML = rn.length ? `<p class="note">${rn.join("<br>")}${RS.Cp ? `<br>Gestrichelt: ${esc(RS.Cp.label)}, auf die Tage des Zeitraums verschoben.` : ""} Tageswerte innerhalb eines Intervalls: Grafik „Verbrauch pro Monat“ (bis 62 Tage je Tag).</p>` : "";
-  $("mt-rate-note").innerHTML += trTxt;
+  $("mt-rate-note").innerHTML += maTxt + wdTxt;
   // Wärmepumpe vorher/nachher
   const sw = (S.events.find(e=>e.type==="geraet"&&e.group==="wp")||{}).d;
   if(sw){
