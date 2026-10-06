@@ -334,3 +334,14 @@
 - Tanken: Trendgeraden für Spritpreis und Verbrauch bleiben (keine Jahreszeit-Abhängigkeit wie beim Strom).
 - Rechenkern: `movingAvg` (reine Funktion), `wpDegreeDay` in createCalc. Kein Datenbank-Update nötig.
 - Tests: 83 Unit-Tests, neu `scripts/v23-check.mjs` 12 Prüfungen; alles Übrige unverändert.
+
+## v0.24.0 – Gleitender Durchschnitt auch beim Tanken
+- „Verbrauch und Spritpreis“: Die Trendgeraden aus v0.22 entfallen (Spritpreise verlaufen nicht linear). Stattdessen
+  gepunktet der **gleitende Ø über die letzten 5 Tankvorgänge** (€/l, nach Litern gewichtet = Kosten ÷ Liter,
+  Teilbetankungen eingeschlossen, ab 3 Tankvorgängen) und über die **letzten 3 Volltank-Intervalle** (l/100 km, nach
+  km gewichtet = Liter ÷ km, ab 2 Intervallen). Gerechnet über das ganze Tankbuch, damit das Fenster am Zeitraumbeginn
+  nicht leer ist. Die gestrichelte Ø-Linie des Zeitraums bleibt.
+- Hinweis: aktueller gleitender Wert gegenüber dem Wert 5 Tankvorgänge bzw. 3 Intervalle davor.
+- Rechenkern: `movingAvgN` (reine Funktion) ersetzt `linTrend`. Kein Datenbank-Update nötig.
+- Tests: 81 Unit-Tests (`tests/v24.test.mjs` ersetzt `tests/v22.test.mjs`), `scripts/v22-check.mjs` angepasst
+  (18 Prüfungen); alles Übrige unverändert.
