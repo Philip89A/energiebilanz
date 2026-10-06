@@ -303,3 +303,12 @@
 - Angebote liegen in `settings.data.offers`: **kein Datenbank-Update nötig.** Keine Angebotswerte im Repo.
 - Rundung auf Cent kaufmännisch ohne Gleitkomma-Fehler.
 - Tests: 79 Unit-Tests (neu `tests/v20.test.mjs`), neu `scripts/v20-check.mjs` 26 Prüfungen; alles Übrige unverändert.
+
+## v0.21.0 – Zeitraum für „Verbrauch pro Tag zwischen den Ablesungen“
+- Die Grafik auf „Zähler & Wärmepumpe“ folgt jetzt der Zeitraumleiste: Achse nur im gewählten Zeitraum, Intervalle
+  am Rand abgeschnitten (der Wert bleibt der Tagesdurchschnitt des ganzen Ableseintervalls).
+- Mit Vergleichszeitraum: zusätzliche gestrichelte Linien, auf die Tage des Zeitraums verschoben; der Tooltip nennt
+  das Originaldatum.
+- Hinweis unter der Grafik: Ablesungen im Zeitraum je Zählpunkt und Intervalle, die über den Rand reichen.
+- „Gesamter Zeitraum“ unverändert. Kein Datenbank-Update nötig.
+- Tests: 79 Unit-Tests, neu `scripts/v21-check.mjs` 12 Prüfungen; Seitenvergleich: mt-rate als gewollte Abweichung.

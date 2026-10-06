@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.20.0';
-import { parseNum } from './queue.js?v=0.20.0';
-import { geocode, fetchDays } from './weather.js?v=0.20.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.20.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.21.0';
+import { parseNum } from './queue.js?v=0.21.0';
+import { geocode, fetchDays } from './weather.js?v=0.21.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.21.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -433,13 +433,27 @@ function renderBattery(first){
 /* ---------- Zähler ---------- */
 function renderMeters(){
   const as=groupSeries("as"), wp=groupSeries("wp");
-  const step = g => g.intervals.flatMap(iv=>[{x:iv.from,y:iv.rate},{x:iv.to,y:iv.rate}]);
-  const allD = [...new Set([...as.pts,...wp.pts].map(p=>p.d))].sort();
-  chart("mt-rate",{type:"line",data:{datasets:[
-    {label:"Allgemeinstrom",data:step(as),borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,borderWidth:2},
-    {label:"Wärmepumpe",data:step(wp),borderColor:css("--heat"),backgroundColor:css("--heat"),pointRadius:0,borderWidth:2}]},
+  // v0.21: Zeitraum und Vergleich. Intervalle am Rand werden abgeschnitten; der Wert bleibt der Tagesdurchschnitt des
+  // ganzen Ableseintervalls. Vergleich gestrichelt, auf die Tage des Zeitraums verschoben.
+  const RS = periodSel(), sh = RS.Cp ? diffDays(RS.Cp.from, RS.P.from) : 0;
+  const ivIn = (g, from, to) => RS.all ? g.intervals : g.intervals.filter(iv => iv.to > from && iv.from <= to);
+  const step = (g, from, to, shift = 0) => ivIn(g, from, to).flatMap(iv => {
+    const a = RS.all || iv.from >= from ? iv.from : from, b = RS.all || iv.to <= addDaysIso(to, 1) ? iv.to : addDaysIso(to, 1);
+    const cap = x => shift && x > addDaysIso(RS.P.to, 1) ? addDaysIso(RS.P.to, 1) : x;   // Vergleich nicht über das Zeitraumende hinaus
+    return [{ x: cap(addDaysIso(a, shift)), y: iv.rate, ...(shift ? { o: a } : {}) }, { x: cap(addDaysIso(b, shift)), y: iv.rate, ...(shift ? { o: b } : {}) }]; }).filter((q, i, arr) => !shift || q.x <= addDaysIso(RS.P.to, 1));
+  const rateDs = [["as", as, "Allgemeinstrom", "--grid"], ["wp", wp, "Wärmepumpe", "--heat"]];
+  const ds = rateDs.map(([, g, l, c]) => ({ label: l, data: step(g, RS.P.from, RS.P.to), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 2 }));
+  if (!RS.all && RS.Cp) rateDs.forEach(([, g, l, c]) => ds.push({ label: `${l} ${RS.Cp.label}`, data: step(g, RS.Cp.from, RS.Cp.to, sh), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 1.5, borderDash: [5, 4] }));
+  const allD = [...new Set(ds.flatMap(d => d.data.map(p => p.x)))].sort();
+  chart("mt-rate",{type:"line",data:{datasets:ds},
     options:{parsing:true,scales:{x:{type:"category",labels:allD,ticks:{maxTicksLimit:8,callback:function(v){return dde(this.getLabelForValue(v));}}},y:{title:{display:true,text:"kWh pro Tag"}}},
-      plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y,1)} kWh/Tag`}}}}});
+      plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.o||c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y,1)} kWh/Tag (${dde(c.raw.o||c.raw.x)})`}}}}});
+  const rn = [];
+  if (!RS.all) rateDs.forEach(([gk, g, l]) => {
+    const iv = ivIn(g, RS.P.from, RS.P.to), nR = S.readings.filter(r => S.meters.find(m => m.id === r.m)?.group === gk && r.d >= RS.P.from && r.d <= addDaysIso(RS.P.to, 1)).length;
+    const edge = iv.filter(x => x.from < RS.P.from || x.to > addDaysIso(RS.P.to, 1));
+    rn.push(`${l}: ${nR ? `${nf(nR)} Ablesung${nR === 1 ? "" : "en"} im Zeitraum` : "keine Ablesung im Zeitraum"}${edge.length ? `; ${edge.map(x => `Intervall ${dde(x.from)}–${dde(x.to)} reicht über den Rand, Wert = Durchschnitt über ${nf(x.days)} Tage`).join("; ")}` : ""}.`); });
+  $("mt-rate-note").innerHTML = rn.length ? `<p class="note">${rn.join("<br>")}${RS.Cp ? `<br>Gestrichelt: ${esc(RS.Cp.label)}, auf die Tage des Zeitraums verschoben.` : ""} Tageswerte innerhalb eines Intervalls: Grafik „Verbrauch pro Monat“ (bis 62 Tage je Tag).</p>` : "";
   // Wärmepumpe vorher/nachher
   const sw = (S.events.find(e=>e.type==="geraet"&&e.group==="wp")||{}).d;
   if(sw){

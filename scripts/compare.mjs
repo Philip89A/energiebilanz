@@ -6,6 +6,7 @@
 // Diagramm mt-month folgt dem gewählten Zeitraum, bis 62 Tage je Tag (v0.13; „Gesamter Zeitraum“ unverändert);
 // #rd-tbl, #lg-kpis, #lg-car-kpis, #fu-tbl, #ch-tbl (und #cl-tbl) folgen dem Zeitraum (v0.16; „Gesamter Zeitraum“ unverändert);
 // car-bar: zusätzliche Reihen Räder, Überführung, THG-Prämie (v0.17; Summen in #car-kpis unverändert).
+// mt-rate folgt dem Zeitraum, Vergleich gestrichelt (v0.21; „Gesamter Zeitraum“ unverändert).
 // Aufruf:  python3 -m http.server 8000 &   dann   npx -y -p playwright node scripts/compare.mjs
 // Optional: CHROMIUM_PATH=/pfad/zu/chrome, CHROMIUM_ARGS="--flag1 --flag2"
 import { chromium } from 'playwright';

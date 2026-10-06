@@ -102,6 +102,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Vergleichstag, Ladungen/Desinfektion; unabhängig vom Zeitraum. Prüfung: `scripts/v19-check.mjs`.
    - ✅ v0.20: Angebote mit Positionen (`settings.data.offers`; `offerSums`, `offerBookingRows`, `ausbauCosts` in calc.js),
      Buchen als Investition je Fälligkeit, Ausbau-Kosten aus Angeboten/Investitionen (`ausbau.craftSrc`, `hwSrc`, `hwFrom`). Prüfung: `v20-check`.
+   - ✅ v0.21: „Verbrauch pro Tag zwischen den Ablesungen“ (mt-rate) folgt dem Zeitraum, Vergleich gestrichelt. Prüfung: `v21-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
