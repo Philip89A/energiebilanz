@@ -1,6 +1,6 @@
-// v0.21-Test: Zeitraum und Vergleich für „Verbrauch pro Tag zwischen den Ablesungen“ (Achse im Zeitraum, Intervalle am
-// Rand abgeschnitten, Vergleich gestrichelt und verschoben, Hinweis). Simuliertes Supabase mit data/seed_state.json.
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v21-check.mjs
+// v0.22-Test: Trendlinien (Verbrauch zwischen Ablesungen, Tankbuch) und Spritpreis je Tankvorgang inkl. Teilbetankungen.
+// Simuliertes Supabase mit data/seed_state.json, zusätzlich erfundene Tankvorgänge.
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v22-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -60,35 +60,46 @@ async function open(page) {
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
 DB.hp_energy = []; DB.weather_daily = [];
-const rate = p => p.evaluate(() => { const c = window.__ebCharts['mt-rate']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.filter(d => !d.label.startsWith('Trend')).map(d => ({ l: d.label, n: d.data.length, dash: !!d.borderDash, xs: d.data.map(q => q.x), os: d.data.map(q => q.o) })) }; });
+// erfundene Tankvorgänge: zwei Volltankungen mit einer Teilbetankung dazwischen
+DB.fuel_log = [...(DB.fuel_log || []),
+  { id: 'f1', user_id: uid, day: '2030-01-05', odometer: 900000, liters: 40, amount: 72, fuel_type: 'Super E10', full_tank: true },
+  { id: 'f2', user_id: uid, day: '2030-01-20', odometer: 900300, liters: 20, amount: 38, fuel_type: 'Super E10', full_tank: false },
+  { id: 'f3', user_id: uid, day: '2030-02-04', odometer: 900700, liters: 25, amount: 50, fuel_type: 'Super E10', full_tank: true }];
+const fuel = p => p.evaluate(() => { const c = window.__ebCharts['lg-fuel']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.map(d => ({ l: d.label, data: d.data, bg: d.pointBackgroundColor, dash: d.borderDash })) }; });
 
-let { p, ctx } = await open('meter');
+let { p, ctx } = await open('log');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-const full = await rate(p);
-ok(full.ds.length === 2 && full.labels.length > 20, `Gesamter Zeitraum: zwei Linien, ${full.labels.length} Ablesetage`);
-ok(!(await txt(p, '#mt-rate-note')).includes('Ablesung'), 'Gesamter Zeitraum: kein Hinweis zu Ablesungen');
-// Monat wählen: Monat mit Ablesungen aus den Seed-Daten
-const months = [...new Set(full.labels.map(d => d.slice(0, 7)))];
-const mk = months[Math.floor(months.length / 2)];
-await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', mk); await p.waitForTimeout(400);
-let r = await rate(p);
-const from = `${mk}-01`, last = new Date(Date.UTC(+mk.slice(0, 4), +mk.slice(5, 7), 1)).toISOString().slice(0, 10);   // Tag nach Monatsende
-ok(r.labels.length >= 2 && r.labels.every(d => d >= from && d <= last), `Monat ${mk}: Achse nur im Monat (${r.labels[0]} … ${r.labels.at(-1)})`);
-ok(r.ds.length === 2 && r.ds.every(d => d.xs[0] >= from), 'Intervalle am Anfang abgeschnitten');
-let t = await txt(p, '#mt-rate-note');
-ok(/Allgemeinstrom: (\d+ Ablesungen?|keine Ablesung) im Zeitraum/.test(t) && t.includes('Wärmepumpe:'), 'Hinweis mit Ablesungen: ' + t.slice(0, 140));
-ok(t.includes('reicht über den Rand'), 'Hinweis auf Randintervall');
-// Vergleich Vorperiode
-await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
-r = await rate(p);
-ok(r.ds.length === 4 && r.ds.filter(d => d.dash).length === 2, 'Vergleich: zwei gestrichelte Linien');
-const cmpDs = r.ds.find(d => d.dash);
-ok(cmpDs.xs.every(d => d >= from && d <= last) && cmpDs.os.every(d => d <= from), 'Vergleich auf die Tage des Zeitraums verschoben (Originaldatum im Vormonat)');
-ok((await txt(p, '#mt-rate-note')).includes('Gestrichelt:'), 'Hinweis zum Vergleich');
-// zurück auf Gesamt: wie vorher
-await p.selectOption('#pb-cmp', 'none'); await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
-r = await rate(p);
-ok(JSON.stringify(r.labels) === JSON.stringify(full.labels), 'Gesamter Zeitraum unverändert');
+let f = await fuel(p);
+const nFill = DB.fuel_log.filter(x => +x.liters > 0).length;
+const price = f.ds.find(d => d.l === '€/l je Tankvorgang');
+ok(price && price.data.length === nFill, `€/l für jeden Tankvorgang (${price?.data.length} von ${nFill})`);
+ok(f.ds.some(d => d.l === 'Ø €/l im Zeitraum') && f.ds.some(d => d.l === 'Trend €/l'), 'Ø-Linie und Trend €/l vorhanden');
+ok(f.labels.length > 2 && f.labels.every((d, i, a) => !i || a[i - 1] < d), 'Datumsachse sortiert');
+// Zeitraum: Januar bis Februar 2030 (erfundene Werte)
+await p.selectOption('#pb-mode', 'custom'); await p.waitForTimeout(150);
+await p.fill('#pb-from', '2030-01-01'); await p.dispatchEvent('#pb-from', 'change'); await p.fill('#pb-to', '2030-02-28'); await p.dispatchEvent('#pb-to', 'change'); await p.waitForTimeout(400);
+f = await fuel(p);
+const pr = f.ds.find(d => d.l === '€/l je Tankvorgang');
+ok(JSON.stringify(pr.data.map(q => [q.x, +q.y.toFixed(3), q.full])) === JSON.stringify([['2030-01-05', 1.8, true], ['2030-01-20', 1.9, false], ['2030-02-04', 2, true]]), 'Zeitraum: drei Preise inkl. Teilbetankung');
+ok(pr.bg[1] !== pr.bg[0] && pr.bg[0] === pr.bg[2], 'Teilbetankung als hohler Punkt');
+const avg = f.ds.find(d => d.l === 'Ø €/l im Zeitraum');
+ok(Math.abs(avg.data[0].y - 160 / 85) < 1e-9, 'Ø nach Litern gewichtet (160 € / 85 l)');
+const tr = f.ds.find(d => d.l === 'Trend €/l');
+ok(tr.data[0].x === '2030-01-05' && tr.data[1].x === '2030-02-04' && tr.data[1].y > tr.data[0].y, 'Trend €/l steigend über den Zeitraum');
+const c100 = f.ds.find(d => d.l === 'l/100 km');
+ok(c100.data.length === 1 && Math.abs(c100.data[0].y - 45 / 700 * 100) < 1e-9, 'l/100 km nur zwischen Volltankungen (45 l / 700 km)');
+ok(!f.ds.some(d => d.l === 'Trend l/100 km'), 'kein Verbrauchstrend bei nur einem Intervall');
+let t = await txt(p, '#lg-fuel-note');
+ok(t.includes('3 Tankvorgänge, davon 1 Teilbetankung (hohler Punkt)') && t.includes('Trend Spritpreis +'), 'Hinweis: ' + t.slice(0, 160));
+ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
+await ctx.close();
+
+// Trend in „Verbrauch pro Tag zwischen den Ablesungen“
+({ p, ctx } = await open('meter'));
+const trd = await p.evaluate(() => window.__ebCharts['mt-rate'].data.datasets.filter(d => d.label.startsWith('Trend')).map(d => ({ l: d.label, n: d.data.length, dash: d.borderDash })));
+ok(trd.length === 2 && trd.every(d => d.n === 2 && d.dash), 'Trendlinien Allgemeinstrom und Wärmepumpe, gepunktet');
+t = await txt(p, '#mt-rate-note');
+ok(/Trend .*Allgemeinstrom [+−][\d,]+ kWh\/Tag je Monat/.test(t) && t.includes('Jahreszeit'), 'Hinweis mit Steigung und Jahreszeit-Warnung');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 

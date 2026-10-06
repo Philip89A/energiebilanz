@@ -312,3 +312,13 @@
 - Hinweis unter der Grafik: Ablesungen im Zeitraum je Zählpunkt und Intervalle, die über den Rand reichen.
 - „Gesamter Zeitraum“ unverändert. Kein Datenbank-Update nötig.
 - Tests: 79 Unit-Tests, neu `scripts/v21-check.mjs` 12 Prüfungen; Seitenvergleich: mt-rate als gewollte Abweichung.
+
+## v0.22.0 – Trendlinien und Spritpreis je Tankvorgang
+- **Tanken & Laden → „Verbrauch und Spritpreis“:** €/l für **jeden** Tankvorgang auf seinem Datum (Teilbetankungen
+  als hohler Punkt), gestrichelte Linie mit dem Ø-Preis im Zeitraum (nach Litern gewichtet). Verbrauch l/100 km
+  weiterhin je Volltank-Intervall. Datumsachse für beide Reihen; Zeitraum oben gilt.
+- **Trendlinien** (gepunktet, lineare Ausgleichsgerade) für Spritpreis und Verbrauch sowie in „Verbrauch pro Tag
+  zwischen den Ablesungen“ je Zählpunkt (nach Tagen gewichtet). Steigung je Monat im Hinweis unter der Grafik; bei
+  Zeiträumen über mehrere Jahreszeiten der Hinweis, dass der Trend vor allem die Jahreszeit zeigt.
+- Rechenkern: `linTrend` (reine Funktion). Kein Datenbank-Update nötig.
+- Tests: 82 Unit-Tests (neu `tests/v22.test.mjs`), neu `scripts/v22-check.mjs` 16 Prüfungen; alles Übrige unverändert.

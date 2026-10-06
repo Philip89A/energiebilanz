@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.21.0';
+import { hpSum } from './hp.js?v=0.22.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -990,4 +990,16 @@ export function ausbauCosts(p0 = {}, invest = [], offers = []) {
     out.craft = { n: os.length, nos: os.map(o => o.no || 'ohne Nummer') };
   }
   return out;
+}
+
+/* ---------- Trendlinie (v0.22), reine Funktion ----------
+   Lineare Regression (kleinste Quadrate, optional gewichtet) über Punkte {d: ISO-Datum, y, w?}.
+   Ergebnis: {at(d) → Wert am Datum, perDay, perMonth (30,44 Tage), n} oder null bei weniger als 2 verschiedenen Tagen. */
+export function linTrend(pts) {
+  const P = pts.filter(p => p && p.d && isFinite(+p.y) && p.y !== null && (p.w == null || p.w > 0)).map(p => ({ t: Date.parse(p.d) / 864e5, y: +p.y, w: p.w == null ? 1 : +p.w }));
+  if (new Set(P.map(p => p.t)).size < 2) return null;
+  const W = P.reduce((a, p) => a + p.w, 0), mt = P.reduce((a, p) => a + p.w * p.t, 0) / W, my = P.reduce((a, p) => a + p.w * p.y, 0) / W;
+  const sxx = P.reduce((a, p) => a + p.w * (p.t - mt) ** 2, 0), sxy = P.reduce((a, p) => a + p.w * (p.t - mt) * (p.y - my), 0);
+  const b = sxx ? sxy / sxx : 0;
+  return { at: d => my + b * (Date.parse(d) / 864e5 - mt), perDay: b, perMonth: b * 30.44, n: P.length };
 }
