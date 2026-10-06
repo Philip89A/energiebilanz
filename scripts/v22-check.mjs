@@ -1,4 +1,4 @@
-// v0.22-Test: Trendlinien (Verbrauch zwischen Ablesungen, Tankbuch) und Spritpreis je Tankvorgang inkl. Teilbetankungen.
+// v0.22/v0.24-Test: Spritpreis je Tankvorgang inkl. Teilbetankungen, Ø-Linie und gleitende Durchschnitte (v0.24 statt Trendgeraden).
 // Simuliertes Supabase mit data/seed_state.json, zusätzlich erfundene Tankvorgänge.
 // Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v22-check.mjs
 import { chromium } from 'playwright';
@@ -64,7 +64,9 @@ DB.hp_energy = []; DB.weather_daily = [];
 DB.fuel_log = [...(DB.fuel_log || []),
   { id: 'f1', user_id: uid, day: '2030-01-05', odometer: 900000, liters: 40, amount: 72, fuel_type: 'Super E10', full_tank: true },
   { id: 'f2', user_id: uid, day: '2030-01-20', odometer: 900300, liters: 20, amount: 38, fuel_type: 'Super E10', full_tank: false },
-  { id: 'f3', user_id: uid, day: '2030-02-04', odometer: 900700, liters: 25, amount: 50, fuel_type: 'Super E10', full_tank: true }];
+  { id: 'f3', user_id: uid, day: '2030-02-04', odometer: 900700, liters: 25, amount: 50, fuel_type: 'Super E10', full_tank: true },
+  ...[['2030-03-02', 30, 2.05], ['2030-03-18', 32, 2.10], ['2030-04-03', 28, 1.95], ['2030-04-19', 31, 2.00], ['2030-05-05', 29, 2.08]]
+    .map(([day, l, pr], i) => ({ id: 'f' + (4 + i), user_id: uid, day, odometer: 901200 + i * 500 + (i % 2) * 40, liters: l, amount: +(l * pr).toFixed(2), fuel_type: 'Super E10', full_tank: true }))];
 const fuel = p => p.evaluate(() => { const c = window.__ebCharts['lg-fuel']; return { labels: c.options.scales.x.labels, ds: c.data.datasets.map(d => ({ l: d.label, data: d.data, bg: d.pointBackgroundColor, dash: d.borderDash })) }; });
 
 let { p, ctx } = await open('log');
@@ -73,7 +75,17 @@ let f = await fuel(p);
 const nFill = DB.fuel_log.filter(x => +x.liters > 0).length;
 const price = f.ds.find(d => d.l === '€/l je Tankvorgang');
 ok(price && price.data.length === nFill, `€/l für jeden Tankvorgang (${price?.data.length} von ${nFill})`);
-ok(f.ds.some(d => d.l === 'Ø €/l im Zeitraum') && f.ds.some(d => d.l === 'Trend €/l'), 'Ø-Linie und Trend €/l vorhanden');
+ok(f.ds.some(d => d.l === 'Ø €/l im Zeitraum') && f.ds.some(d => d.l === 'Ø 5 Tankvorgänge €/l') && f.ds.some(d => d.l === 'Ø 3 Volltank-Intervalle l/100 km'), 'Ø-Linie und gleitende Durchschnitte vorhanden');
+ok(!f.ds.some(d => d.l.startsWith('Trend')), 'v0.24: keine Trendgeraden mehr');
+// gleitender Ø am letzten Tankvorgang: Kosten ÷ Liter der letzten 5; Verbrauch: Liter ÷ km der letzten 3 Volltank-Intervalle
+const F = DB.fuel_log.filter(x => x.day >= '2030').sort((a, c) => a.day.localeCompare(c.day)), l5 = F.slice(-5);
+const mp = f.ds.find(d => d.l === 'Ø 5 Tankvorgänge €/l').data.at(-1);
+ok(mp.x === '2030-05-05' && Math.abs(mp.y - l5.reduce((a, x) => a + x.amount, 0) / l5.reduce((a, x) => a + x.liters, 0)) < 1e-9, `Ø 5 Tankvorgänge = Kosten ÷ Liter (${mp.y.toFixed(3)})`);
+const iv = F.slice(-4), kmS = iv.at(-1).odometer - iv[0].odometer, lS = iv.slice(1).reduce((a, x) => a + x.liters, 0);
+const mc = f.ds.find(d => d.l === 'Ø 3 Volltank-Intervalle l/100 km').data.at(-1);
+ok(Math.abs(mc.y - lS / kmS * 100) < 1e-9, `Ø 3 Intervalle = Liter ÷ km (${mc.y.toFixed(2)} l/100 km)`);
+let t0 = await txt(p, '#lg-fuel-note');
+ok(/Spritpreis [\d,]+ €\/l \(letzte 5 Tankvorgänge, 5 Tankvorgänge davor [\d,]+ \([+−]/.test(t0) && /Verbrauch [\d,]+ l\/100 km \(letzte 3 Volltank-Intervalle, davor/.test(t0), 'Hinweis: aktueller Ø und Vergleich: ' + t0.slice(0, 220));
 ok(f.labels.length > 2 && f.labels.every((d, i, a) => !i || a[i - 1] < d), 'Datumsachse sortiert');
 // Zeitraum: Januar bis Februar 2030 (erfundene Werte)
 await p.selectOption('#pb-mode', 'custom'); await p.waitForTimeout(150);
@@ -84,13 +96,13 @@ ok(JSON.stringify(pr.data.map(q => [q.x, +q.y.toFixed(3), q.full])) === JSON.str
 ok(pr.bg[1] !== pr.bg[0] && pr.bg[0] === pr.bg[2], 'Teilbetankung als hohler Punkt');
 const avg = f.ds.find(d => d.l === 'Ø €/l im Zeitraum');
 ok(Math.abs(avg.data[0].y - 160 / 85) < 1e-9, 'Ø nach Litern gewichtet (160 € / 85 l)');
-const tr = f.ds.find(d => d.l === 'Trend €/l');
-ok(tr.data[0].x === '2030-01-05' && tr.data[1].x === '2030-02-04' && tr.data[1].y > tr.data[0].y, 'Trend €/l steigend über den Zeitraum');
+const mj = f.ds.find(d => d.l === 'Ø 5 Tankvorgänge €/l');
+ok(mj.data.length === 1 && mj.data[0].x === '2030-02-04', 'Ø €/l erst ab 3 Tankvorgängen im Fenster');
 const c100 = f.ds.find(d => d.l === 'l/100 km');
 ok(c100.data.length === 1 && Math.abs(c100.data[0].y - 45 / 700 * 100) < 1e-9, 'l/100 km nur zwischen Volltankungen (45 l / 700 km)');
-ok(!f.ds.some(d => d.l === 'Trend l/100 km'), 'kein Verbrauchstrend bei nur einem Intervall');
+ok(!f.ds.some(d => d.l === 'Ø 3 Volltank-Intervalle l/100 km'), 'kein Verbrauchs-Ø bei nur einem Intervall');
 let t = await txt(p, '#lg-fuel-note');
-ok(t.includes('3 Tankvorgänge, davon 1 Teilbetankung (hohler Punkt)') && t.includes('Trend Spritpreis +'), 'Hinweis: ' + t.slice(0, 160));
+ok(t.includes('3 Tankvorgänge, davon 1 Teilbetankung (hohler Punkt)') , 'Hinweis: ' + t.slice(0, 160));
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 

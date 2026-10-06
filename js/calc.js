@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.23.0';
+import { hpSum } from './hp.js?v=0.24.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -1004,16 +1004,13 @@ export function ausbauCosts(p0 = {}, invest = [], offers = []) {
   return out;
 }
 
-/* ---------- Trendlinie (v0.22), reine Funktion ----------
-   Lineare Regression (kleinste Quadrate, optional gewichtet) über Punkte {d: ISO-Datum, y, w?}.
-   Ergebnis: {at(d) → Wert am Datum, perDay, perMonth (30,44 Tage), n} oder null bei weniger als 2 verschiedenen Tagen. */
-export function linTrend(pts) {
-  const P = pts.filter(p => p && p.d && isFinite(+p.y) && p.y !== null && (p.w == null || p.w > 0)).map(p => ({ t: Date.parse(p.d) / 864e5, y: +p.y, w: p.w == null ? 1 : +p.w }));
-  if (new Set(P.map(p => p.t)).size < 2) return null;
-  const W = P.reduce((a, p) => a + p.w, 0), mt = P.reduce((a, p) => a + p.w * p.t, 0) / W, my = P.reduce((a, p) => a + p.w * p.y, 0) / W;
-  const sxx = P.reduce((a, p) => a + p.w * (p.t - mt) ** 2, 0), sxy = P.reduce((a, p) => a + p.w * (p.t - mt) * (p.y - my), 0);
-  const b = sxx ? sxy / sxx : 0;
-  return { at: d => my + b * (Date.parse(d) / 864e5 - mt), perDay: b, perMonth: b * 30.44, n: P.length };
+/* ---------- Gleitender Durchschnitt über Einträge (v0.24), reine Funktion ----------
+   items: [{y, w}] in zeitlicher Reihenfolge; je Eintrag gewichteter Ø der letzten n Einträge (einschließlich).
+   Mit y = €/l und w = Liter ergibt das Kosten ÷ Liter, mit y = l/100 km und w = km Liter ÷ km. Weniger als minN
+   Einträge im Fenster → null. (Ersetzt die Trendgerade „linTrend“ aus v0.22.) */
+export function movingAvgN(items, n, minN = 1) {
+  return items.map((_, i) => { const s = items.slice(Math.max(0, i - n + 1), i + 1).filter(x => x && isFinite(x.y) && x.y !== null && +x.w > 0);
+    const W = s.reduce((a, x) => a + +x.w, 0); return s.length >= minN && W > 0 ? s.reduce((a, x) => a + x.y * x.w, 0) / W : null; });
 }
 
 /* ---------- Gleitender Durchschnitt (v0.23), reine Funktion ----------

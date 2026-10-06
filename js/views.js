@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, linTrend, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.23.0';
-import { parseNum } from './queue.js?v=0.23.0';
-import { geocode, fetchDays } from './weather.js?v=0.23.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.23.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.24.0';
+import { parseNum } from './queue.js?v=0.24.0';
+import { geocode, fetchDays } from './weather.js?v=0.24.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.24.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -196,24 +196,33 @@ function renderCarAnalytics(){
   chart("lg-cost",{type:"bar",data:{labels:ck.map(k=>carBucketLabel(k,g)),datasets:cats.map((c,i)=>({label:c,data:ck.map(k=>cb[k][c]||0),backgroundColor:css(pal[i%pal.length]),stack:"s"}))},
     options:{plugins:{tooltip:numTip("€",2)},scales:{x:{stacked:true,ticks:{maxTicksLimit:16}},y:{stacked:true,title:{display:true,text:"€"}}}}});
   const fs=PS.all?fuelStats():C.fuelStatsIn(PS.P.from,PS.P.to);
-  // v0.22: Spritpreis je Tankvorgang (auch Teilbetankungen, hohler Punkt), Ø im Zeitraum, Trendlinien; l/100 km je Volltank-Intervall
-  const fills=S.fuel.filter(x=>+x.l>0&&PS.inP(x.d)).sort((x,y)=>x.d.localeCompare(y.d)||x.km-y.km);
+  // v0.22: Spritpreis je Tankvorgang (auch Teilbetankungen, hohler Punkt), Ø im Zeitraum; l/100 km je Volltank-Intervall.
+  // v0.24: gleitender Ø über die letzten 5 Tankvorgänge (Liter-gewichtet) bzw. 3 Volltank-Intervalle (km-gewichtet),
+  // gerechnet über das ganze Tankbuch, damit das Fenster am Zeitraumbeginn nicht leer ist.
+  const allFills=S.fuel.filter(x=>+x.l>0).sort((x,y)=>x.d.localeCompare(y.d)||x.km-y.km), allIv=fuelStats().intervals;
+  const maP=movingAvgN(allFills.map(x=>({y:(+x.e||0)/(+x.l),w:+x.l})),5,3), maC=movingAvgN(allIv.map(iv=>({y:iv.l100,w:iv.km})),3,2);
+  const fills=allFills.filter(x=>PS.inP(x.d));
   const L=fills.reduce((a,x)=>a+(+x.l),0), avgP=L?fills.reduce((a,x)=>a+(+x.e||0),0)/L:null;
   const pP=fills.map(x=>({x:x.d,y:(+x.e||0)/(+x.l),full:!!x.full})), pC=fs.intervals.map(iv=>({x:iv.to.d,y:iv.l100}));
+  const mP=allFills.map((x,i)=>({x:x.d,y:maP[i],i})).filter(q=>q.y!=null&&PS.inP(q.x)), ivIdx=new Map(allIv.map((iv,i)=>[iv.to,i]));
+  const mC=fs.intervals.map(iv=>{ const i=ivIdx.get(iv.to); return {x:iv.to.d,y:maC[i],i}; }).filter(q=>q.y!=null);
   const fD=[...new Set([...pP,...pC].map(q=>q.x))].sort();
-  const trP=linTrend(pP.map(q=>({d:q.x,y:q.y}))), trC=linTrend(pC.map(q=>({d:q.x,y:q.y})));
-  const tLine=(tr,pts,label,c,axis,unit)=>tr&&pts.length>1?[{label,unit,data:[{x:pts[0].x,y:tr.at(pts[0].x)},{x:pts[pts.length-1].x,y:tr.at(pts[pts.length-1].x)}],borderColor:css(c),backgroundColor:css(c),yAxisID:axis,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}]:[];
+  const dot=(data,label,c,axis,unit)=>data.length?[{label,unit,data,borderColor:css(c),backgroundColor:css(c),yAxisID:axis,pointRadius:0,borderWidth:1.5,borderDash:[2,3]}]:[];
   chart("lg-fuel",{type:"line",data:{datasets:[
     {label:"l/100 km",unit:"l/100 km",data:pC,borderColor:css("--warn"),backgroundColor:css("--warn"),yAxisID:"y",pointRadius:3},
     {label:"€/l je Tankvorgang",unit:"€/l",data:pP,borderColor:css("--grid"),backgroundColor:css("--grid"),yAxisID:"y1",borderWidth:1.5,pointRadius:3.5,
       pointBackgroundColor:pP.map(q=>q.full?css("--grid"):css("--panel")),pointBorderColor:css("--grid"),pointBorderWidth:1.5},
     ...(avgP&&fD.length>1?[{label:"Ø €/l im Zeitraum",unit:"€/l",data:[{x:fD[0],y:avgP},{x:fD[fD.length-1],y:avgP}],borderColor:css("--grid"),backgroundColor:css("--grid"),yAxisID:"y1",pointRadius:0,borderWidth:1,borderDash:[6,4]}]:[]),
-    ...tLine(trC,pC,"Trend l/100 km","--warn","y","l/100 km"), ...tLine(trP,pP,"Trend €/l","--grid","y1","€/l")]},
+    ...dot(mC,"Ø 3 Volltank-Intervalle l/100 km","--warn","y","l/100 km"), ...dot(mP,"Ø 5 Tankvorgänge €/l","--grid","y1","€/l")]},
     options:{parsing:true,interaction:{mode:"x",intersect:false},
       plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y,c.dataset.unit==="€/l"?3:2)} ${c.dataset.unit}${c.dataset.label==="€/l je Tankvorgang"?(c.raw.full?" (voll)":" (Teilbetankung)"):""}`}}},
       scales:{x:{type:"category",labels:fD,ticks:{maxTicksLimit:10,callback:function(v){return dde(this.getLabelForValue(v));}}},
         y:{title:{display:true,text:"l/100 km"}},y1:{position:"right",grid:{drawOnChartArea:false},title:{display:true,text:"€/l"}}}}});
-  $("lg-fuel-note").innerHTML = fills.length ? `<p class="note">${nf(fills.length)} ${fills.length===1?"Tankvorgang":"Tankvorgänge"}${fills.some(x=>!x.full)?(()=>{ const k=fills.filter(x=>!x.full).length; return `, davon ${nf(k)} ${k===1?"Teilbetankung":"Teilbetankungen"} (hohler Punkt)`; })():""}; Ø ${nf(avgP,3)} €/l (nach Litern gewichtet).${trP?` Trend Spritpreis ${trP.perMonth>=0?"+":"−"}${nf(Math.abs(trP.perMonth)*100,1)} ct/l je Monat`:""}${trC?`, Verbrauch ${trC.perMonth>=0?"+":"−"}${nf(Math.abs(trC.perMonth),2)} l/100 km je Monat`:""}${trP||trC?" (gepunktet, lineare Ausgleichsgerade).":""} Verbrauch nur zwischen zwei Volltankungen.</p>` : `<p class="note">Keine Tankvorgänge im Zeitraum.</p>`;
+  const chg=(a,b)=>a!=null&&b?` (${a>=b?"+":"−"}${pct(Math.abs(a/b-1))})`:"";
+  const lastP=mP[mP.length-1], prevP=lastP&&lastP.i>=5?maP[lastP.i-5]:null, lastC=mC[mC.length-1], prevC=lastC&&lastC.i>=3?maC[lastC.i-3]:null;
+  const maTxt=(lastP?` Gepunktet, gleitender Ø: Spritpreis ${nf(lastP.y,3)} €/l (letzte 5 Tankvorgänge${prevP!=null?`, 5 Tankvorgänge davor ${nf(prevP,3)}${chg(lastP.y,prevP)}`:""})`:"")
+    +(lastC?`${lastP?";":" Gepunktet, gleitender Ø:"} Verbrauch ${nf(lastC.y,2)} l/100 km (letzte 3 Volltank-Intervalle${prevC!=null?`, davor ${nf(prevC,2)}${chg(lastC.y,prevC)}`:""})`:"")+(lastP||lastC?".":"");
+  $("lg-fuel-note").innerHTML = fills.length ? `<p class="note">${nf(fills.length)} ${fills.length===1?"Tankvorgang":"Tankvorgänge"}${(()=>{ const k=fills.filter(x=>!x.full).length; return k?`, davon ${nf(k)} ${k===1?"Teilbetankung":"Teilbetankungen"} (hohler Punkt)`:""; })()}; Ø ${nf(avgP,3)} €/l im Zeitraum (nach Litern gewichtet, gestrichelt).${maTxt} Verbrauch nur zwischen zwei Volltankungen.</p>` : `<p class="note">Keine Tankvorgänge im Zeitraum.</p>`;
   // Fahrzeugbuch-Tabelle
   const rows=S.carlog.map((x,i)=>({...x,i})).filter(x=>PS.inP(x.d)).sort((a,b)=>b.d.localeCompare(a.d));
   $("cl-tbl").innerHTML = rows.length ? `<thead><tr><th>Datum</th><th class="l">Fahrzeug</th><th class="l">Kategorie</th><th>km</th><th>Betrag</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
