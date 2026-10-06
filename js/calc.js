@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.22.0';
+import { hpSum } from './hp.js?v=0.23.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -702,6 +702,18 @@ export function createCalc(S) {
     for (const g of Object.values(groups)) if (g) g.year = norm(g);
     return { swap: sw, intervals: iv, groups, ref: { ...ref, from: addDays(wl, -364), to: wl }, cfg: wxCfg() };
   }
+  // v0.23: Wärmepumpe je Gradtag (from..to einschließlich). Grundlast (Warmwasser, Standby) laut Wetter-Modell der
+  // passenden Seite des Gerätetauschs abgezogen; unter 20 Gradtagen (Sommer) kein Wert.
+  function wpDegreeDay(from, to) {
+    if (!S.weather?.length) return null;
+    const g = groupSeries('wp'), { heatLimit, room } = wxCfg(), ww = wpWeather();
+    const gr = ww ? (ww.swap && to < ww.swap ? ww.groups.alt : (ww.groups.neu || ww.groups.alle)) : null;
+    let kwh = 0, gt = 0, n = 0;
+    for (let d = from; d <= to; d = addDays(d, 1)) { const v = g.daily[d], w = W[d]; if (v == null || !w) continue; n++; kwh += v; if (w.t < +heatLimit) gt += +room - w.t; }
+    if (!n) return null;
+    const base = gr && gr.base > 0 ? gr.base : null, heat = base != null ? Math.max(0, kwh - base * n) : kwh;
+    return { kwh, gt, days: n, base, heat, perGt: gt >= 20 ? heat / gt : null };
+  }
   // PV: Erzeugung gegen Globalstrahlung (horizontal). Faktor = kWh ÷ (kWp × kWh/m²), nur Tage mit Anker- und Wetterdaten.
   function pvWeather(from, to) {
     const kwp = +S.pv.kwp || 1, months = {}, days = [];
@@ -818,7 +830,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, wpDegreeDay,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
@@ -1002,4 +1014,13 @@ export function linTrend(pts) {
   const sxx = P.reduce((a, p) => a + p.w * (p.t - mt) ** 2, 0), sxy = P.reduce((a, p) => a + p.w * (p.t - mt) * (p.y - my), 0);
   const b = sxx ? sxy / sxx : 0;
   return { at: d => my + b * (Date.parse(d) / 864e5 - mt), perDay: b, perMonth: b * 30.44, n: P.length };
+}
+
+/* ---------- Gleitender Durchschnitt (v0.23), reine Funktion ----------
+   daily: {ISO-Datum: kWh}; days: Tage, für die der Wert gebraucht wird. Je Tag Ø der letzten `win` Tage (einschließlich),
+   nur Tage mit Wert; weniger als minN Tage mit Wert → null. */
+export function movingAvg(daily, days, win = 30, minN = 15) {
+  return days.map(d => { let s = 0, n = 0;
+    for (let j = 0; j < win; j++) { const v = daily[addDays(d, -j)]; if (v != null && isFinite(v)) { s += +v; n++; } }
+    return n >= minN ? s / n : null; });
 }

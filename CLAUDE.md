@@ -104,6 +104,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Buchen als Investition je Fälligkeit, Ausbau-Kosten aus Angeboten/Investitionen (`ausbau.craftSrc`, `hwSrc`, `hwFrom`). Prüfung: `v20-check`.
    - ✅ v0.21: „Verbrauch pro Tag zwischen den Ablesungen“ (mt-rate) folgt dem Zeitraum, Vergleich gestrichelt. Prüfung: `v21-check`.
    - ✅ v0.22: Trendlinien (`linTrend`) in mt-rate und lg-fuel; lg-fuel mit €/l je Tankvorgang inkl. Teilbetankungen und Ø-Linie. Prüfung: `v22-check`.
+   - ✅ v0.23: mt-rate mit gleitendem 30-Tage-Durchschnitt (`movingAvg`) statt Trendgerade; Wärmepumpe je Gradtag (`wpDegreeDay`). Prüfung: `v23-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
