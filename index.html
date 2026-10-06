@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.21.0">
-<link rel="stylesheet" href="css/style.css?v=0.21.0">
+<meta name="app-version" content="0.22.0">
+<link rel="stylesheet" href="css/style.css?v=0.22.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -312,7 +312,7 @@
     <div class="panel"><h2>Gefahrene Kilometer</h2><p class="note" id="lg-km-note"></p><div class="chart"><canvas id="lg-km"></canvas></div></div>
     <div class="panel"><h2>Fahrzeugkosten ohne Leasing</h2><p class="note">Sprit bzw. Laden plus alle Einträge im Fahrzeugbuch.</p><div class="chart"><canvas id="lg-cost"></canvas></div></div>
   </div>
-  <div class="panel" style="margin-top:16px"><h2>Verbrauch und Spritpreis je Volltank-Intervall</h2><div class="chart"><canvas id="lg-fuel"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Verbrauch und Spritpreis</h2><p class="note">Spritpreis je Tankvorgang, Verbrauch je Volltank-Intervall.</p><div class="chart"><canvas id="lg-fuel"></canvas></div><div id="lg-fuel-note"></div></div>
   <div class="panel" style="margin-top:16px">
     <h2>Fahrzeugbuch</h2><p class="note">Kilometerstände ohne Tanken, Versicherung, Steuer, Räderwechsel, Wartung und Sonstiges, jeweils mit Datum.</p>
     <div class="form edit-only" style="margin-top:10px">
@@ -402,8 +402,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.21.0"></script>
-<script src="vendor/chart.umd.js?v=0.21.0"></script>
-<script type="module" src="js/app.js?v=0.21.0"></script>
+<script src="vendor/supabase.js?v=0.22.0"></script>
+<script src="vendor/chart.umd.js?v=0.22.0"></script>
+<script type="module" src="js/app.js?v=0.22.0"></script>
 </body>
 </html>
