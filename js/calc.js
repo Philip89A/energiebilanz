@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.19.0';
+import { hpSum } from './hp.js?v=0.20.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -60,7 +60,7 @@ export function stateFromDb(db) {
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
-    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {},
+    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {}, offers: Array.isArray(s.offers) ? s.offers : [],
     weather: (db.weather_daily || []).map(r => ({ d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }))
       .sort((a, b) => a.d.localeCompare(b.d)),
     weatherError: db.weatherError || null,
@@ -85,7 +85,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -819,6 +819,7 @@ export function createCalc(S) {
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
     W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile,
+    ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
 
@@ -877,7 +878,8 @@ export function parseBoniNote(note) {
    der heutigen Anlage ohne Laden zu Hause. Kosten haben keine Vorgabe (Angebotswerte gehören nicht ins Repo). */
 export const AUSBAU_DEFAULTS = { pvAddWp: 1500, yieldPct: 100, storeAddKwh: 5, storeUsablePct: 90,
   hwTotal: '', hwWallbox: '', craftWallbox: '', craftPv: '', start: '', acKwh: 500, dayLoadPct: 30, evDayPct: 10,
-  battEv: true, feedCt: 7, apPvCt: '', apEvCt: '', alt: 'public', socketEur: 400, s14a: false, s14aMod: 'manual', s14aEur: 140, years: 20 };
+  battEv: true, feedCt: 7, apPvCt: '', apEvCt: '', alt: 'public', socketEur: 400, s14a: false, s14aMod: 'manual', s14aEur: 140, years: 20,
+  hwSrc: 'manual', hwFrom: '', craftSrc: 'manual' };
 export function ausbauRechner(base, p0 = {}, today = '', m14a = null) {
   const p = { ...AUSBAU_DEFAULTS, ...p0 }, n = v => (v === '' || v == null || !isFinite(+v) ? 0 : +v);
   const days = base.days.filter(x => x.gen != null);
@@ -938,4 +940,54 @@ export function ausbauRechner(base, p0 = {}, today = '', m14a = null) {
   }
   return { K, eta, scale, usable, start, evMonth, year, noCar: { ...yNo, total: yNo.house + yNo.carPv + yNo.feed }, invest, payback: hit, months,
     kwh: { house: yCar.houseKwh, pvEv: yCar.pvEvKwh, evGrid: yCar.evGridKwh, feed: yCar.feedKwh, evHome: base.evHome }, s14 };
+}
+
+/* ---------- Angebote mit Positionen (v0.20), reine Funktionen ----------
+   offer (settings.data.offers[]): {id, no, date, vendor, sharePv, ausbau, items, paid}
+   items: [{qty, name, price, alloc: 'pv' | 'wallbox' | 'shared', due: 'montage' | 'anmeldung'}], Beträge brutto.
+   sharePv: Anteil der gemeinsamen Positionen für PV/Speicher in % (Rest Wallbox), Vorgabe 75.
+   ausbau: true → Summen ersetzen die Handwerkskosten der Ausbau-Seite (ausbau.craftSrc = 'offer').
+   paid: {montage: {date, ids}, anmeldung: {date, ids}} – ids der beim Buchen angelegten Investitionen. */
+export const OFFER_DUES = [['montage', 'nach Montage'], ['anmeldung', 'nach Anmeldung']];
+export const OFFER_ALLOC = [['pv', 'PV/Speicher'], ['wallbox', 'Wallbox'], ['shared', 'gemeinsam']];
+const r2 = v => Math.round(+(v * 100).toFixed(6)) / 100;     // kaufmännisch, ohne Gleitkomma-Fehler (8,325 → 8,33)
+export function offerShare(o) { const v = o.sharePv; return v === '' || v == null || !isFinite(+v) ? 75 : Math.min(100, Math.max(0, +v)); }
+export function offerSums(o) {
+  const sh = offerShare(o) / 100, s = { total: 0, pv: 0, wallbox: 0, shared: 0, due: {} };
+  for (const it of o.items || []) {
+    const t = r2((+it.qty || 0) * (+it.price || 0)), a = it.alloc === 'pv' || it.alloc === 'wallbox' ? it.alloc : 'shared', d = it.due === 'anmeldung' ? 'anmeldung' : 'montage';
+    s.total += t; s[a] += t;
+    const D = s.due[d] ??= { total: 0, pv: 0 };
+    D.total += t; D.pv += a === 'pv' ? t : a === 'shared' ? t * sh : 0;
+  }
+  for (const D of Object.values(s.due)) { D.total = r2(D.total); D.pv = r2(D.pv); D.wallbox = r2(D.total - D.pv); }
+  ['total', 'pv', 'wallbox', 'shared'].forEach(k => s[k] = r2(s[k]));
+  s.pvAll = r2(Object.values(s.due).reduce((a, D) => a + D.pv, 0)); s.wbAll = r2(s.total - s.pvAll);
+  return s;
+}
+// Investitionen für eine bezahlte Fälligkeit: je ein Eintrag PV/Speicher und Wallbox (Beträge 0 entfallen)
+export function offerBookingRows(o, due, date) {
+  const D = offerSums(o).due[due]; if (!D) return [];
+  const what = due === 'anmeldung' ? 'fällig nach Anmeldung' : 'Montage und Material';
+  const head = `Angebot ${o.no || ''}${o.vendor ? ` (${o.vendor})` : ''}: ${what}`.replace(/\s+/g, ' ');
+  return [['pv', 'PV/Speicher-Anteil', D.pv], ['wallbox', 'Wallbox-Anteil', D.wallbox]].filter(([, , v]) => v > 0)
+    .map(([cat, l, cost]) => ({ name: `${head} – ${l}`, date, cost, cat }));
+}
+export function offerBookedIds(offers = []) { return new Set(offers.flatMap(o => Object.values(o.paid || {}).flatMap(x => (x && x.ids) || []))); }
+// Kosten der Ausbau-Seite: Hardware aus gebuchten Investitionen ab hwFrom (ohne Erstattungen und ohne Buchungen aus
+// Angeboten), Handwerk aus Angeboten mit „ausbau“; sonst die eingetragenen Werte.
+export function ausbauCosts(p0 = {}, invest = [], offers = []) {
+  const p = { ...AUSBAU_DEFAULTS, ...p0 };
+  const out = { hwTotal: p.hwTotal, hwWallbox: p.hwWallbox, craftPv: p.craftPv, craftWallbox: p.craftWallbox, hw: null, craft: null };
+  if (p.hwSrc === 'invest' && p.hwFrom) {
+    const booked = offerBookedIds(offers), its = invest.filter(x => x.cat !== 'refund' && x.date && x.date >= p.hwFrom && !booked.has(x.id));
+    out.hwTotal = r2(its.reduce((a, x) => a + (+x.cost || 0), 0)); out.hwWallbox = r2(its.filter(x => x.cat === 'wallbox').reduce((a, x) => a + (+x.cost || 0), 0));
+    out.hw = { n: its.length, from: p.hwFrom };
+  }
+  if (p.craftSrc === 'offer') {
+    const os = offers.filter(o => o.ausbau), ss = os.map(offerSums);
+    out.craftPv = r2(ss.reduce((a, x) => a + x.pvAll, 0)); out.craftWallbox = r2(ss.reduce((a, x) => a + x.wbAll, 0));
+    out.craft = { n: os.length, nos: os.map(o => o.no || 'ohne Nummer') };
+  }
+  return out;
 }

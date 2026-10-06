@@ -100,6 +100,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      und THG-Prämie (Auto-Vergleich) in amortTimeline, abschaltbar (`amort.s14aFc`, `amort.thg`). Prüfung: `v18-check`.
    - ✅ v0.19: Tagesprofil Wärmepumpe aus Stundenwerten (`hpHourDays`, `hpDayProfile` in createCalc; `renderHpDay`),
      Vergleichstag, Ladungen/Desinfektion; unabhängig vom Zeitraum. Prüfung: `scripts/v19-check.mjs`.
+   - ✅ v0.20: Angebote mit Positionen (`settings.data.offers`; `offerSums`, `offerBookingRows`, `ausbauCosts` in calc.js),
+     Buchen als Investition je Fälligkeit, Ausbau-Kosten aus Angeboten/Investitionen (`ausbau.craftSrc`, `hwSrc`, `hwFrom`). Prüfung: `v20-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

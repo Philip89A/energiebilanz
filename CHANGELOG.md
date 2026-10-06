@@ -288,3 +288,18 @@
   werden markiert. Ohne Stundenwerte erscheint ein Hinweis auf den Export „letzte 3 Tage“.
 - Kein Datenbank-Update nötig (Stundenwerte liegen seit v0.11 in `hp_energy`).
 - Tests: 74 Unit-Tests, neu `scripts/v19-check.mjs` 23 Prüfungen; alles Übrige unverändert.
+
+## v0.20.0 – Angebote mit Positionen
+- **Amortisation → Angebote:** Handwerker-Angebote mit Nummer, Datum, Firma und Positionen (Menge, Artikel,
+  Einzelpreis, Summe). Jede Position wird **PV/Speicher**, **Wallbox** oder **gemeinsam** zugeordnet; gemeinsame
+  Positionen werden nach einem einstellbaren PV-Anteil aufgeteilt (Vorgabe 75 %). Fälligkeit je Position
+  „nach Montage“ oder „nach Anmeldung“.
+- **Buchen:** „Als bezahlt buchen“ legt je Fälligkeit Investitionen für PV/Speicher und Wallbox mit dem
+  Zahlungsdatum an; „Buchung zurücknehmen“ löscht sie wieder. Bis dahin zählt ein Angebot nicht als Investition,
+  die Kennzahl nennt den offenen Betrag. Ändern sich Positionen nach dem Buchen, erscheint ein Hinweis.
+- **Ausbau-Seite:** Kosten wahlweise aus Quellen statt von Hand: Handwerker aus Angeboten mit „Für die
+  Ausbau-Seite verwenden“, Hardware aus gebuchten Investitionen ab einem Datum (ohne Erstattungen und ohne
+  Buchungen aus Angeboten, damit nichts doppelt zählt; Wallbox-Anteil = Kategorie Wallbox).
+- Angebote liegen in `settings.data.offers`: **kein Datenbank-Update nötig.** Keine Angebotswerte im Repo.
+- Rundung auf Cent kaufmännisch ohne Gleitkomma-Fehler.
+- Tests: 79 Unit-Tests (neu `tests/v20.test.mjs`), neu `scripts/v20-check.mjs` 26 Prüfungen; alles Übrige unverändert.

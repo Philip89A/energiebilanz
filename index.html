@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.19.0">
-<link rel="stylesheet" href="css/style.css?v=0.19.0">
+<meta name="app-version" content="0.20.0">
+<link rel="stylesheet" href="css/style.css?v=0.20.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -264,6 +264,7 @@
   <div class="grid g4" id="am-kpis"></div><div id="am-wb-note"></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="panel" style="grid-column:1/-1"><h2>Investition</h2><p class="note">Kategorie „Wallbox“: ab dieser Investition zählt Laden zu Hause (Ort „zu Hause“ im Ladebuch) als Ersparnis gegenüber öffentlichem Laden. Kategorie „Erstattung/Gutschrift“: Betrag positiv mit Datum des Geldeingangs eintragen (z. B. §14a-Gutschrift, Förderung, THG-Prämie) – zählt als Ersparnis, nicht als Investition.</p><div class="tbl-wrap"><table id="am-inv"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="am-add">Position hinzufügen</button></div></div>
+    <div class="panel" style="grid-column:1/-1"><h2>Angebote</h2><p class="note">Handwerker-Angebote mit Positionen. Jede Position wird PV/Speicher, Wallbox oder „gemeinsam“ zugeordnet; gemeinsame Positionen werden nach dem eingestellten Anteil aufgeteilt. Ein Angebot zählt erst als Investition, wenn es bezahlt ist: „Als bezahlt buchen“ legt je Fälligkeit Investitionen für PV/Speicher und Wallbox mit dem Zahlungsdatum an. Mit „Für die Ausbau-Seite verwenden“ ersetzen die Summen dort die Handwerkerkosten (Quelle „Angeboten“ wählen).</p><div id="of-list"></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="of-add">Angebot hinzufügen</button></div></div>
     <div class="panel"><h2>Annahmen</h2><div class="grid g2" id="am-sl" style="margin-top:10px"></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
@@ -276,7 +277,7 @@
   <div class="panel" style="margin-top:16px"><h2>Vorteil pro Jahr</h2><p class="note">Erstes Jahr, ohne Preissteigerung. Solarstrom wird zum Arbeitspreis bewertet, Laden zu Hause gegen die gewählte Alternative. THG-Prämie nicht enthalten: Sie gehört zum Auto und fällt mit jeder Lademöglichkeit an.</p><div class="tbl-wrap"><table id="wb-tbl"></table></div><div id="wb-flags"></div></div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierter Vorteil gegen Investition</h2><p class="note">Monatlich ab Inbetriebnahme, mit Strompreissteigerung und Leistungsverlust aus „Amortisation“. Auto-Anteile zählen erst ab Übergabe des E-Autos (Startdatum im „Auto-Vergleich“).</p><div class="chart tall"><canvas id="wb-chart"></canvas></div></div>
   <div class="grid g2" style="margin-top:16px">
-    <div class="panel"><h2>Kosten</h2><div class="form" style="margin-top:10px" id="wb-cost"></div></div>
+    <div class="panel"><h2>Kosten</h2><div class="form" style="margin-top:10px" id="wb-cost"></div><div id="wb-cost-src"></div></div>
     <div class="panel"><h2>Anlage</h2><div class="form" style="margin-top:10px" id="wb-plant"></div></div>
     <div class="panel"><h2>Verbrauch und Preise</h2><div class="form" style="margin-top:10px" id="wb-use"></div></div>
     <div class="panel"><h2>§14a EnWG (steuerbare Wallbox)</h2><p class="note">Reduziertes Netzentgelt für die angemeldete Wallbox. „Aus Tarifrechner“ nimmt die Ersparnis des Moduls mit den dort eingetragenen Werten deines Netzbetreibers. Modul 3 und dynamischer Stromtarif passen nicht bei jedem Anbieter zusammen.</p><div class="form" style="margin-top:10px" id="wb-14a"></div></div>
@@ -401,8 +402,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.19.0"></script>
-<script src="vendor/chart.umd.js?v=0.19.0"></script>
-<script type="module" src="js/app.js?v=0.19.0"></script>
+<script src="vendor/supabase.js?v=0.20.0"></script>
+<script src="vendor/chart.umd.js?v=0.20.0"></script>
+<script type="module" src="js/app.js?v=0.20.0"></script>
 </body>
 </html>
