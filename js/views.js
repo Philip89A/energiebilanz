@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS } from './calc.js?v=0.19.0';
-import { parseNum } from './queue.js?v=0.19.0';
-import { geocode, fetchDays } from './weather.js?v=0.19.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.19.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.20.0';
+import { parseNum } from './queue.js?v=0.20.0';
+import { geocode, fetchDays } from './weather.js?v=0.20.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.20.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -631,7 +631,7 @@ function renderAmort(first){
   const wb12 = tl.wbFrom ? C.homeCharging([from,tl.wbFrom].sort()[1], to).saving : 0, wbAll = tl.wbFrom ? C.homeCharging(tl.wbFrom, to).saving : 0;
   const refIn = (f,t)=>tl.refunds.filter(x=>x.date>=f&&x.date<=t).reduce((a,x)=>a+(+x.cost||0),0), ref12=refIn(from,to), refAll=refIn("0000",to);
   $("am-kpis").innerHTML =
-    kpi(eur(inv,2),"Investition gesamt", `${nInv} Positionen, Verkäufe abgezogen`) +
+    kpi(eur(inv,2),"Investition gesamt", `${nInv} Positionen, Verkäufe abgezogen${openOffers()?`; offen aus Angeboten ${eur(openOffers(),2)} (zählt erst nach Buchung)`:""}`) +
     kpi(eur(base+wb12+ref12),"Ersparnis letzte 12 Monate", (tl.wbFrom ? `PV ${eur(base)} zum Arbeitspreis, Wallbox ${eur(wb12)} gegenüber öffentlichem Laden` : "Nur Arbeitspreis")+(ref12?`, Erstattungen ${eur(ref12)}`:"")) +
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
     kpi(eur(realized+wbAll+refAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll+refAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}${refAll?`, davon Erstattungen ${eur(refAll)}`:""}`);
@@ -639,6 +639,7 @@ function renderAmort(first){
   $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "");
   $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
     S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td><td></td></tr>`:""}</tfoot>`;
+  renderOffers();
   if(first){
     const h=$("am-sl"); h.innerHTML="";
     slider(h,am,"priceInc","Strompreissteigerung pro Jahr",0,8,0.5,"%");
@@ -659,6 +660,42 @@ function renderAmort(first){
     {label:"Ersparnis Prognose",data:tl.cumS.map((v,j)=>(tl.proj[j]||j===li-1)?v:null),borderColor:css("--sun"),borderDash:[5,4],backgroundColor:css("--sun"),pointRadius:0,borderWidth:2},
     {label:"Investition kumuliert",data:tl.cumI,borderColor:css("--ink"),backgroundColor:css("--ink"),pointRadius:0,borderWidth:1.5,stepped:true}]},
     options:{plugins:{tooltip:numTip("€")},scales:{x:{ticks:{maxTicksLimit:12}},y:{title:{display:true,text:"€"}}}}});
+}
+
+/* ---------- Angebote mit Positionen (v0.20) ---------- */
+function openOffers(){ return (S.offers||[]).reduce((a,o)=>{ const s=offerSums(o); return a+Object.entries(s.due).filter(([d])=>!(o.paid||{})[d]).reduce((b,[,D])=>b+D.total,0); },0); }
+function renderOffers(){
+  const os=S.offers=S.offers||[], today=iso(new Date()), num=v=>v===""||v==null||!isFinite(+v)?"":nf(+v,+v%1?2:0).replace(/\./g,"");
+  const opts=(list,cur)=>list.map(([k,l])=>`<option value="${k}" ${cur===k?"selected":""}>${l}</option>`).join("");
+  $("of-list").innerHTML = os.length ? os.map((o,i)=>{
+    const s=offerSums(o), at=(j,k)=>`data-of="${i}" data-ofi="${j}" data-k="${k}"`;
+    const items=(o.items||[]).map((it,j)=>`<tr><td><input type="text" inputmode="decimal" value="${num(it.qty)}" ${at(j,"qty")} style="width:60px"></td>
+      <td class="l"><input type="text" value="${esc(it.name||"")}" ${at(j,"name")} style="width:100%;min-width:280px"></td>
+      <td><input type="text" inputmode="decimal" value="${num(it.price)}" ${at(j,"price")} style="width:90px"></td>
+      <td>${eur((+it.qty||0)*(+it.price||0),2)}</td>
+      <td class="l"><select ${at(j,"alloc")} style="width:auto">${opts(OFFER_ALLOC,it.alloc==="pv"||it.alloc==="wallbox"?it.alloc:"shared")}</select></td>
+      <td class="l"><select ${at(j,"due")} style="width:auto">${opts(OFFER_DUES,it.due==="anmeldung"?"anmeldung":"montage")}</select></td>
+      <td class="edit-only"><button class="x" data-of-del-item="${i}" data-i="${j}" aria-label="Position löschen">×</button></td></tr>`).join("");
+    const inv=new Map(S.invest.map(x=>[x.id,x])), fl=[];
+    const book=OFFER_DUES.filter(([d])=>s.due[d]).map(([d,l])=>{ const D=s.due[d], P=(o.paid||{})[d];
+      if(P){ const got=(P.ids||[]).reduce((a,id)=>a+(+(inv.get(id)||{}).cost||0),0); if(Math.abs(got-D.total)>0.005) fl.push(flag(`${l}: gebucht sind ${eur(got,2)}, die Positionen ergeben ${eur(D.total,2)}. Buchung zurücknehmen und neu buchen, damit die Investitionen stimmen.`,true)); }
+      return `<tr><td class="l">${l}</td><td>${eur(D.total,2)}</td><td>${eur(D.pv,2)}</td><td>${eur(D.wallbox,2)}</td><td class="l">${P
+        ?`gebucht am ${dde(P.date)} <button class="ghost edit-only" data-of-unbook="${i}" data-due="${d}">Buchung zurücknehmen</button>`
+        :`offen <span class="edit-only"><input type="date" value="${today}" id="of-bd-${i}-${d}" style="width:auto"> <button class="ghost" data-of-book="${i}" data-due="${d}">Als bezahlt buchen</button></span>`}</td></tr>`; }).join("");
+    return `<div style="border-top:1px solid var(--line);padding-top:12px;margin-top:12px">
+      <div class="form">
+        <label class="f">Angebotsnummer<input type="text" value="${esc(o.no||"")}" data-of="${i}" data-k="no"></label>
+        <label class="f">Datum<input type="date" value="${esc(o.date||"")}" data-of="${i}" data-k="date"></label>
+        <label class="f">Firma<input type="text" value="${esc(o.vendor||"")}" data-of="${i}" data-k="vendor"></label>
+        <label class="f">PV-Anteil gemeinsamer Positionen %<input type="text" inputmode="decimal" value="${num(offerShare(o))}" data-of="${i}" data-k="sharePv"></label>
+        <label class="f check wide"><input type="checkbox" data-of="${i}" data-k="ausbau" ${o.ausbau?"checked":""}> Für die Ausbau-Seite verwenden (Handwerkerkosten)</label>
+      </div>
+      <div class="tbl-wrap" style="margin-top:10px"><table><thead><tr><th>Menge</th><th class="l">Artikel</th><th>Einzelpreis €</th><th>Summe</th><th class="l">Zuordnung</th><th class="l">Fällig</th><th class="edit-only"></th></tr></thead>
+        <tbody>${items}</tbody><tfoot><tr><td></td><td class="l">Summe brutto</td><td></td><td>${eur(s.total,2)}</td><td colspan="3"></td></tr></tfoot></table></div>
+      <div class="row edit-only" style="margin-top:8px"><button class="ghost" data-of-add-item="${i}">Position hinzufügen</button><button class="ghost" data-of-del="${i}">Angebot löschen</button></div>
+      <p class="note">Aufteilung: PV/Speicher ${eur(s.pvAll,2)}, Wallbox ${eur(s.wbAll,2)}${s.shared?` (gemeinsame Positionen ${eur(s.shared,2)}, davon ${nf(offerShare(o))} % PV/Speicher)`:""}.</p>
+      <div class="tbl-wrap"><table><thead><tr><th class="l">Fällig</th><th>Betrag</th><th>PV/Speicher</th><th>Wallbox</th><th class="l">Status</th></tr></thead><tbody>${book}</tbody></table></div>${fl.join("")}
+    </div>`; }).join("") : `<p class="note">Noch kein Angebot erfasst.</p>`;
 }
 
 /* ---------- Auto ---------- */
@@ -823,6 +860,19 @@ function wireEditing(){
       tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
     else if(t.dataset.biAdd!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biAdd); tf.boniItems=[...(tf.boniItems||[]),{name:"Bonus",amount:0}]; write("tariff",tf); rerender(); }
     else if(t.dataset.biDel!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biDel); tf.boniItems=tf.boniItems.filter((_,i)=>i!==+t.dataset.i); tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
+    else if(t.dataset.ofAddItem!==undefined){ const o=S.offers[+t.dataset.ofAddItem]; (o.items=o.items||[]).push({qty:1,name:"",price:0,alloc:"shared",due:"montage"}); persist(); rerender(); }
+    else if(t.dataset.ofDelItem!==undefined){ S.offers[+t.dataset.ofDelItem].items.splice(+t.dataset.i,1); persist(); rerender(); }
+    else if(t.dataset.ofDel!==undefined){ const o=S.offers[+t.dataset.ofDel];
+      if(Object.values(o.paid||{}).some(Boolean)){ alert("Erst die Buchungen zurücknehmen."); return; }
+      if(confirm("Angebot löschen?")){ S.offers.splice(+t.dataset.ofDel,1); persist(); rerender(); } }
+    else if(t.dataset.ofBook!==undefined){ const i=+t.dataset.ofBook, o=S.offers[i], due=t.dataset.due, date=$(`of-bd-${i}-${due}`).value;
+      if(!date){ alert("Zahlungsdatum angeben."); return; }
+      const rows=offerBookingRows(o,due,date); rows.forEach(x=>{ x.id=crypto.randomUUID(); S.invest.push(x); write("investment",x); });
+      o.paid={...(o.paid||{}),[due]:{date,ids:rows.map(x=>x.id)}}; persist(); rerender(); }
+    else if(t.dataset.ofUnbook!==undefined){ const o=S.offers[+t.dataset.ofUnbook], due=t.dataset.due, P=(o.paid||{})[due];
+      if(!P||!confirm("Buchung zurücknehmen? Die dabei angelegten Investitionen werden gelöscht.")) return;
+      const ids=new Set(P.ids||[]), del=S.invest.filter(x=>ids.has(x.id)); S.invest=S.invest.filter(x=>!ids.has(x.id)); del.forEach(x=>remove("investment",x));
+      delete o.paid[due]; persist(); rerender(); }
     else if(t.dataset.troDel!==undefined){ S.tarif.offers.splice(+t.dataset.troDel,1); persist(); rerender(); }
     else if(t.dataset.delAb!==undefined){ if(confirm("Abschlag löschen?")){ const x=S.abschlaege.find(x=>x.id===t.dataset.delAb); S.abschlaege=S.abschlaege.filter(y=>y!==x); remove("installment",x); rerender(); } }
     else if(t.dataset.delTf!==undefined){ if(confirm("Tarif löschen?")){ const x=S.tariffs.find(x=>x.id===t.dataset.delTf); S.tariffs=S.tariffs.filter(y=>y!==x); remove("tariff",x); rerender(); } }
@@ -842,6 +892,12 @@ function wireEditing(){
       if(el.type==="checkbox") S.ausbau[k]=el.checked; else if(el.tagName==="SELECT"||el.type==="date") S.ausbau[k]=el.value;
       else { const v=parseNum(el.value); if(el.value.trim()==="") delete S.ausbau[k]; else if(isFinite(v)) S.ausbau[k]=v; }
       persist(); rerender(); }
+    else if(d.of!==undefined){ const o=S.offers[+d.of];
+      if(d.ofi!==undefined){ const it=o.items[+d.ofi]; if(d.k==="qty"||d.k==="price"){ const v=parseNum(el.value); it[d.k]=isFinite(v)?v:0; } else it[d.k]=el.value; }
+      else if(d.k==="ausbau") o.ausbau=el.checked;
+      else if(d.k==="sharePv"){ const v=parseNum(el.value); if(el.value.trim()==="") delete o.sharePv; else if(isFinite(v)) o.sharePv=Math.min(100,Math.max(0,v)); }
+      else o[d.k]=el.value;
+      persist(); rerender(); }
     else if(d.tro!==undefined){ const o=S.tarif.offers[+d.tro]; o[d.k]=["name","grp"].includes(d.k)?el.value:parseNum(el.value); persist(); rerender(); }
   });
   $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
@@ -854,6 +910,7 @@ function wireEditing(){
   $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value};
     if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
     S.charges.push(x); ["ch-km","ch-k","ch-e"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+  $("of-add").addEventListener("click",()=>{ (S.offers=S.offers||[]).push({id:crypto.randomUUID(),no:"",date:iso(new Date()),vendor:"",ausbau:false,items:[{qty:1,name:"",price:0,alloc:"shared",due:"montage"}],paid:{}}); persist(); rerender(); });
   $("am-add").addEventListener("click",()=>{ const x={name:"Neue Position",date:"",cost:0}; S.invest.push(x); write("investment",x); rerender(); });
   $("cl-add").addEventListener("click",()=>{ const x={d:$("cl-d").value, car:$("cl-car").value, cat:$("cl-cat").value, km:+$("cl-km").value||null, e:+$("cl-e").value||0, note:$("cl-n").value};
     if(!x.d || (!x.km && !x.e)){ alert("Datum und Kilometerstand oder Betrag angeben."); return; }
@@ -1110,7 +1167,9 @@ function quickPaymentFields(today) {
 
 /* ---------- Ausbau-Szenario „Weg B“ (v0.8) ---------- */
 const WB_FIELDS = {
-  "wb-cost": [["hwTotal", "Hardware gesamt € (inkl. Wallbox)"], ["hwWallbox", "davon Wallbox €"], ["craftPv", "Handwerker PV/Speicher €"],
+  "wb-cost": [["hwSrc", "Hardware aus", [["manual", "Eigene Werte"], ["invest", "Gebuchte Investitionen ab Datum"]]], ["hwFrom", "Investitionen ab", "date"],
+    ["craftSrc", "Handwerker aus", [["manual", "Eigene Werte"], ["offer", "Angeboten (Seite Amortisation)"]]],
+    ["hwTotal", "Hardware gesamt € (inkl. Wallbox)"], ["hwWallbox", "davon Wallbox €"], ["craftPv", "Handwerker PV/Speicher €"],
     ["craftWallbox", "Handwerker Wallbox inkl. Anmeldung €"], ["start", "Inbetriebnahme", "date"],
     ["alt", "Alternative ohne Wallbox", [["public", "Öffentlich laden"], ["socket", "Steckdose in der Garage"]]], ["socketEur", "Kosten Steckdose € (nur Alternative Steckdose)"]],
   "wb-plant": [["pvAddWp", "Zusätzliche PV-Leistung Wp"], ["yieldPct", "Ertrag neue Module % (Ausrichtung)"], ["storeAddKwh", "Zusätzlicher Speicher kWh"],
@@ -1132,17 +1191,26 @@ function renderAusbau() {
       : Array.isArray(t) ? `<label class="f">${l}<select data-wb="${k}">${t.map(([o, ol]) => `<option value="${o}">${ol}</option>`).join("")}</select></label>`
       : `<label class="f">${l}<input type="${t === "date" ? "date" : "text"}" ${t === "date" ? "" : 'inputmode="decimal"'} data-wb="${k}"></label>`).join("");
     h.querySelectorAll("[data-wb]").forEach(el => { if (document.activeElement === el) return; const k = el.dataset.wb;
-      if (el.type === "checkbox") el.checked = !!v(k); else if (el.type === "date") el.value = v(k) || today;
+      if (el.type === "checkbox") el.checked = !!v(k); else if (el.type === "date") el.value = v(k) || (k === "hwFrom" ? "" : today);
       else if (el.tagName === "SELECT") el.value = v(k); else { const x = v(k); el.value = x === "" || x == null ? "" : nf(+x, +x % 1 ? 2 : 0).replace(/\./g, ""); } });
   }
   $("wb-cost").querySelector('[data-wb="socketEur"]').closest("label").hidden = v("alt") !== "socket";
+  // v0.20: Kosten aus gebuchten Investitionen bzw. Angeboten statt eigener Werte
+  const cst = C.ausbauCosts(p), pe = { ...p, hwTotal: cst.hwTotal, hwWallbox: cst.hwWallbox, craftPv: cst.craftPv, craftWallbox: cst.craftWallbox };
+  const hide = (k, h) => $("wb-cost").querySelector(`[data-wb="${k}"]`).closest("label").hidden = h;
+  hide("hwFrom", v("hwSrc") !== "invest"); ["hwTotal", "hwWallbox"].forEach(k => hide(k, !!cst.hw)); ["craftPv", "craftWallbox"].forEach(k => hide(k, !!cst.craft));
+  $("wb-cost-src").innerHTML = [
+    v("hwSrc") === "invest" && !v("hwFrom") ? flag("Datum „Investitionen ab“ fehlt: bis dahin gelten die eigenen Werte.", true) : "",
+    cst.hw ? `<p class="note">Hardware aus ${nf(cst.hw.n)} Investitionen ab ${dde(cst.hw.from)}: ${eur(cst.hwTotal, 2)}, davon Wallbox ${eur(cst.hwWallbox, 2)} (ohne Erstattungen und ohne Buchungen aus Angeboten).</p>` : "",
+    cst.craft ? (cst.craft.n ? `<p class="note">Handwerker aus ${cst.craft.n === 1 ? "Angebot" : `${nf(cst.craft.n)} Angeboten`} ${esc(cst.craft.nos.join(", "))}: PV/Speicher ${eur(cst.craftPv, 2)}, Wallbox ${eur(cst.craftWallbox, 2)}.</p>`
+      : flag("Kein Angebot für die Ausbau-Rechnung markiert (Seite „Amortisation“ → Angebote → „Für die Ausbau-Seite verwenden“).", true)) : ""].join("");
   $("wb-14a").querySelectorAll('[data-wb="s14aMod"],[data-wb="s14aEur"]').forEach(el => el.closest("label").hidden = !v("s14a"));
   $("wb-14a").querySelector('[data-wb="s14aEur"]').closest("label").hidden = !v("s14a") || v("s14aMod") !== "manual";
   // §14a-Ersparnis je Modul mit dem Netzladen des Szenarios (Werte des Netzbetreibers aus dem Tarifrechner)
-  const r0 = ausbauRechner(base, p, today);
+  const r0 = ausbauRechner(base, pe, today);
   const tr = tarifRechner({ ...C.tariffBase(), evGrid: r0.kwh.evGrid }, { as: C.currentTariff("as"), wp: C.currentTariff("wp") }, S.tarif || {});
   const m14a = Object.fromEntries(tr.wallbox.filter(w => w.key !== "none").map(w => [w.key, -w.vsNone]));
-  const r = ausbauRechner(base, p, today, m14a), y = r.year, nc = r.noCar, N = +v("years") || 20;
+  const r = ausbauRechner(base, pe, today, m14a), y = r.year, nc = r.noCar, N = +v("years") || 20;
   const pb = (h, inv) => h ? `${nf(h.years, 1)} Jahre` : "–";
   const pbSub = (h, inv) => h ? `${monthLabel(h.date.slice(0, 7))}, Investition ${eur(inv)}` : `nicht innerhalb von ${N} Jahren (Investition ${eur(inv)})`;
   $("wb-kpis").innerHTML = kpi(pb(r.payback.total), "Paket amortisiert nach", pbSub(r.payback.total, r.invest.total))
