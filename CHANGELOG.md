@@ -372,3 +372,18 @@
 - Rechenkern: `hpDayAverage` in createCalc. Kein Datenbank-Update nötig.
 - Tests: 86 Unit-Tests (neu `tests/v26.test.mjs`), neu `scripts/v26-check.mjs` 12 Prüfungen, `v19-check` an den neuen
   Start angepasst; alles Übrige unverändert.
+
+## v0.27.0 – PV-Prognose
+- **Schema** (`docs/UPDATE_V27.sql`): Tabelle `pv_forecast` (Prognosetag, Erstellungstag, kWh, Band, Einstrahlung,
+  Faktor) mit Row Level Security wie die übrigen Tabellen.
+- **PV → Prognose:** Vorhersage der Einstrahlung für 14 Tage (Open-Meteo) mal Ertragsfaktor der Anlage. Faktor je
+  Kalendermonat aus allen gemessenen Jahren (Summe ÷ Summe), für die nächsten Tage gemischt mit den letzten 30 Tagen;
+  Bandbreite aus der gemessenen Streuung des Monats. Kennzahlen heute, morgen, nächste 7 Tage.
+- **Nachjustieren:** Jede Prognose wird beim Öffnen (einmal je Tag) gespeichert und später mit der Messung verglichen:
+  Grafik „Prognose gegen Messung“ (letzte 30 Tage) und Trefferquote (Ø Abweichung, Tage ab 0,5 kWh, Gesamtabweichung).
+- **Ausblick 12 Monate:** gemessen bis gestern + Vorhersage + übrige Tage mit typischer Einstrahlung (Ø der eigenen
+  Wetterjahre) × Monatsfaktor, mit Vorjahreswert.
+- Gastzugang ruft weiterhin kein Wetter ab; Gäste sehen die zuletzt gespeicherte Vorhersage. Ohne Tabelle läuft die
+  Anzeige, nur ohne Speichern (Hinweis).
+- Noch nicht enthalten (folgt mit dem Ausbau): Abregelung bei vollem Speicher, Anlagenänderung.
+- Tests: 89 Unit-Tests (neu `tests/v27.test.mjs`), neu `scripts/v27-check.mjs` 18 Prüfungen; alles Übrige unverändert.

@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.26.0';
+import { hpSum } from './hp.js?v=0.27.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -67,6 +67,9 @@ export function stateFromDb(db) {
     hp: (db.hp_energy || []).map(r => Object.fromEntries(Object.entries(r).filter(([k]) => !['user_id', 'created_at', 'updated_at'].includes(k))
       .map(([k, v]) => [k, ['grain', 'ts'].includes(k) || v == null ? v : +v]))),
     hpError: db.hpError || null,
+    pvForecasts: (db.pv_forecast || []).map(r => ({ d: r.day, made: r.made_on, kwh: +r.kwh, lo: r.lo == null ? null : +r.lo, hi: r.hi == null ? null : +r.hi,
+      rad: r.rad_kwh == null ? null : +r.rad_kwh, f: r.factor == null ? null : +r.factor })),
+    pvForecastError: db.pvForecastError || null,
   };
 }
 
@@ -714,6 +717,28 @@ export function createCalc(S) {
     const high = med ? g.intervals.filter(iv => iv.to > from && iv.from <= to && iv.rate > 1.5 * med && g.intervals.length >= 4) : [];
     return { m3, days, lpd, lpp: lpd != null ? lpd / persons : null, persons, priceM3, cost: priceM3 || n(w.baseYear) ? cost : null, median: med, high, intervals: g.intervals };
   }
+  // v0.27: PV-Prognose. fcRows: Vorhersage [{day, rad_kwh}] ab heute; Monatsausblick 12 Monate ab dem laufenden Monat:
+  // gemessen bis gestern + Tagesprognose + übrige Tage mit typischer Einstrahlung (Ø der eigenen Wetterjahre) × Monatsfaktor.
+  function pvForecast(fcRows = [], today = addDays(A.dates[A.n - 1], 1)) {
+    const hist = []; A.dates.forEach((d, i) => { const w = W[d]; if (w && w.rad > 0.3 && A.c.gen[i] != null) hist.push({ d, gen: +A.c.gen[i], rad: w.rad }); });
+    const F = pvFactors(hist, today), days = pvForecastDays(fcRows.filter(r => r.day >= today), F);
+    const radBy = {}; for (const [d, w] of Object.entries(W)) { if (w.rad == null) continue; const k = d.slice(0, 7); (radBy[k] = radBy[k] || { s: 0, n: 0 }); radBy[k].s += w.rad; radBy[k].n++; }
+    const typ = {}; for (const [k, v] of Object.entries(radBy)) { const dim = +monthEnd(k).slice(8, 10); if (v.n < dim - 2) continue; const m = k.slice(5, 7); (typ[m] = typ[m] || []).push(v.s / v.n); }
+    const typDay = m => (typ[m] ? typ[m].reduce((a, b) => a + b, 0) / typ[m].length : null);
+    const genBy = {}; A.dates.forEach((d, i) => { const k = d.slice(0, 7); genBy[k] = (genBy[k] || 0) + (+A.c.gen[i] || 0); });
+    const fcBy = Object.fromEntries(days.map(x => [x.d, x.kwh])), months = []; let k = today.slice(0, 7);
+    for (let j = 0; j < 12; j++) {
+      const m = k.slice(5, 7), f = F.factorFor(`${k}-15`, false), td = typDay(m), end = monthEnd(k); let measured = 0, fc = 0, typical = 0, nTyp = 0;
+      for (let d = `${k}-01`; d <= end; d = addDays(d, 1)) {
+        if (d < today) { const i = A.idx[d]; if (i !== undefined) measured += +A.c.gen[i] || 0; else if (td != null && f != null) { typical += f * td; nTyp++; } }
+        else if (fcBy[d] != null) fc += fcBy[d]; else if (td != null && f != null) { typical += f * td; nTyp++; } }
+      const prevY = `${+k.slice(0, 4) - 1}-${m}`;
+      months.push({ k, f, typDay: td, measured, fc, typical, nTyp, kwh: f == null && td == null && !measured && !fc ? null : measured + fc + typical, prevYear: genBy[prevY] ?? null });
+      k = nextMonth(k);
+    }
+    const actual = {}; A.dates.forEach((d, i) => { if (A.c.gen[i] != null) actual[d] = +A.c.gen[i]; });
+    return { F, days, months, acc: pvAccuracy(S.pvForecasts || [], actual, addDays(today, -30), addDays(today, -1)), lastData: A.dates[A.n - 1] };
+  }
   // v0.23: Wärmepumpe je Gradtag (from..to einschließlich). Grundlast (Warmwasser, Standby) laut Wetter-Modell der
   // passenden Seite des Gerätetauschs abgezogen; unter 20 Gradtagen (Sommer) kein Wert.
   function wpDegreeDay(from, to) {
@@ -868,7 +893,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, waterStats,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, waterStats,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
@@ -1058,4 +1083,41 @@ export function movingAvg(daily, days, win = 30, minN = 15) {
   return days.map(d => { let s = 0, n = 0;
     for (let j = 0; j < win; j++) { const v = daily[addDays(d, -j)]; if (v != null && isFinite(v)) { s += +v; n++; } }
     return n >= minN ? s / n : null; });
+}
+
+/* ---------- PV-Prognose (v0.27), reine Funktionen ----------
+   hist: gemessene Tage [{d, gen, rad}] (Erzeugung kWh, Einstrahlung kWh/m², nur rad > 0,3). Ertragsfaktor f = Erzeugung ÷
+   Einstrahlung je Kalendermonat (Summe ÷ Summe über alle Jahre), Streuung cv = Standardabweichung ÷ Mittel der Tagesfaktoren.
+   Für die nächsten Tage: f = Ø aus Monatsfaktor und den letzten 30 Tagen (f30), damit die Prognose dem aktuellen Zustand folgt. */
+export function pvFactors(hist, today) {
+  const by = {}, all = [];
+  for (const x of hist) { if (!(x.rad > 0.3) || x.gen == null || x.d >= today) continue; const m = x.d.slice(5, 7);
+    (by[m] = by[m] || []).push(x); all.push(x); }
+  const stat = arr => { const G = arr.reduce((a, x) => a + x.gen, 0), R = arr.reduce((a, x) => a + x.rad, 0), fs = arr.map(x => x.gen / x.rad);
+    const mf = fs.reduce((a, b) => a + b, 0) / fs.length, sd = Math.sqrt(fs.reduce((a, b) => a + (b - mf) ** 2, 0) / fs.length);
+    return { f: R > 0 ? G / R : null, cv: mf > 0 ? sd / mf : null, n: arr.length }; };
+  const month = {}; for (const [m, arr] of Object.entries(by)) if (arr.length >= 10) month[m] = stat(arr);
+  const overall = all.length >= 10 ? stat(all) : null;
+  const from30 = addDays(today, -30), last = all.filter(x => x.d >= from30);
+  const f30 = last.length >= 10 ? { ...stat(last), from: last[0].d, to: last[last.length - 1].d } : null;
+  const factorFor = (d, near = true) => { const m = month[d.slice(5, 7)];
+    if (near && f30 && m) return (f30.f + m.f) / 2; return m ? m.f : near && f30 ? f30.f : overall ? overall.f : null; };
+  const cvFor = d => { const m = month[d.slice(5, 7)]; return (m && m.cv != null ? m.cv : overall ? overall.cv : null); };
+  return { month, overall, f30, factorFor, cvFor };
+}
+// Prognose je Tag aus vorhergesagter Einstrahlung: kwh = f × rad, Band ± cv (nicht unter 0)
+export function pvForecastDays(rows, F) {
+  return rows.map(r => { const f = F.factorFor(r.day), cv = F.cvFor(r.day); if (f == null || r.rad_kwh == null) return null;
+    const kwh = f * r.rad_kwh; return { d: r.day, rad: r.rad_kwh, f, kwh, lo: cv != null ? Math.max(0, kwh * (1 - cv)) : null, hi: cv != null ? kwh * (1 + cv) : null }; })
+    .filter(Boolean);
+}
+// Trefferquote: je vergangenem Tag die jüngste Prognose, die vor dem Tag erstellt wurde, gegen die Messung.
+// Tage unter 0,5 kWh zählen nicht (Prozentfehler sonst beliebig groß). mape = Ø |Prognose − Messung| ÷ Messung, bias = Σ Prognose ÷ Σ Messung − 1.
+export function pvAccuracy(stored, actual, from, to) {
+  const best = {}; for (const s of stored) { if (s.made >= s.d || s.d < from || s.d > to) continue; if (!best[s.d] || s.made > best[s.d].made) best[s.d] = s; }
+  const pairs = Object.values(best).filter(s => actual[s.d] != null).map(s => ({ d: s.d, fc: s.kwh, act: actual[s.d], lead: Math.round((Date.parse(s.d) - Date.parse(s.made)) / 864e5) }))
+    .sort((a, b) => a.d.localeCompare(b.d));
+  const ok = pairs.filter(p => p.act >= 0.5);
+  const A = ok.reduce((a, p) => a + p.act, 0), Fc = ok.reduce((a, p) => a + p.fc, 0);
+  return { pairs, n: ok.length, mape: ok.length ? ok.reduce((a, p) => a + Math.abs(p.fc - p.act) / p.act, 0) / ok.length : null, bias: A > 0 ? Fc / A - 1 : null };
 }

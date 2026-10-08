@@ -41,3 +41,10 @@ export async function fetchDays(lat, lon, from, to, today = isoDay(new Date())) 
   }
   return rows;
 }
+
+// v0.27: Vorhersage für heute und die nächsten Tage (PV-Prognose); Zeilen wie toRows
+export async function fetchForecast(lat, lon, days = 14) {
+  const r = await fetch(`${FORECAST}?latitude=${round2(lat)}&longitude=${round2(lon)}&daily=${DAILY}&timezone=Europe%2FBerlin&forecast_days=${days}`);
+  if (!r.ok) throw new Error(`Wettervorhersage: HTTP ${r.status}`);
+  return toRows(await r.json());
+}
