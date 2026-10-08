@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.24.0';
+import { hpSum } from './hp.js?v=0.25.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -60,7 +60,7 @@ export function stateFromDb(db) {
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
-    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {}, offers: Array.isArray(s.offers) ? s.offers : [],
+    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {}, offers: Array.isArray(s.offers) ? s.offers : [], water: s.water || {},
     weather: (db.weather_daily || []).map(r => ({ d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }))
       .sort((a, b) => a.d.localeCompare(b.d)),
     weatherError: db.weatherError || null,
@@ -73,6 +73,7 @@ export function stateFromDb(db) {
 // Referenzform -> Supabase-Zeile (Umkehrung von stateFromDb), je Datensatzart. user_id setzt db.js.
 export const toDb = {
   reading: r => ({ meter_id: r.m, day: r.d, value: +r.v, source: r.src || null }),
+  meter: m => ({ id: m.id, name: m.name, grp: m.group, sort: +m.order || 0 }),
   tariff: t => ({ id: t.id, grp: t.group, name: t.name, valid_from: t.from, valid_to: t.to || null, ap_ct: +t.ap,
     gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null,
     ...(Array.isArray(t.boniItems) ? { boni_items: t.boniItems } : {}) }),   // Spalte erst ab schema v3, nur senden wenn genutzt
@@ -85,7 +86,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -702,6 +703,17 @@ export function createCalc(S) {
     for (const g of Object.values(groups)) if (g) g.year = norm(g);
     return { swap: sw, intervals: iv, groups, ref: { ...ref, from: addDays(wl, -364), to: wl }, cfg: wxCfg() };
   }
+  // v0.25: Wasser (Zählergruppe „water“, Stände in m³). from..to einschließlich; Tage = Tage mit verteiltem Wert.
+  // Kosten = m³ × (Wasser + Abwasser je m³) + Grundgebühr anteilig. Auffällig: Ableseintervall > 150 % des Medians.
+  function waterStats(from, to) {
+    const g = groupSeries('water'), w = S.water || {}, n = v => (v === '' || v == null || !isFinite(+v) ? 0 : +v);
+    let m3 = 0, days = 0; for (const [d, v] of Object.entries(g.daily)) if (d >= from && d <= to) { m3 += v; days++; }
+    const persons = Math.max(1, Math.round(n(w.persons) || 1)), lpd = days ? m3 * 1000 / days : null;
+    const priceM3 = n(w.priceM3) + n(w.sewageM3), cost = m3 * priceM3 + n(w.baseYear) * days / 365;
+    const rates = g.intervals.map(iv => iv.rate).sort((a, b) => a - b), med = rates.length ? rates[Math.floor((rates.length - 1) / 2)] : null;
+    const high = med ? g.intervals.filter(iv => iv.to > from && iv.from <= to && iv.rate > 1.5 * med && g.intervals.length >= 4) : [];
+    return { m3, days, lpd, lpp: lpd != null ? lpd / persons : null, persons, priceM3, cost: priceM3 || n(w.baseYear) ? cost : null, median: med, high, intervals: g.intervals };
+  }
   // v0.23: Wärmepumpe je Gradtag (from..to einschließlich). Grundlast (Warmwasser, Standby) laut Wetter-Modell der
   // passenden Seite des Gerätetauschs abgezogen; unter 20 Gradtagen (Sommer) kein Wert.
   function wpDegreeDay(from, to) {
@@ -830,7 +842,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, wpDegreeDay,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, wpDegreeDay, waterStats,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

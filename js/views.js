@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.24.0';
-import { parseNum } from './queue.js?v=0.24.0';
-import { geocode, fetchDays } from './weather.js?v=0.24.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.24.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.25.0';
+import { parseNum } from './queue.js?v=0.25.0';
+import { geocode, fetchDays } from './weather.js?v=0.25.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.25.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -70,6 +70,7 @@ const IMPORT_START = () => C.IMPORT_START();
 const sumRange = (...a) => C.sumRange(...a);
 const last12 = () => C.last12();
 const groupSeries = g => C.groupSeries(g);
+const waterStatsOf = (f, t) => C.waterStats(f, t);   // v0.25; in renderFinance ist C überdeckt
 const tariffAt = (g, d) => C.tariffAt(g, d);
 const currentTariff = g => C.currentTariff(g);
 const costs = (...a) => C.costs(...a);
@@ -274,6 +275,46 @@ function renderMeterExtras(){
   const pal=["--loss","--grid","--sun","--heat"];
   chart("mt-yoy",{type:"bar",data:{labels:MON,datasets:Object.keys(yy).sort().map((y,i)=>({label:y,data:yy[y],backgroundColor:css(pal[i%pal.length])}))},
     options:{plugins:{tooltip:numTip("kWh")},scales:{y:{title:{display:true,text:"kWh"}}}}});
+}
+
+/* ---------- Wasser (v0.25) ---------- */
+const WT_FIELDS=[["persons","Personen im Haushalt"],["priceM3","Wasserpreis €/m³"],["sewageM3","Abwasser €/m³ (nach Frischwasser)"],["baseYear","Grundgebühr €/Jahr (optional)"]];
+const meterUnit = id => (S.meters.find(m=>m.id===id)?.group==="water" ? "m³" : "kWh");
+function renderWater(){
+  const wm=S.meters.find(m=>m.group==="water"), w=S.water=S.water||{};
+  $("wt-create").hidden=!!wm;
+  const f=$("wt-form");
+  if(!f.children.length) f.innerHTML=WT_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="text" inputmode="decimal" data-wt="${k}"></label>`).join("");
+  f.querySelectorAll("[data-wt]").forEach(el=>{ if(document.activeElement===el) return; const v=w[el.dataset.wt]; el.value=v===""||v==null?"":nf(+v,+v%1?2:0).replace(/\./g,""); });
+  const RS=periodSel(), g=groupSeries("water");
+  if(!wm||g.intervals.length===0){
+    $("wt-flags").innerHTML=flag(wm?"Noch keine zwei Wasserstände: unter „Erfassen → Zählerstand“ den Zähler „Wasser“ wählen und den Stand in m³ eintragen.":"Noch kein Wasserzähler: „Wasserzähler anlegen“ (vorher das SQL-Update v0.25 ausführen, siehe docs/ANLEITUNG_UPDATES.md).",true);
+    $("wt-kpis").innerHTML=""; $("wt-note").innerHTML=""; $("wt-chart-wrap").hidden=true; return; }
+  $("wt-chart-wrap").hidden=false;
+  const last=g.intervals[g.intervals.length-1].to, P0=RS.all?{from:g.intervals[0].from,to:addDaysIso(last,-1)}:RS.P;
+  const a=C.waterStats(P0.from,P0.to), c=RS.Cp?C.waterStats(RS.Cp.from,RS.Cp.to):null, L=RS.Cp?RS.Cp.label:"";
+  const cv=c&&c.days?c:null;
+  $("wt-kpis").innerHTML=kpi(`${nf(a.m3,a.m3<100?2:1)} m³`,"Wasser im Zeitraum",`${nf(a.days)} Tage mit Ablesungen`+(cv?vsTxt(a.m3,cv.m3,v=>nf(v,2)+" m³",L):""))
+    +kpi(a.lpd!=null?`${nf(a.lpd)} l`:"–","pro Tag",cv?vsTxt(a.lpd,cv.lpd,v=>nf(v)+" l",L).replace(/^ · /,""):"")
+    +kpi(a.lpp!=null?`${nf(a.lpp)} l`:"–","pro Person und Tag",`${nf(a.persons)} Personen; bundesweit üblich etwa 125 l`)
+    +kpi(a.cost!=null?eur(a.cost):"–","Kosten (geschätzt)",a.cost!=null?`${nf(a.priceM3,2)} €/m³ Wasser und Abwasser${+w.baseYear?", Grundgebühr anteilig":""}`+(cv&&cv.cost!=null?vsTxt(a.cost,cv.cost,v=>eur(v),L):""):"Preise unten eintragen");
+  const fl=[];
+  if(a.high.length) fl.push(flag(`Auffällig hoher Verbrauch: ${a.high.map(iv=>`${dde(iv.from)}–${dde(iv.to)} ${nf(iv.rate*1000)} l/Tag`).join(", ")} (über 150 % des üblichen Werts von ${nf(a.median*1000)} l/Tag). Ohne erklärenden Anlass (Besuch, Gartenbewässerung, Pool): WC-Spülung und tropfende Hähne prüfen; bei geschlossenen Hähnen darf sich der Zähler nicht drehen.`));
+  $("wt-flags").innerHTML=fl.join("");
+  // Liter pro Tag je Ableseintervall (am Zeitraum abgeschnitten) und gleitender 30-Tage-Durchschnitt
+  const end=addDaysIso(P0.to,1), ivs=g.intervals.filter(iv=>iv.to>P0.from&&iv.from<=P0.to);
+  const step=ivs.flatMap(iv=>{ const x0=iv.from<P0.from?P0.from:iv.from, x1=iv.to>end?end:iv.to; return [{x:x0,y:iv.rate*1000},{x:x1,y:iv.rate*1000}]; });
+  const lastD=Object.keys(g.daily).sort().pop(), days=[]; for(let d=P0.from; d<=(lastD<P0.to?lastD:P0.to); d=addDaysIso(d,1)) days.push(d);
+  const dl=Object.fromEntries(Object.entries(g.daily).map(([d,v])=>[d,v*1000])), ma=movingAvg(dl,days,30,15);
+  const maPts=days.map((d,i)=>({x:d,y:ma[i]})).filter(q=>q.y!=null);
+  const lab=[...new Set([...step,...maPts].map(q=>q.x))].sort();
+  chart("wt-rate",{type:"line",data:{datasets:[
+    {label:"Liter pro Tag",data:step,borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,borderWidth:2},
+    ...(maPts.length?[{label:"Ø 30 Tage",data:maPts,borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,borderWidth:1.5,borderDash:[2,3]}]:[])]},
+    options:{parsing:true,interaction:{mode:"nearest",axis:"x",intersect:false},scales:{x:{type:"category",labels:lab,ticks:{maxTicksLimit:8,callback:function(v){return dde(this.getLabelForValue(v));}}},y:{beginAtZero:true,title:{display:true,text:"Liter pro Tag"}}},
+      plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y)} l`}}}}});
+  const nR=S.readings.filter(r=>r.m===wm.id).length;
+  $("wt-note").innerHTML=`<p class="note">${nf(nR)} Ablesungen insgesamt, letzte am ${dde(last)}. Bei Ablesungen alle 1–2 Wochen zeigt die Grafik Wochendurchschnitte, keine einzelnen Tage.</p>`;
 }
 
 /* ---------- Charts ---------- */
@@ -511,12 +552,12 @@ function renderMeters(){
   }
   // Tabelle Ablesungen
   const mOpts = S.meters.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
-  $("rd-m").innerHTML = mOpts;
+  const rdCur = $("rd-m").value; $("rd-m").innerHTML = mOpts; if (rdCur && S.meters.some(m => m.id === rdCur)) $("rd-m").value = rdCur;   // v0.25: Auswahl beim Neuzeichnen behalten
   renderMeterExtras();
   const RP = periodSel();   // v0.16: Ablesungen im Zeitraum, einschließlich des Stands am Tag nach dem Ende
   const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).filter(r=>RP.all||(r.d>=RP.P.from&&r.d<=addDaysIso(RP.P.to,1))).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
-  $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Zähler</th><th>Stand kWh</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
-    rs.map(r=>`<tr><td>${dde(r.d)}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,1)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
+  $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Zähler</th><th>Stand</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
+    rs.map(r=>`<tr><td>${dde(r.d)}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,meterUnit(r.m)==="m³"?3:1)} ${meterUnit(r.m)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
   // Abgleich
   const is = IMPORT_START();
   const ivs = as.intervals.map(iv=>{
@@ -638,6 +679,9 @@ function renderFinance(){
     ${row("Cupra Leon Leasing",f.mob.leonLease,g?G.mob.leonLease:undefined,-1)}${row(`Cupra Leon Sprit${f.mob.fuelIsIst?` (Tankbuch, ${f.mob.fuelN} Vorgänge)`:" (geschätzt)"}`,f.mob.fuel,g?G.mob.fuel:undefined,-1)}
     ${row("Cupra Leon Versicherung, Steuer, Sonstiges",f.mob.leonFix,g?G.mob.leonFix:undefined,-1)}${row("Cupra Leon gesamt",f.mob.leon,g?G.mob.leon:undefined,-1)}
     ${row("Zum Vergleich: Tavascan im selben Zeitraum",f.mob.tav,g?G.mob.tav:undefined,-1)}
+    ${(()=>{ if(!S.meters.some(m=>m.group==="water")) return ""; const wa=waterStatsOf(P.from,P.to), wc=C?waterStatsOf(C.from,C.to):null;
+      if(wa.cost==null||!wa.days) return "";
+      return `<tr><td colspan="4" class="l" style="font-weight:700;padding-top:12px">Wasser (in den Nebenkosten)</td></tr>${row(`Wasser und Abwasser (geschätzt, ${nf(wa.m3,1)} m³)`,wa.cost,C?(wc&&wc.days?wc.cost:null):undefined,-1)}`; })()}
   </tbody>`;
   // Monatsverlauf
   const gr=gran(P.from,P.to), cA={}, cW={}, sv={};
@@ -843,7 +887,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -947,6 +991,7 @@ function wireEditing(){
       if(el.type==="checkbox") S.ausbau[k]=el.checked; else if(el.tagName==="SELECT"||el.type==="date") S.ausbau[k]=el.value;
       else { const v=parseNum(el.value); if(el.value.trim()==="") delete S.ausbau[k]; else if(isFinite(v)) S.ausbau[k]=v; }
       persist(); rerender(); }
+    else if(d.wt){ S.water=S.water||{}; const v=parseNum(el.value); if(el.value.trim()==="") delete S.water[d.wt]; else if(isFinite(v)&&v>=0) S.water[d.wt]=v; persist(); rerender(); }
     else if(d.of!==undefined){ const o=S.offers[+d.of];
       if(d.ofi!==undefined){ const it=o.items[+d.ofi]; if(d.k==="qty"||d.k==="price"){ const v=parseNum(el.value); it[d.k]=isFinite(v)?v:0; } else it[d.k]=el.value; }
       else if(d.k==="ausbau") o.ausbau=el.checked;
@@ -965,6 +1010,8 @@ function wireEditing(){
   $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value};
     if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
     S.charges.push(x); ["ch-km","ch-k","ch-e"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+  $("wt-create").addEventListener("click",()=>{ if(S.meters.some(m=>m.group==="water")) return;
+    const m={id:"water",name:"Wasser",group:"water",order:0}; S.meters.push(m); refreshCalc(); track(store.saveRow("meter",toDb.meter(m))); rerender(); });
   $("of-add").addEventListener("click",()=>{ (S.offers=S.offers||[]).push({id:crypto.randomUUID(),no:"",date:iso(new Date()),vendor:"",ausbau:false,items:[{qty:1,name:"",price:0,alloc:"shared",due:"montage"}],paid:{}}); persist(); rerender(); });
   $("am-add").addEventListener("click",()=>{ const x={name:"Neue Position",date:"",cost:0}; S.invest.push(x); write("investment",x); rerender(); });
   $("cl-add").addEventListener("click",()=>{ const x={d:$("cl-d").value, car:$("cl-car").value, cat:$("cl-cat").value, km:+$("cl-km").value||null, e:+$("cl-e").value||0, note:$("cl-n").value};
@@ -1026,7 +1073,7 @@ function openQuick(kind) {
   if (kind === "reading") {
     const m = lsGet("eb_q_meter", "wp");
     body = fld("Zähler", `<select id="q-m">${S.meters.map(x => `<option value="${x.id}" ${x.id === m ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`, "wide")
-      + fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("Stand in kWh", num("q-v", "z. B. 12530", "decimal"));
+      + fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld(`Stand in <span id="q-unit">${meterUnit(m)}</span>`, num("q-v", meterUnit(m) === "m³" ? "z. B. 123,456" : "z. B. 12530", "decimal"));
   } else if (kind === "fuel") {
     const lastS = ([...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0] || {}).s || "Super E10";
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("Kilometerstand", num("q-km", "", "numeric"))
@@ -1062,6 +1109,9 @@ function quickHint(kind) {
   const d = $("q-d")?.value;
   if (kind === "reading") { const r = lastReading($("q-m").value, d), v = parseNum($("q-v").value);
     if (!r) return "Erster Stand für diesen Zähler.";
+    const u = meterUnit($("q-m").value); if ($("q-unit")) $("q-unit").textContent = u;
+    if (u === "m³") { let s = `Vorheriger Stand: ${nf(r.v, 3)} m³ am ${dde(r.d)}.`;
+      if (isFinite(v) && d > r.d) s += ` Verbrauch seitdem ${nf((v - r.v) * 1000)} l (${nf((v - r.v) * 1000 / diffDays(r.d, d))} l/Tag).`; return s; }
     let s = `Vorheriger Stand: ${nf(r.v)} kWh am ${dde(r.d)}.`;
     if (isFinite(v) && d > r.d) s += ` Verbrauch seitdem ${nf(v - r.v)} kWh (${nf((v - r.v) / diffDays(r.d, d), 1)} kWh/Tag).`;
     return s; }
@@ -1083,11 +1133,11 @@ async function saveQuick(kind) {
     const m = $("q-m").value, v = parseNum($("q-v").value);
     if (!isFinite(v) || v < 0) return err("Stand als Zahl angeben.");
     const r = lastReading(m, d);
-    if (r && v < r.v && !confirm(`Der Stand ist kleiner als der vorherige (${nf(r.v)} kWh am ${dde(r.d)}). Zählertausch oder Tippfehler? Trotzdem speichern?`)) return;
+    if (r && v < r.v && !confirm(`Der Stand ist kleiner als der vorherige (${nf(r.v)} ${meterUnit(m)} am ${dde(r.d)}). Zählertausch oder Tippfehler? Trotzdem speichern?`)) return;
     lsSet("eb_q_meter", m);
     obj = S.readings.find(x => x.m === m && x.d === d);
     if (obj) obj.v = v; else { obj = { m, d, v, src: "Eingabe" }; S.readings.push(obj); }
-    label = `${esc(S.meters.find(x => x.id === m)?.name || m)}: ${nf(v)} kWh`;
+    label = `${esc(S.meters.find(x => x.id === m)?.name || m)}: ${nf(v, meterUnit(m) === "m³" ? 3 : 0)} ${meterUnit(m)}`;
   } else if (kind === "fuel") {
     const km = parseNum($("q-km").value), l = parseNum($("q-l").value), e = parseNum($("q-e").value);
     if (!(km > 0) || !(l > 0) || !(e > 0)) return err("Kilometerstand, Liter und Betrag angeben.");

@@ -4,7 +4,7 @@
 
 export const TABLE = {
   reading: 'meter_readings', tariff: 'tariffs', installment: 'installments', investment: 'investments',
-  fuel: 'fuel_log', charge: 'charge_log', carlog: 'car_log', event: 'events', payment: 'payments',
+  fuel: 'fuel_log', charge: 'charge_log', carlog: 'car_log', event: 'events', payment: 'payments', meter: 'meters',
 };
 const sameRow = (kind, a, b) => (kind === 'reading' ? a.meter_id === b.meter_id && a.day === b.day : a.id === b.id);
 

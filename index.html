@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.24.0">
-<link rel="stylesheet" href="css/style.css?v=0.24.0">
+<meta name="app-version" content="0.25.0">
+<link rel="stylesheet" href="css/style.css?v=0.25.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -182,12 +182,19 @@
     <div class="panel"><h2 id="mt-month-title">Verbrauch pro Monat</h2><p class="note">Aus den Zählerständen im oben gewählten Zeitraum, Allgemeinstrom nach Anker-Profil, Wärmepumpe nach Geräteprofil verteilt.</p><div class="chart"><canvas id="mt-month"></canvas></div></div>
     <div class="panel"><h2>Monate im Jahresvergleich</h2><div class="form" style="margin-top:8px;max-width:260px"><label class="f">Zählpunkt<select id="mt-yoy-g"><option value="wp">Wärmepumpe</option><option value="as">Allgemeinstrom</option><option value="feed">Einspeisung</option></select></label></div><div class="chart"><canvas id="mt-yoy"></canvas></div></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="wt-panel"><h2>Wasser</h2>
+    <p class="note">Gesamter Wasserverbrauch laut Wasserzähler (kalt und warm zusammen), Stände in m³. Zwischen zwei Ablesungen gleichmäßig verteilt; gepunktet: gleitender Durchschnitt der letzten 30 Tage.</p>
+    <div id="wt-flags"></div><div class="grid g4" id="wt-kpis"></div>
+    <div class="chart" id="wt-chart-wrap"><canvas id="wt-rate"></canvas></div><div id="wt-note"></div>
+    <h2 style="font-size:15px;margin-top:14px">Haushalt und Preise</h2><div class="form" style="margin-top:8px" id="wt-form"></div>
+    <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="wt-create" hidden>Wasserzähler anlegen</button></div></div>
+
   <div class="panel" style="margin-top:16px">
     <h2>Zählerstände</h2>
     <div class="form edit-only" style="margin-top:10px">
       <label class="f">Zähler<select id="rd-m"></select></label>
       <label class="f">Datum<input type="date" id="rd-d"></label>
-      <label class="f">Stand in kWh<input type="number" step="0.1" id="rd-v"></label>
+      <label class="f">Stand (kWh, Wasser in m³)<input type="number" step="any" id="rd-v"></label>
       <button id="rd-add">Stand speichern</button>
     </div>
     <p class="note edit-only">Bei einem Zählertausch den Endstand beim alten und den Startstand beim neuen Zähler am selben Tag eintragen.</p>
@@ -402,8 +409,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.24.0"></script>
-<script src="vendor/chart.umd.js?v=0.24.0"></script>
-<script type="module" src="js/app.js?v=0.24.0"></script>
+<script src="vendor/supabase.js?v=0.25.0"></script>
+<script src="vendor/chart.umd.js?v=0.25.0"></script>
+<script type="module" src="js/app.js?v=0.25.0"></script>
 </body>
 </html>

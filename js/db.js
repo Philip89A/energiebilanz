@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.24.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.24.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.25.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.25.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -157,7 +157,7 @@ export async function loadAll() {
 const KINDS = {
   reading: ['meter_readings', 'user_id,meter_id,day'], tariff: ['tariffs', 'id'], installment: ['installments', 'id'],
   investment: ['investments', 'id'], fuel: ['fuel_log', 'id'], charge: ['charge_log', 'id'], carlog: ['car_log', 'id'],
-  event: ['events', 'id'], payment: ['payments', 'id'],
+  event: ['events', 'id'], payment: ['payments', 'id'], meter: ['meters', 'user_id,id'],
 };
 export async function saveRow(kind, row) {
   const [table, conflict] = KINDS[kind];
