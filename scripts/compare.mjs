@@ -8,6 +8,7 @@
 // car-bar: zusätzliche Reihen Räder, Überführung, THG-Prämie (v0.17; Summen in #car-kpis unverändert).
 // mt-rate folgt dem Zeitraum, Vergleich gestrichelt (v0.21; „Gesamter Zeitraum“ unverändert).
 // lg-fuel mit €/l je Tankvorgang, Ø-Linie (v0.22) und gleitenden Durchschnitten statt Trendgeraden (v0.24); mt-rate mit gleitendem 30-Tage-Durchschnitt (v0.23); zusätzliche Datenreihen.
+// #rd-tbl: Spalte „Stand“ mit Einheit je Zähler (kWh bzw. m³ für Wasser, v0.25).
 // Aufruf:  python3 -m http.server 8000 &   dann   npx -y -p playwright node scripts/compare.mjs
 // Optional: CHROMIUM_PATH=/pfad/zu/chrome, CHROMIUM_ARGS="--flag1 --flag2"
 import { chromium } from 'playwright';

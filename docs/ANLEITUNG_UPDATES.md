@@ -47,3 +47,11 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 2. Pull Request mergen, App neu laden (v0.18.0).
 3. Erstattungen unter **Amortisation → Investition** mit Kategorie „Erstattung/Gutschrift“, positivem Betrag und Datum
    des Geldeingangs eintragen; für §14a und THG das Kürzel „14a“ bzw. „THG“ in den Namen schreiben.
+
+# Update v0.25 (Wasser)
+1. **Zuerst** SQL Editor → New query → Inhalt von `docs/UPDATE_V25.sql` → **Run** (Warnung bestätigen, betrifft nur die
+   Prüfregel). Kontrolle: Ausgabe enthält `'water'`.
+2. Pull Request mergen, App neu laden (v0.25.0).
+3. **Zähler & Wärmepumpe → Wasser:** „Wasserzähler anlegen“, Personen und Preise (Wasser und Abwasser je m³, optional
+   Grundgebühr pro Jahr) eintragen. Danach Stände in m³ wie beim Strom unter „Erfassen → Zählerstand“ eingeben.
+   Ohne Schritt 1 schlägt das Anlegen fehl.

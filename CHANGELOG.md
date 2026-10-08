@@ -345,3 +345,18 @@
 - Rechenkern: `movingAvgN` (reine Funktion) ersetzt `linTrend`. Kein Datenbank-Update nötig.
 - Tests: 81 Unit-Tests (`tests/v24.test.mjs` ersetzt `tests/v22.test.mjs`), `scripts/v22-check.mjs` angepasst
   (18 Prüfungen); alles Übrige unverändert.
+
+## v0.25.0 – Wasser
+- **Schema** (`docs/UPDATE_V25.sql`): Zählergruppe `water` erlaubt (Stände in m³). **Vor dem Merge ausführen.**
+- **Zähler & Wärmepumpe → Wasser:** „Wasserzähler anlegen“, danach Stände in m³ wie beim Strom (Erfassen → Zählerstand
+  oder Zählerseite). Kennzahlen im gewählten Zeitraum mit Vergleich: m³, Liter pro Tag, Liter pro Person und Tag
+  (bundesweit üblich etwa 125 l), Kosten geschätzt aus Wasser- und Abwasserpreis je m³ plus optionaler Grundgebühr.
+  Grafik: Liter pro Tag je Ableseintervall mit gleitendem 30-Tage-Durchschnitt. Hinweis bei auffälligem Verbrauch
+  (Intervall über 150 % des Medians, ab 4 Intervallen): WC-Spülung und Hähne prüfen.
+- Einstellungen (Personen, Preise) in `settings.data.water`; Kosten & Ersparnisse zeigt eine Zeile „Wasser (in den
+  Nebenkosten)“, sobald ein Wasserzähler mit Preisen existiert.
+- Erfassen und Ablesetabelle zeigen die Einheit je Zähler (kWh bzw. m³), Hinweis beim Erfassen in Litern.
+- Fehlerbehebung: Die Zählerauswahl auf der Zählerseite sprang beim Neuzeichnen auf den ersten Zähler zurück; ein Stand
+  konnte so beim falschen Zähler landen.
+- Tests: 85 Unit-Tests (neu `tests/v25.test.mjs`), neu `scripts/v25-check.mjs` 19 Prüfungen; Seitenvergleich: #rd-tbl
+  mit Einheit je Zähler als gewollte Abweichung.

@@ -37,7 +37,7 @@ create table if not exists meters (
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
   id text not null,                 -- as_alt, as_neu, wp, as_feed
   name text not null,
-  grp text not null check (grp in ('as','wp','feed')),
+  grp text not null check (grp in ('as','wp','feed','water')),   -- water ab v0.25 (m³)
   sort int not null default 0,      -- Reihenfolge bei Zählertausch innerhalb einer Gruppe
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
