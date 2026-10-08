@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.25.0';
-import { parseNum } from './queue.js?v=0.25.0';
-import { geocode, fetchDays } from './weather.js?v=0.25.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.25.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.26.0';
+import { parseNum } from './queue.js?v=0.26.0';
+import { geocode, fetchDays } from './weather.js?v=0.26.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.26.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -932,8 +932,8 @@ export function startViews(){
     wireEditing();
     wireWeather();
     wireHpImport();
-    $("hpd-a").addEventListener("change",e=>{ S.ui.hpdA=e.target.value; persist(); renderHpDay(); });
-    $("hpd-b").addEventListener("change",e=>{ S.ui.hpdB=e.target.value; persist(); renderHpDay(); });
+    $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
+    $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);
     if(window.matchMedia) matchMedia("(prefers-color-scheme: dark)").addEventListener?.("change",()=>rerender());
   }
@@ -1577,16 +1577,20 @@ function renderCarPeriodKpis(car, kd, items, PS) {
 }
 
 /* ---------- Tagesprofil Wärmepumpe aus Stundenwerten (v0.19) ---------- */
+// v0.26: Auswahl nur bis zum nächsten App-Start; beim Start der neueste Tag mit Stundenwerten, ohne Vergleich
+const hpdSel = { a: null, b: "" };
 function renderHpDay() {
   const days = C.hpHourDays();
   if (!days.length) { $("hpd-a").innerHTML = ""; $("hpd-b").innerHTML = ""; $("hpd-tbl").innerHTML = "";
     $("hpd-flags").innerHTML = flag("Noch keine Stundenwerte: in der Wärmepumpen-App den Export „letzte 3 Tage“ wählen und unter „Daten“ hochladen.", true);
     chart("hp-hours", { type: "bar", data: { labels: [], datasets: [] } }); return; }
-  const a = days.includes(S.ui.hpdA) ? S.ui.hpdA : days[days.length - 1], b = days.includes(S.ui.hpdB) && S.ui.hpdB !== a ? S.ui.hpdB : "";
+  const a = days.includes(hpdSel.a) ? hpdSel.a : days[days.length - 1], b = days.includes(hpdSel.b) && hpdSel.b !== a ? hpdSel.b : "";
   const opt = d => `<option value="${d}">${dde(d)}</option>`;
   $("hpd-a").innerHTML = [...days].reverse().map(opt).join(""); $("hpd-a").value = a;
   $("hpd-b").innerHTML = `<option value="">kein Vergleich</option>` + [...days].reverse().filter(d => d !== a).map(opt).join(""); $("hpd-b").value = b;
   const A_ = C.hpDayProfile(a), B_ = b ? C.hpDayProfile(b) : null;
+  // v0.26: Referenz Ø der letzten 7 vollständigen Tage vor dem gewählten Tag (ohne Desinfektionstage), gleiche Stunden wie der Tag
+  const hrsA = A_.n < 24 ? new Set(A_.hours.map((r, h) => r ? h : null).filter(h => h != null)) : null, R_ = C.hpDayAverage(a, 7, hrsA);
   $("hpd-flags").innerHTML = [A_, B_].filter(Boolean).filter(x => x.n < 24).map(x => flag(`${dde(x.d)}: nur ${x.n} von 24 Stunden im Export.`, true)).join("");
   const lab = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, "0")} h`), val = (p, f) => p.hours.map(r => r ? (+r[f] || 0) : null);
   const ds = [];
@@ -1596,6 +1600,9 @@ function renderHpDay() {
   const line = (p, f, l, c, dash, hidden) => ds.push({ type: "line", label: `${l} ${dde(p.d).slice(0, 6)}`, data: p.hours.map(r => r && r[f] != null ? +r[f] : null), borderColor: css(c), backgroundColor: css(c), pointRadius: 0, borderWidth: 2, yAxisID: "y1", spanGaps: true, ...(dash ? { borderDash: [5, 4] } : {}), ...(hidden ? { hidden: true } : {}) });
   line(A_, "t_dhw", "Warmwasser °C", "--batt", false); line(A_, "t_out", "Außen °C", "--sun", false); line(A_, "t_flow", "Vorlauf °C", "--muted", false, true);
   if (B_) { line(B_, "t_dhw", "Warmwasser °C", "--batt", true); line(B_, "t_out", "Außen °C", "--sun", true); }
+  if (R_) { const g = css("--muted");
+    ds.push({ type: "line", label: `Ø Strom (${R_.n} Tage)`, data: R_.elH, borderColor: g, backgroundColor: g, pointRadius: 0, borderWidth: 2, borderDash: [6, 4], yAxisID: "y", stack: "avg", spanGaps: true });
+    ds.push({ type: "line", label: `Ø Warmwasser °C (${R_.n} Tage)`, data: R_.tDhwH, borderColor: g, backgroundColor: g, pointRadius: 0, borderWidth: 1.5, borderDash: [2, 3], yAxisID: "y1", spanGaps: true }); }
   chart("hp-hours", { type: "bar", data: { labels: lab, datasets: ds },
     options: { plugins: { ebTotals: false, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} ${c.dataset.yAxisID === "y1" ? "" : "kWh"}` } } },
       scales: { x: { stacked: true, ticks: { maxTicksLimit: 12 } }, y: { stacked: true, title: { display: true, text: "kWh Strom" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
@@ -1608,6 +1615,11 @@ function renderHpDay() {
     ["Höchste Warmwassertemperatur", p => p.peakDhw ? `${nf(p.peakDhw.t, 1)} °C um ${hh(p.peakDhw.h)}${p.disinfection ? " – Desinfektion/Hochtemperatur" : ""}` : "–"],
     ["Laufstunden", p => `${p.runH} h`], ["Außentemperatur", p => p.tOutMin != null ? `${nf(p.tOutMin, 1)} bis ${nf(p.tOutMax, 1)} °C` : "–"],
     ["Stunden im Export", p => `${p.n} von 24`]];
-  $("hpd-tbl").innerHTML = `<thead><tr><th class="l">Auswertung</th><th class="l">${dde(a)}</th>${B_ ? `<th class="l">${dde(b)}</th>` : ""}</tr></thead><tbody>${
-    rows.map(([l, f]) => `<tr><td class="l">${l}</td><td class="l" style="white-space:normal">${f(A_)}</td>${B_ ? `<td class="l" style="white-space:normal">${f(B_)}</td>` : ""}</tr>`).join("")}</tbody>`;
+  const avg = R_ ? [kwh(R_.el, 1), kwh(R_.elHeat, 1), kwh(R_.elDhw, 1), R_.aux >= 0.05 ? kwh(R_.aux, 1) : "nein", kwh(R_.heat, 1), R_.cop != null ? nf(R_.cop, 2) : "–",
+    R_.loads != null ? `Ø ${nf(R_.loads, 1)}` : "–", R_.peak != null ? `Ø ${nf(R_.peak, 1)} °C` : "–", R_.runH != null ? `Ø ${nf(R_.runH, 1)} h` : "–",
+    R_.tOutMin != null ? `${nf(R_.tOutMin, 1)} bis ${nf(R_.tOutMax, 1)} °C` : "–", hrsA ? `gleiche ${A_.n} Stunden` : "24 von 24"] : null;
+  $("hpd-tbl").innerHTML = `<thead><tr><th class="l">Auswertung</th><th class="l">${dde(a)}</th>${B_ ? `<th class="l">${dde(b)}</th>` : ""}${R_ ? `<th class="l">Ø ${R_.n} Tage</th>` : ""}</tr></thead><tbody>${
+    rows.map(([l, f], i) => `<tr><td class="l">${l}</td><td class="l" style="white-space:normal">${f(A_)}</td>${B_ ? `<td class="l" style="white-space:normal">${f(B_)}</td>` : ""}${avg ? `<td class="l" style="white-space:normal;color:var(--muted)">${avg[i]}</td>` : ""}</tr>`).join("")}</tbody>`;
+  $("hpd-ref").innerHTML = R_ ? `<p class="note">Ø (grau gestrichelt): ${R_.n} vollständige Tage vor dem ${dde(a)} (${dde(R_.days[R_.days.length - 1])}–${dde(R_.days[0])})${R_.skipped.length ? `, ohne Desinfektionstage ${R_.skipped.map(dde).join(", ")}` : ""}${hrsA ? `; Tabelle nur für die ${A_.n} Stunden, die der ${dde(a)} enthält` : ""}.</p>`
+    : `<p class="note">Für einen Durchschnitt fehlen vollständige Tage (24 Stunden) vor dem ${dde(a)}.</p>`;
 }

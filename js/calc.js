@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.25.0';
+import { hpSum } from './hp.js?v=0.26.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -804,6 +804,32 @@ export function createCalc(S) {
       disinfection: !!(peak && peak.t_dhw >= 58), aux: s.aux, runH, ...s,
       tOutMin: tOut.length ? Math.min(...tOut) : null, tOutMax: tOut.length ? Math.max(...tOut) : null };
   }
+  // v0.26: Referenz für das Tagesprofil – Ø der letzten n vollständigen Tage (24 Stunden) vor Tag d, ohne
+  // Desinfektionstage (Warmwasser ≥ 65 °C oder Zuheizer ≥ 0,05 kWh). hoursSet: Summen nur über diese Stunden (für einen
+  // unvollständigen Tag d); die Stundenkurven gelten immer für alle 24 Stunden.
+  function hpDayAverage(d, n = 7, hoursSet = null) {
+    const used = [], skipped = [];
+    for (const x of hpHourDays().filter(x => x < d).reverse()) {
+      if (used.length >= n) break;
+      const p = hpDayProfile(x); if (p.n < 24) continue;
+      if ((p.peakDhw && p.peakDhw.t >= 65) || p.aux >= 0.05) { skipped.push(x); continue; }
+      used.push(p);
+    }
+    if (!used.length) return null;
+    const k = used.length, inSet = h => !hoursSet || hoursSet.has(h), H = Array.from({ length: 24 }, (_, h) => h);
+    const mean = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : null);
+    const s = hpSum(used.flatMap(p => p.hours.filter((r, h) => r && inSet(h))));
+    for (const key of ['el', 'elHeat', 'elDhw', 'elCool', 'aux', 'heatHeat', 'heatDhw', 'cool', 'heat']) s[key] /= k;
+    const per = f => mean(used.map(f).filter(v => v != null));
+    return { days: used.map(p => p.d), skipped, ...s, n: k,
+      elH: H.map(h => mean(used.map(p => p.hours[h]).filter(Boolean).map(r => (+r.el_hp || 0) + (+r.el_aux || 0)))),
+      tDhwH: H.map(h => mean(used.map(p => p.hours[h]).filter(r => r && r.t_dhw != null).map(r => +r.t_dhw))),
+      loads: per(p => p.loads.filter(l => inSet(l.from)).length),
+      peak: per(p => { const t = p.hours.filter((r, h) => r && r.t_dhw != null && inSet(h)).map(r => +r.t_dhw); return t.length ? Math.max(...t) : null; }),
+      runH: per(p => p.hours.filter((r, h) => r && inSet(h) && (+r.el_hp || 0) + (+r.el_aux || 0) >= 0.15).length),
+      tOutMin: per(p => { const t = p.hours.filter((r, h) => r && r.t_out != null && inSet(h)).map(r => +r.t_out); return t.length ? Math.min(...t) : null; }),
+      tOutMax: per(p => { const t = p.hours.filter((r, h) => r && r.t_out != null && inSet(h)).map(r => +r.t_out); return t.length ? Math.max(...t) : null; }) };
+  }
   // Letzte 12 Monate mit Daten (Monatswerte der App)
   function hpYear() {
     const m = hpRows('month'); if (!m.length) return null;
@@ -842,7 +868,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, wpDegreeDay, waterStats,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, waterStats,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

@@ -1,6 +1,6 @@
-// v0.19-Test: Tagesprofil Wärmepumpe (Stundenwerte, Vergleichstag, Warmwasser-Ladungen, Desinfektion, unvollständige Tage).
-// Simuliertes Supabase mit data/seed_state.json und synthetischen Stundenwerten (erfunden).
-// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v19-check.mjs
+// v0.26-Test: Durchschnitt als Referenz im Tagesprofil Wärmepumpe (Grafik, Tabellenspalte, gleiche Stunden, ohne
+// Desinfektionstage) und Start auf dem neuesten Tag. Simuliertes Supabase mit data/seed_state.json, erfundene Stundenwerte.
+// Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v26-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
@@ -59,59 +59,39 @@ async function open(page) {
 
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
 const txt = async (p, s) => (await p.textContent(s)).replace(/\s+/g, ' ');
-// Synthetische Stundenwerte: 10.03. voll (Ladung 02–03 Uhr, Desinfektion 65 °C, Heizung tagsüber),
-// 11.03. voll (zwei Ladungen, Zuheizer 1 h), 12.03. nur 5 Stunden
-const H = []; const hr = (d, h, o) => H.push({ grain: 'hour', ts: `${d}T${String(h).padStart(2, '0')}:00`, el_hp: 0, el_heat: 0, el_cool: 0, el_dhw: 0, el_aux: 0, el_aux_heat: 0, el_aux_dhw: 0,
-  heat_heat: 0, heat_dhw: 0, heat_cool: 0, t_out: 5 + h / 4, t_flow: 30, t_dhw: 48, user_id: uid, ...o });
-for (let h = 0; h < 24; h++) {
-  const dhw = h === 2 || h === 3, heat = h >= 8 && h <= 17;
-  hr('2026-03-10', h, { el_dhw: dhw ? 1.2 : 0, heat_dhw: dhw ? 2.8 : 0, el_heat: heat ? 0.5 : 0, heat_heat: heat ? 1.8 : 0, el_hp: (dhw ? 1.2 : 0) + (heat ? 0.5 : 0), t_dhw: h === 3 ? 65 : 50 });
-  const dhw2 = h === 2 || h === 15, aux = h === 15;
-  hr('2026-03-11', h, { el_dhw: dhw2 ? 1 : 0, heat_dhw: dhw2 ? 2.4 : 0, el_aux: aux ? 0.8 : 0, el_aux_dhw: aux ? 0.8 : 0, el_hp: dhw2 ? 1 : 0, t_dhw: h === 15 ? 55 : 49 });
-}
-for (let h = 0; h < 5; h++) hr('2026-03-12', h, {});
-DB.hp_energy = H; DB.weather_daily = [];
+DB.weather_daily = [];
+const day = (d, el, peak = 55, aux = 0, hours = 24) => Array.from({ length: hours }, (_, h) => ({ user_id: uid, grain: 'hour', ts: `${d}T${String(h).padStart(2, '0')}:00`,
+  el_hp: h === 15 ? el : 0.02, el_heat: 0, el_cool: 0, el_dhw: h === 15 ? el : 0, el_aux: h === 16 ? aux : 0, el_aux_heat: 0, el_aux_dhw: h === 16 ? aux : 0,
+  heat_heat: 0, heat_dhw: h === 15 ? el * 3 : 0, heat_cool: 0, t_out: 10 + h / 4, t_flow: 30, t_dhw: h === 16 ? peak : 45 }));
+DB.hp_energy = [...day('2026-03-01', 2), ...day('2026-03-02', 2), ...day('2026-03-03', 2, 68, 0.5), ...day('2026-03-04', 4), ...day('2026-03-05', 2),
+  ...day('2026-03-06', 2), ...day('2026-03-07', 2), ...day('2026-03-08', 2), ...day('2026-03-09', 3, 55, 0, 10)];
 
 let { p, ctx } = await open('meter');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-ok(await p.isVisible('#hpd-a'), 'Tagesprofil sichtbar');
-const opts = await p.$$eval('#hpd-a option', o => o.map(x => x.value));
-ok(JSON.stringify(opts) === JSON.stringify(['2026-03-12', '2026-03-11', '2026-03-10']), 'Tagesauswahl, neuester zuerst: ' + opts);
-ok((await txt(p, '#hpd-flags')).includes('nur 5 von 24 Stunden'), 'Hinweis bei unvollständigem Tag');
-await p.selectOption('#hpd-a', '2026-03-10'); await p.waitForTimeout(300);
-ok(!(await txt(p, '#hpd-flags')).includes('von 24'), 'voller Tag ohne Hinweis');
+ok(await p.inputValue('#hpd-a') === '2026-03-09' && await p.inputValue('#hpd-b') === '', 'Start: neuester Tag, kein Vergleich');
+let ds = await p.evaluate(() => window.__ebCharts['hp-hours'].data.datasets.map(d => ({ l: d.label, data: d.data, y: d.yAxisID, stack: d.stack })));
+const avgEl = ds.find(d => d.l === 'Ø Strom (7 Tage)'), avgT = ds.find(d => d.l === 'Ø Warmwasser °C (7 Tage)');
+ok(avgEl && avgT && avgEl.stack === 'avg' && avgT.y === 'y1', 'Ø-Linien Strom und Warmwasser °C (7 Tage)');
+ok(Math.abs(avgEl.data[15] - 16 / 7) < 1e-9 && avgT.data[16] === 55, `Ø um 15 Uhr ${avgEl.data[15].toFixed(3)} kWh (ohne Desinfektionstag 03.03.)`);
 let t = await txt(p, '#hpd-tbl');
-ok(t.includes('1: 02:00–04:00 (2,4 kWh)'), 'eine Warmwasser-Ladung 02:00 über zwei Stunden: ' + t.match(/Warmwasser-Ladungen[^]*?Höchste/)?.[0]);
-ok(/65,0 °C um 03:00.*Desinfektion/.test(t), 'Desinfektion erkannt');
-ok(t.includes('Strom gesamt') && t.includes('7,4 kWh'), 'Strom gesamt 7,4 kWh');
-ok(t.includes('Laufstunden12 h'), 'Laufstunden 12 h');
-let n = await p.evaluate(() => window.__ebCharts['hp-hours'].data);
-ok(n.labels.length === 24, '24 Stunden in der Grafik');
-ok(!n.datasets.some(d => d.label.includes('11.03')), 'ohne Vergleich nur ein Tag');
-ok(await p.evaluate(() => !window.__ebCharts['hp-hours'].config.plugins.some(x => x.id === 'ebTotals') || window.__ebCharts['hp-hours'].options.plugins.ebTotals === false), 'keine Summen über Stundenbalken');
-// Vergleichstag
-await p.selectOption('#hpd-b', '2026-03-11'); await p.waitForTimeout(300);
-n = await p.evaluate(() => window.__ebCharts['hp-hours'].data.datasets.map(d => ({ l: d.label, s: d.stack, t: d.type, dash: !!d.borderDash })));
-ok(n.some(d => d.l.includes('11.03') && d.s === 'b'), 'Vergleichstag als eigener Stapel');
-ok(n.filter(d => d.t === 'line' && d.l.includes('11.03')).every(d => d.dash), 'Vergleichslinien gestrichelt');
-ok((await p.$$eval('#hpd-tbl thead th', h => h.length)) === 3, 'Tabelle mit zwei Tagesspalten');
+ok(t.includes('Ø 7 Tage') && t.includes('gleiche 10 Stunden'), 'Tabellenspalte Ø mit gleichen Stunden');
+const ref = await txt(p, '#hpd-ref');
+ok(ref.includes('7 vollständige Tage vor dem 09.03.2026') && ref.includes('ohne Desinfektionstage 03.03.2026') && ref.includes('nur für die 10 Stunden'), 'Hinweis: ' + ref);
+// Vergleichstag: Ø bleibt
+await p.selectOption('#hpd-b', '2026-03-04'); await p.waitForTimeout(300);
+ds = await p.evaluate(() => window.__ebCharts['hp-hours'].data.datasets.map(d => d.label));
+ok(ds.some(l => l.startsWith('Ø Strom')) && ds.some(l => l.includes('04.03')), 'Ø auch mit Vergleichstag');
+ok((await p.$$eval('#hpd-tbl thead th', h => h.length)) === 4, 'Tabelle: Tag, Vergleich, Ø');
+// vollständiger Tag: 24 Stunden, Ø über die 7 Tage davor
+await p.selectOption('#hpd-a', '2026-03-08'); await p.waitForTimeout(300);
 t = await txt(p, '#hpd-tbl');
-ok(t.includes('2: 02:00 (1,0 kWh), 15:00 (1,8 kWh)'), 'zwei Ladungen am Vergleichstag, Zuheizer mitgezählt');
-ok(/Zuheizernein0,8 kWh/.test(t), 'Zuheizer am Vergleichstag');
-ok(!(await p.$$eval('#hpd-b option', o => o.map(x => x.value))).includes('2026-03-10'), 'Vergleich bietet den gewählten Tag nicht an');
-// Auswahl bleibt nach Neuladen
+ok(t.includes('24 von 24') && (await txt(p, '#hpd-ref')).includes('6 vollständige Tage'), 'Tag 08.03.: Ø aus 6 Tagen (01.–07. ohne 03.)');
+// erster Tag: kein Ø
+await p.selectOption('#hpd-a', '2026-03-01'); await p.waitForTimeout(300);
+ok((await txt(p, '#hpd-ref')).includes('fehlen vollständige Tage') && (await p.$$eval('#hpd-tbl thead th', h => h.length)) <= 3, 'erster Tag: kein Ø, Hinweis');
+// Neustart: wieder neuester Tag
 await p.reload(); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(300);
-ok(await p.inputValue('#hpd-a') === '2026-03-12' && await p.inputValue('#hpd-b') === '', 'v0.26: nach Neustart neuester Tag, kein Vergleich');
-// unabhängig vom Zeitraum oben
-await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2025'); await p.waitForTimeout(300);
-ok((await p.$$('#hpd-a option')).length === 3, 'Tagesprofil unabhängig vom Zeitraum');
-ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
-await ctx.close();
-
-// ohne Stundenwerte: Hinweis statt Fehler
-DB.hp_energy = DB.hp_energy.filter(r => r.grain !== 'hour');
-({ p, ctx } = await open('meter'));
-ok((await txt(p, '#hpd-flags')).includes('Noch keine Stundenwerte'), 'Hinweis ohne Stundenwerte');
+ok(await p.inputValue('#hpd-a') === '2026-03-09' && await p.inputValue('#hpd-b') === '', 'nach Neustart wieder neuester Tag');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 
