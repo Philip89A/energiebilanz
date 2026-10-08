@@ -55,3 +55,10 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. **Zähler & Wärmepumpe → Wasser:** „Wasserzähler anlegen“, Personen und Preise (Wasser und Abwasser je m³, optional
    Grundgebühr pro Jahr) eintragen. Danach Stände in m³ wie beim Strom unter „Erfassen → Zählerstand“ eingeben.
    Ohne Schritt 1 schlägt das Anlegen fehl.
+
+# Update v0.27 (PV-Prognose)
+1. SQL Editor → New query → Inhalt von `docs/UPDATE_V27.sql` → **Run** (Warnung bestätigen, betrifft nur Regeln und
+   Trigger der neuen Tabelle). Kontrolle: `pv_forecast | true | 4`.
+2. Pull Request mergen, App neu laden (v0.27.0).
+3. **PV → Prognose:** erscheint, sobald unter „Daten → Wetter“ ein Standort gewählt ist. Ohne Schritt 1 funktioniert
+   die Anzeige, nur die Trefferquote fehlt (Prognosen werden dann nicht gespeichert).

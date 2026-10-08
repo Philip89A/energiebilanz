@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.26.0';
-import { parseNum } from './queue.js?v=0.26.0';
-import { geocode, fetchDays } from './weather.js?v=0.26.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.26.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.27.0';
+import { parseNum } from './queue.js?v=0.27.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.27.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.27.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -887,7 +887,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -1457,6 +1457,71 @@ function renderWxPv() {
   const top = r.odd.slice(0, 8);
   $("wx-pv-odd").innerHTML = top.length ? `<h2 style="margin-top:18px;font-size:15px">Auffällige Sonnentage</h2><div class="tbl-wrap"><table><thead><tr><th>Tag</th><th>Einstrahlung</th><th>Erzeugung</th><th>Erwartet</th><th>Fehlt</th><th class="l">Hinweis</th></tr></thead><tbody>${
     top.map(x => `<tr><td>${dde(x.d)}</td><td>${nf(x.rad, 1)} kWh/m²</td><td>${kwh(x.gen, 1)}</td><td>${kwh(x.expected, 1)}</td><td>${kwh(x.lost, 1)}</td><td class="l">${x.full ? "Speicher voll – vermutlich Abregelung" : "Wolkenlücken, Verschattung oder Ausfall prüfen"}</td></tr>`).join("")}</tbody></table></div>` : "";
+}
+
+/* ---------- PV-Prognose (v0.27) ---------- */
+// Vorhersage einmal je Tag und Gerät holen; gespeichert wird die Prognose je Tag (Erstellungstag heute) für die Trefferquote
+const pvFc = { day: null, rows: [], err: "", loading: false };
+async function loadPvForecast() {
+  const c = S.wx || {}, today = iso(new Date());
+  if (c.lat == null || pvFc.loading || pvFc.day === today) return;
+  pvFc.loading = true;
+  try {
+    pvFc.rows = await fetchForecast(c.lat, c.lon, 14); pvFc.day = today; pvFc.err = "";
+    const r = C.pvForecast(pvFc.rows, today);
+    if (r.days.length && !document.body.classList.contains("ro") && store?.savePvForecast && !S.pvForecastError) {
+      const rows = r.days.map(x => ({ day: x.d, made_on: today, kwh: +x.kwh.toFixed(3), lo: x.lo == null ? null : +x.lo.toFixed(3), hi: x.hi == null ? null : +x.hi.toFixed(3), rad_kwh: x.rad, factor: +x.f.toFixed(4) }));
+      try { const res = await store.savePvForecast(rows);
+        if (res !== "readonly") { const keep = (S.pvForecasts || []).filter(s => s.made !== today); S.pvForecasts = [...keep, ...rows.map(x => ({ d: x.day, made: today, kwh: x.kwh, lo: x.lo, hi: x.hi, rad: x.rad_kwh, f: x.factor }))]; refreshCalc(); } }
+      catch (e) { pvFc.err = e.message === "offline" ? "" : "Prognose konnte nicht gespeichert werden: " + e.message; }
+    }
+  } catch (e) { pvFc.err = "Wettervorhersage nicht verfügbar: " + e.message; }
+  pvFc.loading = false;
+  if (current === "p-pv") renderPvForecast();
+}
+function renderPvForecast() {
+  if (S.wx?.lat == null) { $("pvf-flags").innerHTML = noWx(); ["pvf-kpis", "pvf-months", "pvf-acc-note", "pvf-method"].forEach(id => $(id).innerHTML = "");
+    chart("pvf-days", { type: "bar", data: { labels: [], datasets: [] } }); chart("pvf-acc", { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const today = iso(new Date()), ro = document.body.classList.contains("ro");
+  // Gast (v0.14: kein Wetter-Abruf aus dem Gast-Browser): zuletzt gespeicherte Vorhersage des Eigentümers
+  let rows = pvFc.rows;
+  if (ro) { const last = (S.pvForecasts || []).map(x => x.made).sort().pop();
+    rows = last ? (S.pvForecasts || []).filter(x => x.made === last && x.d >= today && x.rad != null).map(x => ({ day: x.d, rad_kwh: x.rad })).sort((a, b) => a.day.localeCompare(b.day)) : []; }
+  else if (pvFc.day !== today) loadPvForecast();
+  const r = C.pvForecast(rows, today), F = r.F, d0 = r.days.find(x => x.d === today), d1 = r.days.find(x => x.d === addDaysIso(today, 1));
+  const w7 = r.days.filter(x => x.d >= today && x.d <= addDaysIso(today, 6)), s7 = w7.reduce((a, x) => a + x.kwh, 0);
+  const fl = [];
+  if (pvFc.err) fl.push(flag(esc(pvFc.err), true));
+  if (pvFc.loading && !r.days.length) fl.push(flag("Wettervorhersage wird geladen …", true));
+  if (ro) fl.push(flag(r.days.length ? "Gastzugang: Vorhersage vom letzten Öffnen durch den Eigentümer." : "Gastzugang: noch keine gespeicherte Vorhersage.", true));
+  if (S.pvForecastError) fl.push(flag("Prognosen werden noch nicht gespeichert: SQL-Update v0.27 ausführen (docs/UPDATE_V27.sql). Die Anzeige funktioniert trotzdem.", true));
+  if (!F.overall) fl.push(flag("Zu wenige Tage mit Anker- und Wetterdaten für einen Ertragsfaktor (mindestens 10).", true));
+  $("pvf-flags").innerHTML = fl.join("");
+  const band = x => x && x.lo != null ? `${nf(x.lo, 1)}–${nf(x.hi, 1)} kWh` : "";
+  const acc = r.acc;
+  $("pvf-kpis").innerHTML = kpi(d0 ? kwh(d0.kwh, 1) : "–", "Heute erwartet", d0 ? `${band(d0)}, ${nf(d0.rad, 1)} kWh/m² vorhergesagt` : "")
+    + kpi(d1 ? kwh(d1.kwh, 1) : "–", "Morgen erwartet", d1 ? `${band(d1)}, ${nf(d1.rad, 1)} kWh/m²` : "")
+    + kpi(w7.length ? kwh(s7) : "–", "Nächste 7 Tage", w7.length ? `Ø ${nf(s7 / w7.length, 1)} kWh pro Tag` : "")
+    + kpi(acc.mape != null ? `± ${pct(acc.mape)}` : "–", "Trefferquote (Ø Abweichung)", acc.n ? `${nf(acc.n)} Tage der letzten 30, Prognose insgesamt ${acc.bias >= 0 ? "+" : "−"}${pct(Math.abs(acc.bias))} gegenüber Messung` : "ab dem ersten Tag mit gespeicherter Prognose und Messung");
+  const lab = r.days.map(x => `${["So","Mo","Di","Mi","Do","Fr","Sa"][new Date(x.d + "T12:00:00Z").getUTCDay()]} ${dde(x.d).slice(0, 6)}`);
+  chart("pvf-days", { type: "bar", data: { labels: lab, datasets: [
+    { label: "Erwartet kWh", data: r.days.map(x => x.kwh), backgroundColor: css("--sun"), order: 1 },
+    { label: "Bandbreite", data: r.days.map(x => x.lo != null ? [x.lo, x.hi] : null), backgroundColor: `color-mix(in srgb, ${css("--sun")} 25%, transparent)`, grouped: false, order: 2 }] },
+    options: { plugins: { tooltip: { callbacks: { label: c => c.datasetIndex === 1 ? `Bandbreite: ${nf(c.raw[0], 1)}–${nf(c.raw[1], 1)} kWh` : `Erwartet: ${nf(c.parsed.y, 1)} kWh (${nf(r.days[c.dataIndex].rad, 1)} kWh/m²)` } } },
+      scales: { y: { beginAtZero: true, title: { display: true, text: "kWh" } } } } });
+  const P = acc.pairs.slice(-30);
+  chart("pvf-acc", { type: "bar", data: { labels: P.map(x => dde(x.d).slice(0, 6)), datasets: [
+    { label: "Gemessen kWh", data: P.map(x => x.act), backgroundColor: css("--sun"), order: 2 },
+    { type: "line", label: "Prognose kWh", data: P.map(x => x.fc), borderColor: css("--panel"), backgroundColor: css("--grid"), pointRadius: 5, pointBorderWidth: 1.5, showLine: false, order: 0 }] },
+    options: { plugins: { ebTotals: false, tooltip: numTip("kWh", 1) }, scales: { y: { beginAtZero: true, title: { display: true, text: "kWh" } } } } });
+  $("pvf-acc-note").innerHTML = P.length ? `<p class="note">Je Tag die letzte Prognose, die vor dem Tag erstellt wurde (meist vom Vortag). Tage unter 0,5 kWh zählen für die Trefferquote nicht. Messung bis ${dde(r.lastData)} (Anker-Daten).</p>`
+    : `<p class="note">Noch keine gespeicherte Prognose mit Messung. Ab morgen füllt sich der Vergleich, sobald die Anker-Daten des Tages im Tool sind.</p>`;
+  $("pvf-months").innerHTML = `<thead><tr><th class="l">Monat</th><th>Erwartet</th><th class="l">davon</th><th>Ertragsfaktor</th><th>typ. Einstrahlung/Tag</th><th>Vorjahr gemessen</th></tr></thead><tbody>${
+    r.months.map(m => `<tr><td class="l">${monthLabel(m.k)}</td><td>${m.kwh != null ? kwh(m.kwh) : "–"}</td><td class="l" style="white-space:normal">${[m.measured ? `${kwh(m.measured)} gemessen` : "", m.fc ? `${kwh(m.fc)} Vorhersage` : "", m.typical ? `${kwh(m.typical)} typisch (${nf(m.nTyp)} Tage)` : ""].filter(Boolean).join(", ") || "–"}</td><td>${m.f != null ? nf(m.f, 2) : "–"}</td><td>${m.typDay != null ? `${nf(m.typDay, 2)} kWh/m²` : "–"}</td><td>${m.prevYear != null ? kwh(m.prevYear) : "–"}</td></tr>`).join("")}</tbody>
+    <tfoot><tr><td class="l">12 Monate</td><td>${kwh(r.months.reduce((a, m) => a + (m.kwh || 0), 0))}</td><td colspan="4"></td></tr></tfoot>`;
+  const f30 = F.f30, mNow = F.month[today.slice(5, 7)];
+  $("pvf-method").innerHTML = `<p class="note">Ertragsfaktor (kWh je kWh/m² Einstrahlung) diesen Monat ${mNow ? `${nf(mNow.f, 2)} aus ${nf(mNow.n)} gemessenen Tagen, Streuung ± ${pct(mNow.cv)}` : "noch ohne eigene Daten"}${f30 ? `; letzte 30 Tage ${nf(f30.f, 2)}` : ""}. Bandbreite = ± Streuung des Monats.
+    Typische Einstrahlung: Ø der vollständigen Monate in deinen Wetterdaten. Nicht berücksichtigt: Abregelung bei vollem Speicher, Schnee, der geplante Ausbau (folgt später).</p>`;
 }
 
 function renderOvWeather() {

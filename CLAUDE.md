@@ -108,6 +108,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.24: lg-fuel mit gleitendem Ø (`movingAvgN`: 5 Tankvorgänge €/l, 3 Volltank-Intervalle l/100 km) statt Trendgeraden. Prüfung: `v22-check`.
    - ✅ v0.25: Wasser (Zählergruppe `water` in m³, schema / `docs/UPDATE_V25.sql`; `waterStats`, `settings.data.water`, `toDb.meter`). Prüfung: `v25-check`.
    - ✅ v0.26: Tagesprofil mit Ø der letzten 7 vollständigen Tage ohne Desinfektionstage (`hpDayAverage`), Start auf dem neuesten Tag. Prüfung: `v26-check`.
+   - ✅ v0.27: PV-Prognose (Tabelle `pv_forecast`, `docs/UPDATE_V27.sql`; `pvFactors`, `pvForecastDays`, `pvAccuracy`, `pvForecast`; `fetchForecast`). Gast ohne Wetter-Abruf. Prüfung: `v27-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
