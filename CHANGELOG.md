@@ -360,3 +360,15 @@
   konnte so beim falschen Zähler landen.
 - Tests: 85 Unit-Tests (neu `tests/v25.test.mjs`), neu `scripts/v25-check.mjs` 19 Prüfungen; Seitenvergleich: #rd-tbl
   mit Einheit je Zähler als gewollte Abweichung.
+
+## v0.26.0 – Durchschnitt im Tagesprofil Wärmepumpe
+- **Referenz:** Ø der letzten 7 vollständigen Tage (24 Stunden) vor dem gewählten Tag, gleitend; Tage mit Desinfektion
+  (Warmwasser ≥ 65 °C oder Zuheizer) und unvollständige Tage zählen nicht. Grau gestrichelt in der Grafik: Ø Strom je
+  Stunde und Ø Warmwassertemperatur – immer, mit oder ohne Vergleichstag.
+- **Tabelle:** zusätzliche Spalte „Ø n Tage“. Bei einem unvollständigen Tag (z. B. heute bis 10 Uhr) rechnet sie nur die
+  gleichen Stunden, damit kein halber Tag gegen ganze Tage steht. Hinweis darunter nennt die Tage und Ausschlüsse.
+- **Start:** Beim Öffnen der App steht „Tag“ immer auf dem neuesten Tag mit Stundenwerten, der Vergleich ist leer. Die
+  Auswahl gilt nur bis zum nächsten Start (bisher gespeichert).
+- Rechenkern: `hpDayAverage` in createCalc. Kein Datenbank-Update nötig.
+- Tests: 86 Unit-Tests (neu `tests/v26.test.mjs`), neu `scripts/v26-check.mjs` 12 Prüfungen, `v19-check` an den neuen
+  Start angepasst; alles Übrige unverändert.
