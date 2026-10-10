@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.27.0';
-import { parseNum } from './queue.js?v=0.27.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.27.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.27.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.28.0';
+import { parseNum } from './queue.js?v=0.28.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.28.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.28.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1502,20 +1502,25 @@ function renderPvForecast() {
   $("pvf-kpis").innerHTML = kpi(d0 ? kwh(d0.kwh, 1) : "–", "Heute erwartet", d0 ? `${band(d0)}, ${nf(d0.rad, 1)} kWh/m² vorhergesagt` : "")
     + kpi(d1 ? kwh(d1.kwh, 1) : "–", "Morgen erwartet", d1 ? `${band(d1)}, ${nf(d1.rad, 1)} kWh/m²` : "")
     + kpi(w7.length ? kwh(s7) : "–", "Nächste 7 Tage", w7.length ? `Ø ${nf(s7 / w7.length, 1)} kWh pro Tag` : "")
-    + kpi(acc.mape != null ? `± ${pct(acc.mape)}` : "–", "Trefferquote (Ø Abweichung)", acc.n ? `${nf(acc.n)} Tage der letzten 30, Prognose insgesamt ${acc.bias >= 0 ? "+" : "−"}${pct(Math.abs(acc.bias))} gegenüber Messung` : "ab dem ersten Tag mit gespeicherter Prognose und Messung");
+    + kpi(acc.mape != null ? `± ${pct(acc.mape)}` : r.back.mape != null ? `± ${pct(r.back.mape)}` : "–", acc.mape != null ? "Trefferquote Prognose (Ø Abweichung)" : "Trefferquote Modell (Ø Abweichung)",
+      (acc.n ? `Prognose: ${nf(acc.n)} Tage, insgesamt ${acc.bias >= 0 ? "+" : "−"}${pct(Math.abs(acc.bias))} ggü. Messung` : "Prognose: noch kein Tag mit Messung")
+      + (r.back.mape != null ? `; Modell mit gemessenem Wetter ± ${pct(r.back.mape)} (${nf(r.back.n)} Tage)` : ""));
   const lab = r.days.map(x => `${["So","Mo","Di","Mi","Do","Fr","Sa"][new Date(x.d + "T12:00:00Z").getUTCDay()]} ${dde(x.d).slice(0, 6)}`);
   chart("pvf-days", { type: "bar", data: { labels: lab, datasets: [
     { label: "Erwartet kWh", data: r.days.map(x => x.kwh), backgroundColor: css("--sun"), order: 1 },
     { label: "Bandbreite", data: r.days.map(x => x.lo != null ? [x.lo, x.hi] : null), backgroundColor: `color-mix(in srgb, ${css("--sun")} 25%, transparent)`, grouped: false, order: 2 }] },
     options: { plugins: { tooltip: { callbacks: { label: c => c.datasetIndex === 1 ? `Bandbreite: ${nf(c.raw[0], 1)}–${nf(c.raw[1], 1)} kWh` : `Erwartet: ${nf(c.parsed.y, 1)} kWh (${nf(r.days[c.dataIndex].rad, 1)} kWh/m²)` } } },
       scales: { y: { beginAtZero: true, title: { display: true, text: "kWh" } } } } });
-  const P = acc.pairs.slice(-30);
-  chart("pvf-acc", { type: "bar", data: { labels: P.map(x => dde(x.d).slice(0, 6)), datasets: [
-    { label: "Gemessen kWh", data: P.map(x => x.act), backgroundColor: css("--sun"), order: 2 },
-    { type: "line", label: "Prognose kWh", data: P.map(x => x.fc), borderColor: css("--panel"), backgroundColor: css("--grid"), pointRadius: 5, pointBorderWidth: 1.5, showLine: false, order: 0 }] },
+  // v0.28: Rückblick 30 Tage – Messung (Balken), Modell mit gemessenem Wetter (gestrichelt), gespeicherte Prognose (Punkte)
+  const B = r.back.pairs, fcBy = Object.fromEntries(acc.pairs.map(x => [x.d, x.fc]));
+  chart("pvf-acc", { type: "bar", data: { labels: B.map(x => dde(x.d).slice(0, 6)), datasets: [
+    { label: "Gemessen kWh", data: B.map(x => x.act), backgroundColor: css("--sun"), order: 2 },
+    { type: "line", label: "Modell (gemessenes Wetter)", data: B.map(x => x.model), borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0, order: 1 },
+    { type: "line", label: "Prognose (Vorhersage)", data: B.map(x => fcBy[x.d] ?? null), borderColor: css("--panel"), backgroundColor: css("--grid"), pointRadius: 5, pointBorderWidth: 1.5, showLine: false, order: 0 }] },
     options: { plugins: { ebTotals: false, tooltip: numTip("kWh", 1) }, scales: { y: { beginAtZero: true, title: { display: true, text: "kWh" } } } } });
-  $("pvf-acc-note").innerHTML = P.length ? `<p class="note">Je Tag die letzte Prognose, die vor dem Tag erstellt wurde (meist vom Vortag). Tage unter 0,5 kWh zählen für die Trefferquote nicht. Messung bis ${dde(r.lastData)} (Anker-Daten).</p>`
-    : `<p class="note">Noch keine gespeicherte Prognose mit Messung. Ab morgen füllt sich der Vergleich, sobald die Anker-Daten des Tages im Tool sind.</p>`;
+  const op = r.open;
+  $("pvf-acc-note").innerHTML = `<p class="note">Gestrichelt: was das Modell mit dem <b>gemessenen</b> Wetter des Tages erwartet hätte (Faktor nur aus den Tagen davor) – zeigt, wie gut der Ertragsfaktor die Anlage trifft. Punkte: echte Prognosen, die vor dem Tag mit der Wettervorhersage erstellt wurden; der Abstand zwischen beiden ist der Fehler der Wettervorhersage. Tage unter 0,5 kWh zählen nicht. Messung bis ${dde(r.lastData)} (Anker-Daten).</p>`
+    + (!acc.n && op ? `<p class="note">Erster echter Vergleich: ${dde(op.d)} (Prognose vom ${dde(op.made)}: ${kwh(op.kwh, 1)}), sobald die Anker-Daten dieses Tages importiert sind.</p>` : "");
   $("pvf-months").innerHTML = `<thead><tr><th class="l">Monat</th><th>Erwartet</th><th class="l">davon</th><th>Ertragsfaktor</th><th>typ. Einstrahlung/Tag</th><th>Vorjahr gemessen</th></tr></thead><tbody>${
     r.months.map(m => `<tr><td class="l">${monthLabel(m.k)}</td><td>${m.kwh != null ? kwh(m.kwh) : "–"}</td><td class="l" style="white-space:normal">${[m.measured ? `${kwh(m.measured)} gemessen` : "", m.fc ? `${kwh(m.fc)} Vorhersage` : "", m.typical ? `${kwh(m.typical)} typisch (${nf(m.nTyp)} Tage)` : ""].filter(Boolean).join(", ") || "–"}</td><td>${m.f != null ? nf(m.f, 2) : "–"}</td><td>${m.typDay != null ? `${nf(m.typDay, 2)} kWh/m²` : "–"}</td><td>${m.prevYear != null ? kwh(m.prevYear) : "–"}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td class="l">12 Monate</td><td>${kwh(r.months.reduce((a, m) => a + (m.kwh || 0), 0))}</td><td colspan="4"></td></tr></tfoot>`;

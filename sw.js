@@ -1,7 +1,7 @@
 // Service Worker: App offline verfügbar machen. Supabase-Anfragen laufen nie über den Cache
 // (Daten hält die App selbst im localStorage vor, siehe js/queue.js).
 // VERSION setzt scripts/set-version.mjs; neue Version = neuer Cache, alter wird beim Aktivieren gelöscht.
-const VERSION = '0.27.0';
+const VERSION = '0.28.0';
 const CACHE = 'energiebilanz-' + VERSION;
 const V = '?v=' + VERSION;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',

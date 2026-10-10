@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.27.0';
+import { hpSum } from './hp.js?v=0.28.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -737,7 +737,11 @@ export function createCalc(S) {
       k = nextMonth(k);
     }
     const actual = {}; A.dates.forEach((d, i) => { if (A.c.gen[i] != null) actual[d] = +A.c.gen[i]; });
-    return { F, days, months, acc: pvAccuracy(S.pvForecasts || [], actual, addDays(today, -30), addDays(today, -1)), lastData: A.dates[A.n - 1] };
+    // v0.28: Rückblick – Modell mit gemessenem Wetter, je Tag nur mit Daten vor diesem Tag (keine Vorschau auf die Messung)
+    const back = pvBacktest(hist, addDays(today, -30), addDays(today, -1));
+    // erster offener echter Vergleich: Prognose vor dem Tag erstellt, Messung fehlt noch
+    const open = (S.pvForecasts || []).filter(s => s.made < s.d && s.d < today && actual[s.d] == null).sort((a, b) => a.d.localeCompare(b.d) || b.made.localeCompare(a.made))[0] || null;
+    return { F, days, months, acc: pvAccuracy(S.pvForecasts || [], actual, addDays(today, -30), addDays(today, -1)), back, open, lastData: A.dates[A.n - 1] };
   }
   // v0.23: Wärmepumpe je Gradtag (from..to einschließlich). Grundlast (Warmwasser, Standby) laut Wetter-Modell der
   // passenden Seite des Gerätetauschs abgezogen; unter 20 Gradtagen (Sommer) kein Wert.
@@ -1120,4 +1124,13 @@ export function pvAccuracy(stored, actual, from, to) {
   const ok = pairs.filter(p => p.act >= 0.5);
   const A = ok.reduce((a, p) => a + p.act, 0), Fc = ok.reduce((a, p) => a + p.fc, 0);
   return { pairs, n: ok.length, mape: ok.length ? ok.reduce((a, p) => a + Math.abs(p.fc - p.act) / p.act, 0) / ok.length : null, bias: A > 0 ? Fc / A - 1 : null };
+}
+
+// v0.28: Rückblick für from..to: je Tag f aus pvFactors(hist, Tag) × gemessene Einstrahlung gegen die Messung.
+// Fehlermaße wie pvAccuracy (Tage ab 0,5 kWh).
+export function pvBacktest(hist, from, to) {
+  const pairs = hist.filter(x => x.d >= from && x.d <= to && x.rad > 0.3 && x.gen != null).map(x => {
+    const f = pvFactors(hist, x.d).factorFor(x.d); return f == null ? null : { d: x.d, act: x.gen, model: f * x.rad, rad: x.rad }; }).filter(Boolean);
+  const ok = pairs.filter(p => p.act >= 0.5), A = ok.reduce((a, p) => a + p.act, 0), M = ok.reduce((a, p) => a + p.model, 0);
+  return { pairs, n: ok.length, mape: ok.length ? ok.reduce((a, p) => a + Math.abs(p.model - p.act) / p.act, 0) / ok.length : null, bias: A > 0 ? M / A - 1 : null };
 }

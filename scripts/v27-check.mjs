@@ -83,9 +83,11 @@ let k = await txt(p, '#pvf-kpis');
 ok(/Heute erwartet/.test(k) && /Nächste 7 Tage/.test(k) && /[\d,]+ kWh/.test(k), 'Kennzahlen heute/morgen/7 Tage');
 const saved = DB.pv_forecast.filter(r => r.made_on === today);
 ok(saved.length === 14 && saved[0].day === today && saved.every(r => r.kwh > 0 && r.factor > 0), `Prognose gespeichert (${saved.length} Zeilen, Erstellungstag heute)`);
-ok(/± [\d,]+ %/.test(k) && k.includes('5 Tage der letzten 30'), 'Trefferquote angezeigt: ' + k.slice(-120));
-const acc = await p.evaluate(() => window.__ebCharts['pvf-acc'].data.datasets.map(d => d.data.length));
-ok(acc[0] === 5 && acc[1] === 5, 'Prognose gegen Messung: 5 Tage');
+ok(/± [\d,]+ %/.test(k) && k.includes('Prognose: 5 Tage'), 'Trefferquote angezeigt: ' + k.slice(-120));
+const acc = await p.evaluate(() => window.__ebCharts['pvf-acc'].data.datasets.map(d => ({ l: d.label, n: d.data.filter(v => v != null).length })));
+ok(acc[0].n >= 10 && acc[1].l === 'Modell (gemessenes Wetter)' && acc[1].n === acc[0].n, `v0.28: Rückblick mit Modell (${acc[0].n} Tage)`);
+ok(acc[2].l === 'Prognose (Vorhersage)' && acc[2].n === 5, 'v0.28: gespeicherte Prognosen als Punkte (5)');
+ok(k.includes('Modell mit gemessenem Wetter ±'), 'v0.28: Trefferquote Modell genannt');
 const nMon = await p.$$eval('#pvf-months tbody tr', r => r.length);
 ok(nMon === 12, 'Ausblick 12 Monate');
 const t = await txt(p, '#pvf-months');
@@ -105,6 +107,15 @@ ok(meteoCalls.length === nCalls, 'Gast: kein Abruf bei Open-Meteo');
 ok((await p.evaluate(() => window.__ebCharts['pvf-days'].data.labels.length)) === 14 && DB.pv_forecast.length === nRows, 'Gast: gespeicherte Prognose sichtbar, nichts gespeichert');
 ok((await txt(p, '#pvf-flags')).includes('Vorhersage vom letzten Öffnen'), 'Gast: Hinweis');
 await ctx.close(); DB.shares = [];
+// v0.28: noch kein echter Vergleich → Rückblick trotzdem da, Hinweis auf den ersten offenen Tag
+DB.pv_forecast = [{ user_id: uid, day: addD(today, -1), made_on: addD(today, -2), kwh: 3.9, lo: 2, hi: 5, rad_kwh: 2.9, factor: 1.3 }];
+({ p, ctx } = await open('pv')); await p.waitForTimeout(800);
+const n2 = await txt(p, '#pvf-acc-note');
+ok(n2.includes(`Erster echter Vergleich: ${addD(today, -1).split('-').reverse().join('.')}`) && n2.includes('3,9 kWh'), 'v0.28: Hinweis erster echter Vergleich: ' + n2.slice(-110));
+ok((await p.evaluate(() => window.__ebCharts['pvf-acc'].data.datasets[1].data.length)) >= 10, 'v0.28: Rückblick ohne gespeicherte Prognosen');
+ok((await txt(p, '#pvf-kpis')).includes('Trefferquote Modell'), 'v0.28: Kennzahl zeigt Modell, solange keine Prognose verglichen ist');
+await ctx.close();
+
 // ohne Tabelle (SQL-Update fehlt): Anzeige ja, Hinweis, kein Fehler
 pvMissing = true;
 ({ p, ctx } = await open('pv')); await p.waitForTimeout(800);
