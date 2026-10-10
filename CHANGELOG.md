@@ -387,3 +387,13 @@
   Anzeige, nur ohne Speichern (Hinweis).
 - Noch nicht enthalten (folgt mit dem Ausbau): Abregelung bei vollem Speicher, Anlagenänderung.
 - Tests: 89 Unit-Tests (neu `tests/v27.test.mjs`), neu `scripts/v27-check.mjs` 18 Prüfungen; alles Übrige unverändert.
+
+## v0.28.0 – Prognose: Rückblick mit gemessenem Wetter
+- „Prognose gegen Messung“ zeigt sofort die letzten 30 Tage: Messung (Balken), **Modell mit dem gemessenen Wetter**
+  (gestrichelt; Ertragsfaktor je Tag nur aus den Tagen davor, also ohne Vorschau auf die Messung) und die gespeicherten
+  **echten Prognosen** als Punkte, sobald es Tage mit Messung gibt. Abstand Modell – Prognose = Fehler der
+  Wettervorhersage.
+- Kennzahl Trefferquote: Prognose, solange noch keine verglichen ist das Modell; beide im Untertitel.
+- Hinweis „Erster echter Vergleich: Tag (Prognose vom …: x kWh), sobald die Anker-Daten dieses Tages importiert sind“.
+- Rechenkern: `pvBacktest` (reine Funktion). Kein Datenbank-Update nötig.
+- Tests: 90 Unit-Tests, `scripts/v27-check.mjs` um Rückblick und Hinweis erweitert (23 Prüfungen); alles Übrige unverändert.

@@ -45,3 +45,15 @@ test('v0.27: Trefferquote – jüngste Prognose vor dem Tag, kleine Tage ausgeno
   assert.ok(Math.abs(a.bias - (9 / 9 - 1)) < 1e-9);
   assert.equal(pvAccuracy([], actual, '2025-07-01', '2025-07-31').mape, null);
 });
+
+import { pvBacktest } from '../js/calc.js';
+test('v0.28: Rückblick – Faktor je Tag nur aus Tagen davor, Fehlermaße', () => {
+  const h = [];
+  for (let i = 0; i < 40; i++) h.push({ d: addDays('2025-07-01', i), rad: 4, gen: i < 30 ? 6 : 8 });   // ab 31.07. besser (f 2,0)
+  const b = pvBacktest(h, '2025-07-31', '2025-08-09');
+  assert.equal(b.pairs.length, 10);
+  assert.ok(Math.abs(b.pairs[0].model - 6) < 1e-9 && b.pairs[0].act === 8);            // am 31.07. kennt das Modell nur f 1,5
+  assert.ok(b.pairs[9].model > b.pairs[0].model && b.pairs[9].model < 8);              // passt sich an, ohne die Messung des Tages zu kennen
+  assert.ok(b.mape > 0 && b.bias < 0);
+  assert.equal(pvBacktest(h, '2025-07-01', '2025-07-05').pairs.length, 0);           // zu wenige Tage davor: kein Faktor
+});
