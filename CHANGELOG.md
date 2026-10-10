@@ -396,4 +396,4 @@
 - Kennzahl Trefferquote: Prognose, solange noch keine verglichen ist das Modell; beide im Untertitel.
 - Hinweis „Erster echter Vergleich: Tag (Prognose vom …: x kWh), sobald die Anker-Daten dieses Tages importiert sind“.
 - Rechenkern: `pvBacktest` (reine Funktion). Kein Datenbank-Update nötig.
-- Tests: 90 Unit-Tests, `scripts/v27-check.mjs` um Rückblick und Hinweis erweitert (24 Prüfungen); alles Übrige unverändert.
+- Tests: 90 Unit-Tests, `scripts/v27-check.mjs` um Rückblick und Hinweis erweitert (23 Prüfungen); alles Übrige unverändert.
