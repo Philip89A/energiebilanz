@@ -397,3 +397,12 @@
 - Hinweis „Erster echter Vergleich: Tag (Prognose vom …: x kWh), sobald die Anker-Daten dieses Tages importiert sind“.
 - Rechenkern: `pvBacktest` (reine Funktion). Kein Datenbank-Update nötig.
 - Tests: 90 Unit-Tests, `scripts/v27-check.mjs` um Rückblick und Hinweis erweitert (23 Prüfungen); alles Übrige unverändert.
+
+## v0.29.0 – Schutz vor unausgefüllten Abschlägen und Tarifen
+- Abschläge mit 0 € **ohne Notiz** zählen nicht (z. B. frisch mit „Abschlag hinzufügen“ angelegt). Die Zeile ist gelb
+  markiert, ein Hinweis nennt sie. Ist 0 € gewollt (keine Zahlung mehr), genügt eine Notiz.
+- Tarife ohne Arbeitspreis zählen nicht und sind markiert; „Tarif hinzufügen“ legt den neuen Tarif ohne Platzhalterpreise
+  (bisher 30 ct/kWh, 150 €/Jahr) an, damit nichts unbemerkt mit erfundenen Preisen rechnet.
+- Anlass: Eine leere Abschlagszeile vom 11.10. ließ den Abschlag-Check mit 0 € rechnen („reicht nicht“).
+- Rechenkern: `abschlagEmpty`, `tariffEmpty`. Kein Datenbank-Update nötig.
+- Tests: 92 Unit-Tests (neu `tests/v29.test.mjs`), neu `scripts/v29-check.mjs` 9 Prüfungen; alles Übrige unverändert.

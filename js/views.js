@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.28.0';
-import { parseNum } from './queue.js?v=0.28.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.28.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.28.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.29.0';
+import { parseNum } from './queue.js?v=0.29.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.29.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.29.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -603,10 +603,12 @@ function renderAbschlag(){
     else if(r.recNow!=null && over<-5) fl+=flag(`${x.l}: Der Abschlag reicht voraussichtlich nicht. Passend wären etwa ${eur(Math.ceil(r.recNow))} pro Monat.`);
     else if(r.recNow!=null) fl+=flag(`${x.l}: Der Abschlag passt, Abweichung unter 5 € im Monat.`,true); });
   fl+=flag("Saisonalität: Der restliche Verbrauch kommt aus denselben Kalendertagen des Vorjahres. Beim Allgemeinstrom wird der Zählerverbrauch dafür nach dem täglichen Anker-Netzbezug verteilt (weniger PV im Winter = mehr Netzbezug), vor dem Smart Meter gleichmäßig. Laden des Tavascan wird ab dem geplanten Übergabedatum (Auto-Vergleich) zum Netzstrom addiert. Weitere Annahmen: 12 Abschläge je Abrechnungsjahr, der erste einen Monat nach Lieferbeginn. Boni fließen meist mit der Jahresrechnung oder separat und sind deshalb getrennt ausgewiesen.",true);
+  const abE=S.abschlaege.filter(abschlagEmpty);
+  if(abE.length) fl=flag(`${abE.length===1?"Ein Abschlag hat":`${abE.length} Abschläge haben`} 0 € und keine Notiz (${abE.map(a=>`${GRP_LABEL[a.group]||a.group} ab ${dde(a.from)}`).join(", ")}): wird nicht gerechnet. Betrag eintragen oder Zeile löschen; ist 0 € gewollt (keine Zahlung mehr), eine Notiz dazuschreiben.`,true)+fl;
   $("ab-flags").innerHTML=fl;
   const ab=[...S.abschlaege].sort((a,b)=>a.group.localeCompare(b.group)||a.from.localeCompare(b.from));
   $("ab-edit").innerHTML = `<thead><tr><th class="l">Zählpunkt</th><th class="l">Gültig ab</th><th>€ pro Monat</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
-    ab.map(a=>`<tr><td class="l"><select data-ab="${a.id}" data-k="group"><option value="as" ${a.group==="as"?"selected":""}>Allgemeinstrom</option><option value="wp" ${a.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td class="l"><input type="date" value="${a.from}" data-ab="${a.id}" data-k="from" style="min-width:140px"></td><td><input type="number" step="1" value="${a.amount}" data-ab="${a.id}" data-k="amount" style="width:90px"></td><td class="l"><input type="text" value="${esc(a.note||"")}" data-ab="${a.id}" data-k="note" style="min-width:240px"></td><td><button class="x" data-del-ab="${a.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
+    ab.map(a=>`<tr${abschlagEmpty(a)?' style="background:color-mix(in srgb, var(--sun) 18%, transparent)" title="Betrag fehlt – Zeile ausfüllen oder löschen"':""}><td class="l"><select data-ab="${a.id}" data-k="group"><option value="as" ${a.group==="as"?"selected":""}>Allgemeinstrom</option><option value="wp" ${a.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td class="l"><input type="date" value="${a.from}" data-ab="${a.id}" data-k="from" style="min-width:140px"></td><td><input type="number" step="1" value="${a.amount}" data-ab="${a.id}" data-k="amount" style="width:90px"></td><td class="l"><input type="text" value="${esc(a.note||"")}" data-ab="${a.id}" data-k="note" style="min-width:240px"></td><td><button class="x" data-del-ab="${a.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
 }
 
 /* ---------- Kosten ---------- */
@@ -645,8 +647,10 @@ function renderCosts(){
   $("ct-mtitle").textContent = g==="day" ? "Tägliche Kosten" : "Monatliche Kosten";
   renderAbschlag(); renderPayments(); renderBilling(); renderBoni();
   const f=(t,k,type="text",st="")=>`<input type="${type}" ${st} value="${esc(t[k])}" data-tf="${t.id}" data-k="${k}">`;
+  const tfE=S.tariffs.filter(tariffEmpty);
+  $("tf-flags").innerHTML = tfE.length ? flag(`${tfE.length===1?"Ein Tarif hat":`${tfE.length} Tarife haben`} keinen Arbeitspreis (${tfE.map(t=>esc(t.name||"ohne Namen")).join(", ")}): wird nicht gerechnet, bis der Preis eingetragen ist.`,true) : "";
   $("tf-tbl").innerHTML = `<thead><tr><th>Name</th><th class="l">Zählpunkt</th><th class="l">Von</th><th class="l">Bis</th><th>ct/kWh brutto</th><th>Grundpreis €/Jahr</th><th>Boni €</th><th class="l">Hinweis</th><th></th></tr></thead><tbody>${
-    S.tariffs.map(t=>`<tr><td>${f(t,"name")}</td><td class="l"><select data-tf="${t.id}" data-k="group"><option value="as" ${t.group==="as"?"selected":""}>Allgemein</option><option value="wp" ${t.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td>${f(t,"from","date")}</td><td>${f(t,"to","date")}</td><td>${f(t,"ap","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"gp","number",'step="0.01" style="width:90px"')}</td><td>${f(t,"boni","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"est")}</td><td><button class="x" data-del-tf="${t.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
+    S.tariffs.map(t=>`<tr${tariffEmpty(t)?' style="background:color-mix(in srgb, var(--sun) 18%, transparent)" title="Arbeitspreis fehlt – ausfüllen oder löschen"':""}><td>${f(t,"name")}</td><td class="l"><select data-tf="${t.id}" data-k="group"><option value="as" ${t.group==="as"?"selected":""}>Allgemein</option><option value="wp" ${t.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td>${f(t,"from","date")}</td><td>${f(t,"to","date")}</td><td>${f(t,"ap","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"gp","number",'step="0.01" style="width:90px"')}</td><td>${f(t,"boni","number",'step="0.01" style="width:80px"')}</td><td>${f(t,"est")}</td><td><button class="x" data-del-tf="${t.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
 }
 
 /* ---------- Kosten & Ersparnisse ---------- */
@@ -1029,7 +1033,7 @@ function wireEditing(){
     for(const x of sug){ (S.payments=S.payments||[]).push(x); write("payment",x); } rerender(); });
   $("tr-withev").addEventListener("change",e=>{ S.tarif=S.tarif||{}; S.tarif.withEv=e.target.checked; persist(); rerender(); });
   $("tr-add").addEventListener("click",()=>{ S.tarif=S.tarif||{}; (S.tarif.offers=S.tarif.offers||[]).push({name:"Neues Angebot",grp:"as",ap:30,gp:150,boni:0}); persist(); rerender(); });
-  $("tf-add").addEventListener("click",()=>{ const x={group:"as",name:"Neuer Tarif",from:iso(new Date()),to:"",ap:30,gp:150,boni:0,boniNote:"",est:""}; S.tariffs.push(x); write("tariff",x); rerender(); });
+  $("tf-add").addEventListener("click",()=>{ const x={group:"as",name:"Neuer Tarif",from:iso(new Date()),to:"",ap:0,gp:0,boni:0,boniNote:"",est:""};   /* v0.29: leer statt Platzhalterpreise */ S.tariffs.push(x); write("tariff",x); rerender(); });
 }
 
 // Für den Seitenvergleich im Test (tests/…/compare): Diagrammdaten lesbar machen
