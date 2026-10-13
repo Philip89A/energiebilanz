@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.28.0">
-<link rel="stylesheet" href="css/style.css?v=0.28.0">
+<meta name="app-version" content="0.29.0">
+<link rel="stylesheet" href="css/style.css?v=0.29.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -250,7 +250,7 @@
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kosten je Tarifperiode</h2><div class="tbl-wrap"><table id="ct-tbl"></table></div><div id="ct-flags"></div></div>
   <div class="panel" style="margin-top:16px"><h2 id="ct-mtitle">Monatliche Kosten</h2><p class="note">Je Balken: Verbrauch laut Zähler × Arbeitspreis des an dem Tag gültigen Tarifs plus Grundpreis ÷ 365 je Tag, getrennt nach Allgemeinstrom und Wärmepumpe, ohne Boni. Tage ohne hinterlegten Tarif fehlen. Details im Tooltip.</p><div class="chart"><canvas id="ct-month"></canvas></div></div>
-  <div class="panel" style="margin-top:16px"><h2>Tarife</h2><p class="note">Geschätzte Daten sind in der Spalte „Hinweis“ markiert. Bitte korrigieren, sobald bekannt.</p><div class="tbl-wrap"><table id="tf-tbl"></table></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="tf-add">Tarif hinzufügen</button></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Tarife</h2><p class="note">Geschätzte Daten sind in der Spalte „Hinweis“ markiert. Bitte korrigieren, sobald bekannt.</p><div class="tbl-wrap"><table id="tf-tbl"></table></div><div id="tf-flags"></div><div class="row edit-only" style="margin-top:10px"><button class="ghost" id="tf-add">Tarif hinzufügen</button></div></div>
 </section>
 
 <section id="p-tarif" data-title="Tarifrechner" hidden>
@@ -415,8 +415,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.28.0"></script>
-<script src="vendor/chart.umd.js?v=0.28.0"></script>
-<script type="module" src="js/app.js?v=0.28.0"></script>
+<script src="vendor/supabase.js?v=0.29.0"></script>
+<script src="vendor/chart.umd.js?v=0.29.0"></script>
+<script type="module" src="js/app.js?v=0.29.0"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.28.0';
+import { hpSum } from './hp.js?v=0.29.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -93,6 +93,10 @@ export const toDb = {
 };
 
 /* ---------- Rechenkern ---------- */
+// v0.29: unausgefüllte Einträge erkennen (Anzeige markiert sie, Rechnung ignoriert sie)
+export const abschlagEmpty = a => !(+a.amount > 0) && !(a.note || '').trim();
+export const tariffEmpty = t => !(+t.ap > 0);
+
 export function createCalc(S) {
   // Anker-Daten: entweder {start, n, c} (seed_state.json) oder {dates, c} (stateFromDb)
   const src = S.anker;
@@ -189,8 +193,9 @@ export function createCalc(S) {
   }
 
   /* Tarife und Kosten */
-  function tariffAt(group, d) { return S.tariffs.find(t => t.group === group && t.from <= d && (!t.to || d <= t.to)); }
-  function currentTariff(group) { const ts = S.tariffs.filter(t => t.group === group).sort((a, b) => b.from.localeCompare(a.from)); return ts[0]; }
+  // v0.29: Tarife ohne Arbeitspreis (0 ct/kWh, unausgefüllt) zählen nicht
+  function tariffAt(group, d) { return S.tariffs.find(t => t.group === group && !tariffEmpty(t) && t.from <= d && (!t.to || d <= t.to)); }
+  function currentTariff(group) { const ts = S.tariffs.filter(t => t.group === group && !tariffEmpty(t)).sort((a, b) => b.from.localeCompare(a.from)); return ts[0]; }
   function costs(group, from, to) {
     const g = groupSeries(group), per = {}, monthly = {};
     let unpricedKwh = 0, unpricedDays = 0;
@@ -386,7 +391,8 @@ export function createCalc(S) {
   function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
   /* Abschlag-Check je laufendem Vertrag */
-  function abschlagAt(g, d) { const l = S.abschlaege.filter(a => a.group === g && a.from && a.from <= d).sort((a, b) => b.from.localeCompare(a.from))[0]; return l ? +l.amount : 0; }
+  // v0.29: Zeilen mit 0 € ohne Notiz sind unausgefüllt (z. B. frisch mit „Abschlag hinzufügen“ angelegt) und zählen nicht
+  function abschlagAt(g, d) { const l = S.abschlaege.filter(a => a.group === g && a.from && a.from <= d && !abschlagEmpty(a)).sort((a, b) => b.from.localeCompare(a.from))[0]; return l ? +l.amount : 0; }
   // calToday: Kalenderdatum (für den aktuell gültigen Abschlag); Rechenstand bleibt „letzter Zählerstand − 1 Tag“
   function abschlagCheck(g, calToday) {
     const r = abschlagCore(g, calToday); if (!r) return null;
