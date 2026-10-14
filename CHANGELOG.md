@@ -406,3 +406,18 @@
 - Anlass: Eine leere Abschlagszeile vom 11.10. ließ den Abschlag-Check mit 0 € rechnen („reicht nicht“).
 - Rechenkern: `abschlagEmpty`, `tariffEmpty`. Kein Datenbank-Update nötig.
 - Tests: 92 Unit-Tests (neu `tests/v29.test.mjs`), neu `scripts/v29-check.mjs` 9 Prüfungen; alles Übrige unverändert.
+
+## v0.30.0 – Anlagenstufen
+- **PV-Anlage → Anlagenstufen:** jede Änderung an der Anlage als Stufe mit Datum, Name, Status (geplant/live),
+  PV-Leistung kWp, Speicher kWh brutto, max. Ausgang W und Notiz. „Bestand anlegen“ übernimmt die bisherigen Werte ab dem
+  ersten Anker-Tag; „Live ab heute“ schaltet eine geplante Stufe mit heutigem Datum live. Gespeichert in
+  `settings.data.stages`.
+- **Rechnung je Zeitraum:** kWp und Speicher gelten ab dem Datum der Stufe (nicht rückwirkend): spezifischer Ertrag,
+  Ertragsfaktor im Wetter-Abschnitt, Vollzyklen, Ausbau-Basis. Ohne Stufen alles wie bisher; mit Stufen zeigt die
+  Batterie-Seite Kapazität und kWp nicht mehr als Eingabe, sondern verweist auf die Stufen.
+- **Prognose:** rechnet je kWp und mit der kWp der aktuellen Stufe; die letzten 30 Tage zählen nur innerhalb der aktuellen
+  Stufe, bis dahin gilt der Monatsfaktor je kWp × neue kWp.
+- **Wirkung der Stufen:** je Stufe Tage, kWh/Tag, Ertrag je kWp und kWh/m² (wetterbereinigt), Netzbezug/Tag,
+  Eigenverbrauch, Tage mit vollem Speicher; Veränderung zur Vorstufe ab 14 Tagen mit Wetterdaten.
+- Kein Datenbank-Update nötig.
+- Tests: 96 Unit-Tests (neu `tests/v30.test.mjs`), neu `scripts/v30-check.mjs` 12 Prüfungen; alles Übrige unverändert.

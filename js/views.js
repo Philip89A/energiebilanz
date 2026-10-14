@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.29.0';
-import { parseNum } from './queue.js?v=0.29.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.29.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.29.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.30.0';
+import { parseNum } from './queue.js?v=0.30.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.30.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.30.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -70,7 +70,8 @@ const IMPORT_START = () => C.IMPORT_START();
 const sumRange = (...a) => C.sumRange(...a);
 const last12 = () => C.last12();
 const groupSeries = g => C.groupSeries(g);
-const waterStatsOf = (f, t) => C.waterStats(f, t);   // v0.25; in renderFinance ist C überdeckt
+const waterStatsOf = (f, t) => C.waterStats(f, t);
+const C_ = new Proxy({}, { get: (_, k) => C[k] });   // v0.30: Rechenkern, wo C lokal überdeckt ist   // v0.25; in renderFinance ist C überdeckt
 const tariffAt = (g, d) => C.tariffAt(g, d);
 const currentTariff = g => C.currentTariff(g);
 const costs = (...a) => C.costs(...a);
@@ -415,8 +416,8 @@ function renderOverview(){
 
 /* ---------- PV ---------- */
 function renderPV(){
-  const {P,C}=currentPeriods(), m=metrics(P.from,P.to), c=C?metrics(C.from,C.to):null, kwp=S.pv.kwp, is=IMPORT_START();
-  const mm={...m, spec:m.gen/kwp}, cc=c?{...c, spec:c.gen/kwp}:null;
+  const {P,C}=currentPeriods(), m=metrics(P.from,P.to), c=C?metrics(C.from,C.to):null, kwp=C_.kwpIn(P.from,P.to), kwpC=C?C_.kwpIn(C.from,C.to):kwp, is=IMPORT_START();   // v0.30: kWp je Stufe
+  const mm={...m, spec:m.gen/kwp}, cc=c?{...c, spec:c.gen/kwpC}:null;
   $("pv-kpis").innerHTML =
     kpiC(mm,cc,"gen","kwh",1,"Erzeugung",`${nf(m.gen/kwp)} kWh je kWp bei ${nf(kwp,2)} kWp`) +
     kpiC(mm,cc,"evq","pct",1,"Eigenverbrauchsquote","Genutzter Solarstrom je erzeugter kWh") +
@@ -430,7 +431,7 @@ function renderPV(){
   const cols=["--sun","--batt","--grid","--heat"];
   chart("pv-str",{type:"line",data:{labels:sr.labels,datasets:["pv1","pv2","pv3","pv4"].map((p,i)=>({label:"Strang "+(i+1),data:sr.rows.map(r=>r[p]),borderColor:css(cols[i]),backgroundColor:css(cols[i]),pointRadius:sr.g==="day"?0:2,tension:.3}))},
     options:{plugins:{tooltip:numTip("kWh",1)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
-  chart("pv-yield",{type:"bar",data:{labels:sr.labels,datasets:[{label:"kWh je kWp",data:sr.rows.map(r=>r.gen/kwp),backgroundColor:css("--sun")}]},
+  chart("pv-yield",{type:"bar",data:{labels:sr.labels,datasets:[{label:"kWh je kWp",data:sr.rows.map((r,j)=>{ const k=sr.ks[j]; return r.gen/(sr.g==="day"?C_.stageAt(k).kwp:C_.kwpIn(`${k}-01`,`${k}-31`)); }),backgroundColor:css("--sun")}]},
     options:{plugins:{legend:{display:false},tooltip:wxTip(numTip("kWh/kWp",1),sr)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh je kWp"}}}}});
   chart("pv-use",{type:"bar",data:{labels:sr.labels,datasets:[
     {label:"Direkt ins Haus",data:sr.rows.map(r=>r.s2h),backgroundColor:css("--sun"),stack:"s"},
@@ -459,14 +460,16 @@ function battParamsInit(){
   const h=$("bt-params"); h.innerHTML=""; const b=S.battery;
   const add=(key,label,step)=>{ const l=document.createElement("label"); l.className="f"; l.textContent=label; const i=document.createElement("input"); i.type="number"; i.step=step; i.value=b[key];
     i.addEventListener("input",()=>{ b[key]=+i.value||0; persist(); renderBattery(false); }); l.appendChild(i); h.appendChild(l); };
-  add("capGross","Kapazität brutto kWh","0.1"); add("reserve","Reserve, bleibt immer drin %","1"); add("fullThresh","Voll-Schwelle Einspeisung kWh/Tag","0.1");
+  const hasSt=(S.stages||[]).length>0;   // v0.30: Kapazität und kWp dann je Anlagenstufe (Seite PV)
+  if(!hasSt) add("capGross","Kapazität brutto kWh","0.1"); add("reserve","Reserve, bleibt immer drin %","1"); add("fullThresh","Voll-Schwelle Einspeisung kWh/Tag","0.1");
+  if(hasSt){ const n=document.createElement("p"); n.className="note"; n.style.gridColumn="1/-1"; n.textContent="Kapazität und PV-Leistung gelten je Anlagenstufe: Seite „PV-Anlage“ → Anlagenstufen."; h.appendChild(n); return; }
   const l=document.createElement("label"); l.className="f"; l.textContent="Installierte PV-Leistung kWp"; const i=document.createElement("input"); i.type="number"; i.step="0.01"; i.value=S.pv.kwp;
   i.addEventListener("input",()=>{ S.pv.kwp=+i.value||1; persist(); }); l.appendChild(i); h.appendChild(l);
 }
 function renderBattery(first){
   if(first) battParamsInit();
   const {P,C}=currentPeriods(), m=metrics(P.from,P.to), c=C?metrics(C.from,C.to):null;
-  const b=S.battery, usable=b.capGross*(1-b.reserve/100), is=IMPORT_START();
+  const b=S.battery, usable=C_.usableIn(P.from,P.to), is=IMPORT_START();
   const mm={...m, fullShare:m.measured?m.full/m.measured:null}, cc=c?{...c, fullShare:c.measured?c.full/c.measured:null}:null;
   $("bt-kpis").innerHTML =
     kpi(nf(usable,2)+" kWh","Nutzbare Kapazität",`${nf(b.capGross,1)} kWh brutto, ${nf(b.reserve)} % Reserve`) +
@@ -891,7 +894,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -963,6 +966,8 @@ function wireEditing(){
       tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
     else if(t.dataset.biAdd!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biAdd); tf.boniItems=[...(tf.boniItems||[]),{name:"Bonus",amount:0}]; write("tariff",tf); rerender(); }
     else if(t.dataset.biDel!==undefined){ const tf=S.tariffs.find(x=>x.id===t.dataset.biDel); tf.boniItems=tf.boniItems.filter((_,i)=>i!==+t.dataset.i); tf.boni=tf.boniItems.reduce((a,i)=>a+(+i.amount||0),0); write("tariff",tf); rerender(); }
+    else if(t.dataset.stLive!==undefined){ const x=S.stages[+t.dataset.stLive]; x.status="live"; x.from=iso(new Date()); persist(); rerender(); }
+    else if(t.dataset.stDel!==undefined){ const i=+t.dataset.stDel; if(confirm(`Stufe „${S.stages[i].name||""}“ löschen?`)){ S.stages.splice(i,1); persist(); rerender(); } }
     else if(t.dataset.ofAddItem!==undefined){ const o=S.offers[+t.dataset.ofAddItem]; (o.items=o.items||[]).push({qty:1,name:"",price:0,alloc:"shared",due:"montage"}); persist(); rerender(); }
     else if(t.dataset.ofDelItem!==undefined){ S.offers[+t.dataset.ofDelItem].items.splice(+t.dataset.i,1); persist(); rerender(); }
     else if(t.dataset.ofDel!==undefined){ const o=S.offers[+t.dataset.ofDel];
@@ -995,6 +1000,7 @@ function wireEditing(){
       if(el.type==="checkbox") S.ausbau[k]=el.checked; else if(el.tagName==="SELECT"||el.type==="date") S.ausbau[k]=el.value;
       else { const v=parseNum(el.value); if(el.value.trim()==="") delete S.ausbau[k]; else if(isFinite(v)) S.ausbau[k]=v; }
       persist(); rerender(); }
+    else if(d.st!==undefined){ const x=S.stages[+d.st]; if(["kwp","capGross","maxW"].includes(d.k)){ const v=parseNum(el.value); if(el.value.trim()==="") delete x[d.k]; else if(isFinite(v)&&v>=0) x[d.k]=v; } else x[d.k]=el.value; persist(); rerender(); }
     else if(d.wt){ S.water=S.water||{}; const v=parseNum(el.value); if(el.value.trim()==="") delete S.water[d.wt]; else if(isFinite(v)&&v>=0) S.water[d.wt]=v; persist(); rerender(); }
     else if(d.of!==undefined){ const o=S.offers[+d.of];
       if(d.ofi!==undefined){ const it=o.items[+d.ofi]; if(d.k==="qty"||d.k==="price"){ const v=parseNum(el.value); it[d.k]=isFinite(v)?v:0; } else it[d.k]=el.value; }
@@ -1014,6 +1020,8 @@ function wireEditing(){
   $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value};
     if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
     S.charges.push(x); ["ch-km","ch-k","ch-e"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+  $("st-init").addEventListener("click",()=>{ if((S.stages||[]).length) return; S.stages=[{id:crypto.randomUUID(),name:"Bestand",from:A.dates[0],status:"live",kwp:+S.pv.kwp||null,capGross:+S.battery.capGross||null,maxW:800,note:""}]; persist(); rerender(); });
+  $("st-add").addEventListener("click",()=>{ const l=(S.stages||[]).slice(-1)[0]||{}; (S.stages=S.stages||[]).push({id:crypto.randomUUID(),name:"Neue Stufe",from:"",status:"planned",kwp:l.kwp??null,capGross:l.capGross??null,maxW:l.maxW??null,note:""}); persist(); rerender(); });
   $("wt-create").addEventListener("click",()=>{ if(S.meters.some(m=>m.group==="water")) return;
     const m={id:"water",name:"Wasser",group:"water",order:0}; S.meters.push(m); refreshCalc(); track(store.saveRow("meter",toDb.meter(m))); rerender(); });
   $("of-add").addEventListener("click",()=>{ (S.offers=S.offers||[]).push({id:crypto.randomUUID(),no:"",date:iso(new Date()),vendor:"",ausbau:false,items:[{qty:1,name:"",price:0,alloc:"shared",due:"montage"}],paid:{}}); persist(); rerender(); });
@@ -1463,6 +1471,33 @@ function renderWxPv() {
     top.map(x => `<tr><td>${dde(x.d)}</td><td>${nf(x.rad, 1)} kWh/m²</td><td>${kwh(x.gen, 1)}</td><td>${kwh(x.expected, 1)}</td><td>${kwh(x.lost, 1)}</td><td class="l">${x.full ? "Speicher voll – vermutlich Abregelung" : "Wolkenlücken, Verschattung oder Ausfall prüfen"}</td></tr>`).join("")}</tbody></table></div>` : "";
 }
 
+/* ---------- Anlagenstufen (v0.30) ---------- */
+function renderStages(){
+  const st=S.stages=S.stages||[], today=iso(new Date());
+  $("st-init").hidden=st.length>0; $("st-add").hidden=!st.length;
+  const fld=(i,k,type="text",w="")=>`<input type="${type}" ${type==="text"&&k!=="name"&&k!=="note"?'inputmode="decimal"':""} value="${esc(st[i][k]??"")}" data-st="${i}" data-k="${k}" ${w}>`;
+  $("st-tbl").innerHTML = st.length ? `<thead><tr><th class="l">Stufe</th><th class="l">ab</th><th class="l">Status</th><th>PV kWp</th><th>Speicher kWh brutto</th><th>max. Ausgang W</th><th class="l">Notiz</th><th class="edit-only"></th></tr></thead><tbody>${
+    st.map((x,i)=>`<tr${x.status==="planned"?' style="color:var(--muted)"':""}><td class="l">${fld(i,"name","text",'style="min-width:170px"')}</td><td class="l">${fld(i,"from","date")}</td>
+      <td class="l"><select data-st="${i}" data-k="status" style="width:auto"><option value="live" ${x.status!=="planned"?"selected":""}>live</option><option value="planned" ${x.status==="planned"?"selected":""}>geplant</option></select></td>
+      <td>${fld(i,"kwp","text",'style="width:70px"')}</td><td>${fld(i,"capGross","text",'style="width:70px"')}</td><td>${fld(i,"maxW","text",'style="width:80px"')}</td>
+      <td class="l">${fld(i,"note","text",'style="min-width:200px"')}</td>
+      <td class="edit-only" style="white-space:nowrap">${x.status==="planned"?`<button class="ghost" data-st-live="${i}">Live ab heute</button> `:""}${i>0?`<button class="x" data-st-del="${i}" aria-label="Stufe löschen">×</button>`:""}</td></tr>`).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Stufen. „Bestand anlegen“ übernimmt die heutige Anlage (${nf(+S.pv.kwp||0,2)} kWp, ${nf(+S.battery.capGross||0,1)} kWh) ab dem ${dde(A.dates[0])}.</td></tr></tbody>`;
+  const fl=[], live=st.filter(x=>x.status!=="planned");
+  if(st.some(x=>x.status!=="planned"&&!x.from)) fl.push(flag("Eine live geschaltete Stufe hat kein Datum und zählt nicht.",true));
+  if(st.some(x=>!(+x.kwp>0))) fl.push(flag("Eine Stufe hat keine PV-Leistung (kWp): dafür gilt der Wert der Batterie-Seite.",true));
+  if(live.some(x=>x.from>today)) fl.push(flag("Eine live geschaltete Stufe beginnt in der Zukunft und zählt erst ab ihrem Datum.",true));
+  $("st-flags").innerHTML=fl.join("");
+  const E=C.stageEffects(), pc=(a,b)=>a!=null&&b?` (${a>=b?"+":"−"}${pct(Math.abs(a/b-1))})`:"";
+  $("st-eff").innerHTML = E.length ? `<thead><tr><th class="l">Stufe</th><th class="l">Zeitraum</th><th>Tage</th><th>kWh/Tag</th><th>Ertrag je kWp und kWh/m²</th><th>Netzbezug/Tag</th><th>Eigenverbrauch</th><th>Speicher voll</th></tr></thead><tbody>${
+    E.map((e,j)=>{ const p=j?E[j-1]:null, few=e.nW<14;
+      return `<tr><td class="l">${esc(e.st.name||"Stufe")}${few?` <span class="pill">${e.n<14?"noch zu wenige Tage":"zu wenige Tage mit Wetterdaten"}</span>`:""}</td><td class="l">${dde(e.from)} – ${e.n?dde(e.to):"…"}</td><td>${nf(e.n)}</td>
+        <td>${e.kwhDay!=null?nf(e.kwhDay,1):"–"}</td><td>${e.f!=null?nf(e.f,2):"–"}${p&&e.f!=null&&!few?pc(e.f,p.f):""}</td><td>${e.impDay!=null?kwh(e.impDay,1):"–"}${p&&e.impDay!=null&&!few?pc(e.impDay,p.impDay):""}</td>
+        <td>${e.evq!=null?pct(e.evq):"–"}</td><td>${e.fullShare!=null?pct(e.fullShare):"–"}</td></tr>`; }).join("")}</tbody>`
+    : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine live geschaltete Stufe.</td></tr></tbody>`;
+  $("st-note").innerHTML = E.length>1 ? `<p class="note">Vergleichbar ist vor allem der <b>Ertrag je kWp und kWh/m² Einstrahlung</b>: Er rechnet Wetter und Anlagengröße heraus, aber nicht die Jahreszeit (tiefe Sonne, Verschattung im Winter). kWh pro Tag und Netzbezug hängen stark von Jahreszeit und Wetter ab. Veränderungen gegenüber der Vorstufe erst ab 14 Tagen mit Wetterdaten; belastbar nach etwa 6–8 Wochen.</p>` : "";
+}
+
 /* ---------- PV-Prognose (v0.27) ---------- */
 // Vorhersage einmal je Tag und Gerät holen; gespeichert wird die Prognose je Tag (Erstellungstag heute) für die Trefferquote
 const pvFc = { day: null, rows: [], err: "", loading: false };
@@ -1529,7 +1564,7 @@ function renderPvForecast() {
     r.months.map(m => `<tr><td class="l">${monthLabel(m.k)}</td><td>${m.kwh != null ? kwh(m.kwh) : "–"}</td><td class="l" style="white-space:normal">${[m.measured ? `${kwh(m.measured)} gemessen` : "", m.fc ? `${kwh(m.fc)} Vorhersage` : "", m.typical ? `${kwh(m.typical)} typisch (${nf(m.nTyp)} Tage)` : ""].filter(Boolean).join(", ") || "–"}</td><td>${m.f != null ? nf(m.f, 2) : "–"}</td><td>${m.typDay != null ? `${nf(m.typDay, 2)} kWh/m²` : "–"}</td><td>${m.prevYear != null ? kwh(m.prevYear) : "–"}</td></tr>`).join("")}</tbody>
     <tfoot><tr><td class="l">12 Monate</td><td>${kwh(r.months.reduce((a, m) => a + (m.kwh || 0), 0))}</td><td colspan="4"></td></tr></tfoot>`;
   const f30 = F.f30, mNow = F.month[today.slice(5, 7)];
-  $("pvf-method").innerHTML = `<p class="note">Ertragsfaktor (kWh je kWh/m² Einstrahlung) diesen Monat ${mNow ? `${nf(mNow.f, 2)} aus ${nf(mNow.n)} gemessenen Tagen, Streuung ± ${pct(mNow.cv)}` : "noch ohne eigene Daten"}${f30 ? `; letzte 30 Tage ${nf(f30.f, 2)}` : ""}. Bandbreite = ± Streuung des Monats.
+  $("pvf-method").innerHTML = `<p class="note">Anlage für die Prognose: ${nf(r.kwpNow, 2)} kWp${r.stage ? ` (Stufe „${esc(r.stage.name || "")}“ seit ${dde(r.stage.from)}; die letzten 30 Tage zählen nur innerhalb dieser Stufe)` : ""}. Ertragsfaktor je kWp (kWh je kWp und kWh/m² Einstrahlung) diesen Monat ${mNow ? `${nf(mNow.f, 2)} aus ${nf(mNow.n)} gemessenen Tagen, Streuung ± ${pct(mNow.cv)}` : "noch ohne eigene Daten"}${f30 ? `; letzte 30 Tage ${nf(f30.f, 2)}` : ""}. Bandbreite = ± Streuung des Monats.
     Typische Einstrahlung: Ø der vollständigen Monate in deinen Wetterdaten. Nicht berücksichtigt: Abregelung bei vollem Speicher, Schnee, der geplante Ausbau (folgt später).</p>`;
 }
 
