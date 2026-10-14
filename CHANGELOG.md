@@ -420,4 +420,4 @@
 - **Wirkung der Stufen:** je Stufe Tage, kWh/Tag, Ertrag je kWp und kWh/m² (wetterbereinigt), Netzbezug/Tag,
   Eigenverbrauch, Tage mit vollem Speicher; Veränderung zur Vorstufe ab 14 Tagen mit Wetterdaten.
 - Kein Datenbank-Update nötig.
-- Tests: 96 Unit-Tests (neu `tests/v30.test.mjs`), neu `scripts/v30-check.mjs` 12 Prüfungen; alles Übrige unverändert.
+- Tests: 96 Unit-Tests (neu `tests/v30.test.mjs`), neu `scripts/v30-check.mjs` 11 Prüfungen; alles Übrige unverändert.
