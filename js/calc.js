@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.29.0';
+import { hpSum } from './hp.js?v=0.30.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -60,7 +60,7 @@ export function stateFromDb(db) {
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
-    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {}, offers: Array.isArray(s.offers) ? s.offers : [], water: s.water || {},
+    tarif: s.tarif || {}, ausbau: s.ausbau || {}, wx: s.wx || {}, offers: Array.isArray(s.offers) ? s.offers : [], water: s.water || {}, stages: Array.isArray(s.stages) ? s.stages : [],
     weather: (db.weather_daily || []).map(r => ({ d: r.day, t: +r.temp_mean, rad: +r.rad_kwh, sun: r.sun_h == null ? null : +r.sun_h }))
       .sort((a, b) => a.d.localeCompare(b.d)),
     weatherError: db.weatherError || null,
@@ -89,7 +89,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -294,11 +294,20 @@ export function createCalc(S) {
     }
     return { kwh: kw, eur: e, bo, days, unp };
   }
+  // v0.30: Anlagenstufen (settings.data.stages): PV-Leistung und Speicher gelten ab dem Datum der Stufe. Geplante Stufen
+  // zählen nicht. Ohne Stufen gelten pv.kwp und battery.capGross wie bisher.
+  const STAGES = (S.stages || []).filter(x => x.status !== 'planned' && x.from).sort((a, b) => a.from.localeCompare(b.from));
+  function stageAt(d) { let st = null; for (const x of STAGES) if (x.from <= d) st = x;
+    return { stage: st, kwp: st && +st.kwp > 0 ? +st.kwp : (+S.pv.kwp || 1), capGross: st && +st.capGross > 0 ? +st.capGross : (+S.battery.capGross || 0) }; }
+  const usableOf = cap => cap * (1 - (+S.battery.reserve || 0) / 100);
+  // Ø über die Tage mit Anker-Daten im Zeitraum (gewichtet nach Tagen); ohne Daten: Stand am Ende
+  function stageAvg(from, to, f) { const ds = A.dates.filter(d => d >= from && d <= to); return ds.length ? ds.reduce((a, d) => a + f(stageAt(d)), 0) / ds.length : f(stageAt(to)); }
+  const kwpIn = (from, to) => stageAvg(from, to, x => x.kwp), usableIn = (from, to) => stageAvg(from, to, x => usableOf(x.capGross));
   const _mcache = new Map();
   function metrics(from, to) {
     const ck = from + '|' + to;
     if (_mcache.has(ck)) return _mcache.get(ck);
-    const s = k => sumRange(k, from, to), is = IMPORT_START(), b = S.battery, usable = b.capGross * (1 - b.reserve / 100);
+    const s = k => sumRange(k, from, to), is = IMPORT_START(), b = S.battery, usable = usableIn(from, to);
     const days = diffDays(from, to) + 1, ankDays = A.dates.filter(d => d >= from && d <= to).length;
     const af = from > is ? from : is, autOK = af <= to && A.dates.some(d => d >= af && d <= to);
     const useA = autOK ? sumRange('use', af, to) : 0, impA = autOK ? sumRange('imp', af, to) : 0;
@@ -329,7 +338,7 @@ export function createCalc(S) {
   }
   function battery(from, to) {
     const b = S.battery, m = metrics(from, to);
-    return { usable: b.capGross * (1 - b.reserve / 100), fullShare: m.measured ? m.full / m.measured : null };
+    return { usable: usableIn(from, to), fullShare: m.measured ? m.full / m.measured : null };
   }
 
   /* Amortisation entlang der Investitionsdaten */
@@ -726,15 +735,18 @@ export function createCalc(S) {
   // v0.27: PV-Prognose. fcRows: Vorhersage [{day, rad_kwh}] ab heute; Monatsausblick 12 Monate ab dem laufenden Monat:
   // gemessen bis gestern + Tagesprognose + übrige Tage mit typischer Einstrahlung (Ø der eigenen Wetterjahre) × Monatsfaktor.
   function pvForecast(fcRows = [], today = addDays(A.dates[A.n - 1], 1)) {
-    const hist = []; A.dates.forEach((d, i) => { const w = W[d]; if (w && w.rad > 0.3 && A.c.gen[i] != null) hist.push({ d, gen: +A.c.gen[i], rad: w.rad }); });
-    const F = pvFactors(hist, today), days = pvForecastDays(fcRows.filter(r => r.day >= today), F);
+    // v0.30: Faktor je kWp (Anlagenstufen); f30 nur aus der aktuellen Stufe, bis dahin Monatsfaktor je kWp × neue kWp
+    const hist = []; A.dates.forEach((d, i) => { const w = W[d]; if (w && w.rad > 0.3 && A.c.gen[i] != null) hist.push({ d, gen: +A.c.gen[i] / stageAt(d).kwp, rad: w.rad }); });
+    const stNow = stageAt(today), kwpNow = stNow.kwp, kwpOf = d => stageAt(d < today ? d : today).kwp;
+    const F = pvFactors(hist, today, { since: stNow.stage ? stNow.stage.from : null });
+    const days = pvForecastDays(fcRows.filter(r => r.day >= today), F).map(x => ({ ...x, kwh: x.kwh * kwpNow, lo: x.lo == null ? null : x.lo * kwpNow, hi: x.hi == null ? null : x.hi * kwpNow, kwp: kwpNow }));
     const radBy = {}; for (const [d, w] of Object.entries(W)) { if (w.rad == null) continue; const k = d.slice(0, 7); (radBy[k] = radBy[k] || { s: 0, n: 0 }); radBy[k].s += w.rad; radBy[k].n++; }
     const typ = {}; for (const [k, v] of Object.entries(radBy)) { const dim = +monthEnd(k).slice(8, 10); if (v.n < dim - 2) continue; const m = k.slice(5, 7); (typ[m] = typ[m] || []).push(v.s / v.n); }
     const typDay = m => (typ[m] ? typ[m].reduce((a, b) => a + b, 0) / typ[m].length : null);
     const genBy = {}; A.dates.forEach((d, i) => { const k = d.slice(0, 7); genBy[k] = (genBy[k] || 0) + (+A.c.gen[i] || 0); });
     const fcBy = Object.fromEntries(days.map(x => [x.d, x.kwh])), months = []; let k = today.slice(0, 7);
     for (let j = 0; j < 12; j++) {
-      const m = k.slice(5, 7), f = F.factorFor(`${k}-15`, false), td = typDay(m), end = monthEnd(k); let measured = 0, fc = 0, typical = 0, nTyp = 0;
+      const m = k.slice(5, 7), f0 = F.factorFor(`${k}-15`, false), f = f0 == null ? null : f0 * kwpNow, td = typDay(m), end = monthEnd(k); let measured = 0, fc = 0, typical = 0, nTyp = 0;
       for (let d = `${k}-01`; d <= end; d = addDays(d, 1)) {
         if (d < today) { const i = A.idx[d]; if (i !== undefined) measured += +A.c.gen[i] || 0; else if (td != null && f != null) { typical += f * td; nTyp++; } }
         else if (fcBy[d] != null) fc += fcBy[d]; else if (td != null && f != null) { typical += f * td; nTyp++; } }
@@ -744,10 +756,22 @@ export function createCalc(S) {
     }
     const actual = {}; A.dates.forEach((d, i) => { if (A.c.gen[i] != null) actual[d] = +A.c.gen[i]; });
     // v0.28: Rückblick – Modell mit gemessenem Wetter, je Tag nur mit Daten vor diesem Tag (keine Vorschau auf die Messung)
-    const back = pvBacktest(hist, addDays(today, -30), addDays(today, -1));
+    const back = pvBacktest(hist, addDays(today, -30), addDays(today, -1), kwpOf);
     // erster offener echter Vergleich: Prognose vor dem Tag erstellt, Messung fehlt noch
     const open = (S.pvForecasts || []).filter(s => s.made < s.d && s.d < today && actual[s.d] == null).sort((a, b) => a.d.localeCompare(b.d) || b.made.localeCompare(a.made))[0] || null;
-    return { F, days, months, acc: pvAccuracy(S.pvForecasts || [], actual, addDays(today, -30), addDays(today, -1)), back, open, lastData: A.dates[A.n - 1] };
+    return { F, days, months, acc: pvAccuracy(S.pvForecasts || [], actual, addDays(today, -30), addDays(today, -1)), back, open, lastData: A.dates[A.n - 1], kwpNow, stage: stNow.stage };
+  }
+  // v0.30: Wirkung der Anlagenstufen – je Stufe Tage mit Anker-Daten, kWh/Tag, Ertrag je kWp und kWh/m² (wetterbereinigt),
+  // Netzbezug/Tag (ab Smart Meter), Eigenverbrauchsquote, Anteil Tage mit vollem Speicher.
+  function stageEffects() {
+    const is = IMPORT_START(), list = STAGES.length ? STAGES : [];
+    return list.map((st, j) => { const to = j + 1 < list.length ? addDays(list[j + 1].from, -1) : '9999-12-31';
+      let n = 0, gen = 0, use = 0, feed = 0, imp = 0, nImp = 0, full = 0, kr = 0, gr = 0, nW = 0;
+      A.dates.forEach((d, i) => { if (d < st.from || d > to) return; n++; const g = +A.c.gen[i] || 0; gen += g; use += +A.c.use[i] || 0;
+        if (d >= is) { nImp++; imp += +A.c.imp[i] || 0; feed += +A.c.feed[i] || 0; if ((+A.c.feed[i] || 0) >= +S.battery.fullThresh) full++; }
+        const w = W[d]; if (w && w.rad > 0.3) { nW++; gr += g; kr += stageAt(d).kwp * w.rad; } });
+      return { st, from: st.from, to: to === '9999-12-31' ? A.dates[A.n - 1] : to, n, kwhDay: n ? gen / n : null, f: kr > 0 ? gr / kr : null, nW,
+        impDay: nImp ? imp / nImp : null, evq: gen > 0 ? use / gen : null, fullShare: nImp ? full / nImp : null, kwp: +st.kwp || null, capGross: +st.capGross || null }; });
   }
   // v0.23: Wärmepumpe je Gradtag (from..to einschließlich). Grundlast (Warmwasser, Standby) laut Wetter-Modell der
   // passenden Seite des Gerätetauschs abgezogen; unter 20 Gradtagen (Sommer) kein Wert.
@@ -763,19 +787,19 @@ export function createCalc(S) {
   }
   // PV: Erzeugung gegen Globalstrahlung (horizontal). Faktor = kWh ÷ (kWp × kWh/m²), nur Tage mit Anker- und Wetterdaten.
   function pvWeather(from, to) {
-    const kwp = +S.pv.kwp || 1, months = {}, days = [];
+    const kwp = kwpIn(from, to), months = {}, days = [];   // v0.30: kWp je Tag aus der Anlagenstufe
     A.dates.forEach((d, i) => { if (d < from || d > to) return; const w = W[d]; if (!w || !(w.rad > 0)) return;
-      const k = monthKey(d), m = months[k] = months[k] || { gen: 0, rad: 0, n: 0, sun: 0 }, g = A.c.gen[i] || 0;
-      m.gen += g; m.rad += w.rad; m.n++; m.sun += w.sun || 0; days.push({ d, gen: g, rad: w.rad, f: g / (kwp * w.rad), full: (A.c.feed[i] || 0) >= (+S.battery.fullThresh || Infinity) }); });
-    const ks = Object.keys(months).sort(), rows = ks.map(k => ({ k, ...months[k], f: months[k].gen / (kwp * months[k].rad) }));
+      const k = monthKey(d), m = months[k] = months[k] || { gen: 0, rad: 0, n: 0, sun: 0, kr: 0 }, g = A.c.gen[i] || 0, kd = stageAt(d).kwp;
+      m.gen += g; m.rad += w.rad; m.kr += kd * w.rad; m.n++; m.sun += w.sun || 0; days.push({ d, gen: g, rad: w.rad, f: g / (kd * w.rad), full: (A.c.feed[i] || 0) >= (+S.battery.fullThresh || Infinity) }); });
+    const ks = Object.keys(months).sort(), rows = ks.map(k => ({ k, ...months[k], f: months[k].gen / months[k].kr }));
     // auffällige Tage: sonnig (Strahlung ≥ Monatsmedian) und Faktor < 75 % des Monatsmedians
     const med = a => { const b = [...a].sort((x, y) => x - y); return b.length ? b[Math.floor(b.length / 2)] : 0; }, byM = {};
     days.forEach(x => (byM[monthKey(x.d)] = byM[monthKey(x.d)] || []).push(x));
     const odd = [];
     for (const arr of Object.values(byM)) { if (arr.length < 10) continue; const mr = med(arr.map(x => x.rad)), mf = med(arr.map(x => x.f));
-      for (const x of arr) if (x.rad >= mr && x.f < 0.75 * mf) odd.push({ ...x, expected: mf * kwp * x.rad, lost: mf * kwp * x.rad - x.gen }); }
+      for (const x of arr) if (x.rad >= mr && x.f < 0.75 * mf) odd.push({ ...x, expected: mf * stageAt(x.d).kwp * x.rad, lost: mf * stageAt(x.d).kwp * x.rad - x.gen }); }
     odd.sort((a, b) => b.lost - a.lost);
-    return { kwp, months: rows, days: days.length, list: days, odd, factor: rows.length ? rows.reduce((a, r) => a + r.gen, 0) / (kwp * rows.reduce((a, r) => a + r.rad, 0)) : null };
+    return { kwp, months: rows, days: days.length, list: days, odd, factor: rows.length ? rows.reduce((a, r) => a + r.gen, 0) / rows.reduce((a, r) => a + r.kr, 0) : null };
   }
   // Jahresvergleich PV (letzte 365 Tage gegen die 365 davor, nur gemeinsame Tage mit Wetter) und Satz für den Überblick
   function weatherNote() {
@@ -892,7 +916,7 @@ export function createCalc(S) {
     A.dates.forEach((d, i) => { if (d < r.from || d > r.to) return;
       days.push({ d, gen: A.c.gen[i] || 0, use: A.c.use[i] || 0, bch: A.c.bch[i] || 0, bdis: A.c.bdis[i] || 0, asGrid: as[d] ?? null }); });
     const b = S.battery, e = S.cars.ev || {}, tb = tariffBase();
-    return { from: r.from, to: r.to, days, kwp: +S.pv.kwp || 0, usable: (+b.capGross || 0) * (1 - (+b.reserve || 0) / 100),
+    return { from: r.from, to: r.to, days, kwp: kwpIn(r.from, r.to), usable: usableIn(r.from, r.to),
       evHome: tb.evHome, ap: +(currentTariff('as')?.ap) || 0, pricePublic: +e.pricePublic || 0, evStart: e.start || '',
       priceInc: +S.amort.priceInc || 0, degr: +S.amort.degr || 0 };
   }
@@ -903,7 +927,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, waterStats,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
@@ -1099,7 +1123,7 @@ export function movingAvg(daily, days, win = 30, minN = 15) {
    hist: gemessene Tage [{d, gen, rad}] (Erzeugung kWh, Einstrahlung kWh/m², nur rad > 0,3). Ertragsfaktor f = Erzeugung ÷
    Einstrahlung je Kalendermonat (Summe ÷ Summe über alle Jahre), Streuung cv = Standardabweichung ÷ Mittel der Tagesfaktoren.
    Für die nächsten Tage: f = Ø aus Monatsfaktor und den letzten 30 Tagen (f30), damit die Prognose dem aktuellen Zustand folgt. */
-export function pvFactors(hist, today) {
+export function pvFactors(hist, today, opt = {}) {
   const by = {}, all = [];
   for (const x of hist) { if (!(x.rad > 0.3) || x.gen == null || x.d >= today) continue; const m = x.d.slice(5, 7);
     (by[m] = by[m] || []).push(x); all.push(x); }
@@ -1108,7 +1132,7 @@ export function pvFactors(hist, today) {
     return { f: R > 0 ? G / R : null, cv: mf > 0 ? sd / mf : null, n: arr.length }; };
   const month = {}; for (const [m, arr] of Object.entries(by)) if (arr.length >= 10) month[m] = stat(arr);
   const overall = all.length >= 10 ? stat(all) : null;
-  const from30 = addDays(today, -30), last = all.filter(x => x.d >= from30);
+  const from30 = [addDays(today, -30), opt.since || ''].sort().pop(), last = all.filter(x => x.d >= from30);   // v0.30: nicht über einen Stufenwechsel hinweg
   const f30 = last.length >= 10 ? { ...stat(last), from: last[0].d, to: last[last.length - 1].d } : null;
   const factorFor = (d, near = true) => { const m = month[d.slice(5, 7)];
     if (near && f30 && m) return (f30.f + m.f) / 2; return m ? m.f : near && f30 ? f30.f : overall ? overall.f : null; };
@@ -1134,9 +1158,9 @@ export function pvAccuracy(stored, actual, from, to) {
 
 // v0.28: Rückblick für from..to: je Tag f aus pvFactors(hist, Tag) × gemessene Einstrahlung gegen die Messung.
 // Fehlermaße wie pvAccuracy (Tage ab 0,5 kWh).
-export function pvBacktest(hist, from, to) {
+export function pvBacktest(hist, from, to, scale = () => 1) {   // scale(d): z. B. kWp des Tages, wenn hist je kWp ist
   const pairs = hist.filter(x => x.d >= from && x.d <= to && x.rad > 0.3 && x.gen != null).map(x => {
-    const f = pvFactors(hist, x.d).factorFor(x.d); return f == null ? null : { d: x.d, act: x.gen, model: f * x.rad, rad: x.rad }; }).filter(Boolean);
+    const f = pvFactors(hist, x.d).factorFor(x.d), k = scale(x.d); return f == null ? null : { d: x.d, act: x.gen * k, model: f * x.rad * k, rad: x.rad }; }).filter(Boolean);
   const ok = pairs.filter(p => p.act >= 0.5), A = ok.reduce((a, p) => a + p.act, 0), M = ok.reduce((a, p) => a + p.model, 0);
   return { pairs, n: ok.length, mape: ok.length ? ok.reduce((a, p) => a + Math.abs(p.model - p.act) / p.act, 0) / ok.length : null, bias: A > 0 ? M / A - 1 : null };
 }

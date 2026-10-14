@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.29.0">
-<link rel="stylesheet" href="css/style.css?v=0.29.0">
+<meta name="app-version" content="0.30.0">
+<link rel="stylesheet" href="css/style.css?v=0.30.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -135,6 +135,11 @@
   <div class="panel" style="margin-top:16px" id="wx-pv-panel"><h2>PV und Wetter <span id="wx-pv-gran">je Monat</span></h2>
     <p class="note">Erzeugung gegen Globalstrahlung (horizontal gemessen, Open-Meteo). Der Ertragsfaktor (kWh je kWp und kWh/m²) zeigt, wie gut die Anlage die Sonne nutzt – unabhängig davon, wie sonnig es war. Sinkt er, liegt es an der Anlage (Abregelung, voller Speicher, Verschattung, Ausfall), nicht am Wetter. Nach dem Ausbau die installierte Leistung oben anpassen.</p>
     <div id="wx-pv"></div><div class="chart tall"><canvas id="wx-pv-chart"></canvas></div><div id="wx-pv-odd"></div></div>
+  <div class="panel" style="margin-top:16px" id="st-panel"><h2>Anlagenstufen</h2>
+    <p class="note">Jede Änderung an der Anlage als eigene Stufe: PV-Leistung und Speicher gelten ab ihrem Datum (spezifischer Ertrag, Vollzyklen, Prognose). Geplante Stufen zählen erst, wenn sie live geschaltet sind. Unabhängig vom Zeitraum oben.</p>
+    <div id="st-flags"></div><div class="tbl-wrap"><table id="st-tbl"></table></div>
+    <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="st-init" hidden>Bestand anlegen</button><button class="ghost" id="st-add">Stufe hinzufügen</button></div>
+    <h2 style="font-size:15px;margin-top:16px">Wirkung der Stufen</h2><div class="tbl-wrap"><table id="st-eff"></table></div><div id="st-note"></div></div>
   <div class="panel" style="margin-top:16px" id="pvf-panel"><h2>Prognose</h2>
     <p class="note">Erwartete Erzeugung aus der Wettervorhersage (Einstrahlung, Open-Meteo) mal dem Ertragsfaktor deiner Anlage: je Kalendermonat aus allen gemessenen Jahren, für die nächsten Tage gemischt mit den letzten 30 Tagen. Jede Prognose wird gespeichert und später mit der Messung verglichen. Unabhängig vom Zeitraum oben.</p>
     <div id="pvf-flags"></div><div class="grid g4" id="pvf-kpis"></div>
@@ -415,8 +420,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.29.0"></script>
-<script src="vendor/chart.umd.js?v=0.29.0"></script>
-<script type="module" src="js/app.js?v=0.29.0"></script>
+<script src="vendor/supabase.js?v=0.30.0"></script>
+<script src="vendor/chart.umd.js?v=0.30.0"></script>
+<script type="module" src="js/app.js?v=0.30.0"></script>
 </body>
 </html>
