@@ -438,3 +438,10 @@
 - „Speicher-Einspeisung“ wird nicht zur Einspeisung addiert: die Rechnung schätzt den Rest aus dem Speicher schon über
   Entladung − Speicher zu Haus, sonst zählte er doppelt.
 - Tests: 101 Unit-Tests (neu `tests/v31.test.mjs`), neu `scripts/v31-check.mjs` 11 Prüfungen; alles Übrige unverändert.
+
+## v0.31.1 – Batterie: aktuelle Kapazität
+- Kachel „Nutzbare Kapazität“ zeigt die Kapazität der Anlagenstufe am Ende des Zeitraums (bei laufenden Zeiträumen
+  heute) samt Brutto-Wert der Stufe. Bisher stand dort der Ø über den Zeitraum und im Untertext der alte Einstellwert,
+  nach dem Speichertausch also noch die alte Kapazität. Der Ø bleibt als Hinweis („für Vollzyklen“), wenn er abweicht.
+- Rechnung unverändert. Kein Datenbank-Update nötig.
+- Tests: `scripts/v30-check.mjs` um 2 Prüfungen erweitert (13); alles Übrige unverändert.
