@@ -421,3 +421,20 @@
   Eigenverbrauch, Tage mit vollem Speicher; Veränderung zur Vorstufe ab 14 Tagen mit Wetterdaten.
 - Kein Datenbank-Update nötig.
 - Tests: 96 Unit-Tests (neu `tests/v30.test.mjs`), neu `scripts/v30-check.mjs` 11 Prüfungen; alles Übrige unverändert.
+
+## v0.31.0 – Zwei Anker-Systeme, Netzladung des Speichers
+- **Neues Exportformat:** Der Export des neuen Heimsystems hat keine Spalte „Genutzte Solarenergie“. Sie wird wie im alten
+  Export als Eigenverbrauch − Netzimport berechnet, damit alte und neue Tage vergleichbar bleiben. Anlass: Import brach
+  mit „Spalte fehlt: genutzt“ ab.
+- **Mehrere Dateien in einem Import:** Tage, die in mehreren Dateien stehen (Umbautag, später zwei Systeme), werden vor
+  dem Schreiben addiert. Derselbe Import zweimal ergibt dasselbe Ergebnis; dieselbe Datei doppelt gewählt zählt einmal.
+  Werden Erzeugung oder Eigenverbrauch eines Tages kleiner als bisher (z. B. nur eine von zwei Dateien), warnt die
+  Vorschau und fragt vor dem Übernehmen nach. Leistung je Eingang (PV1–PV4) wird dabei ebenfalls addiert und ist an
+  solchen Tagen nicht je Modul auswertbar.
+- **Netzladung des Speichers** (`anker_daily.netz_zu_speicher`, `docs/UPDATE_V31.sql`): aus „Netzstrom zu Speicher“,
+  im alten Format aus Netzimport − Netzstrom zu Haushalt. Hinweis im Import ab 0,1 kWh/Tag; Batterie-Seite trennt
+  „Geladen aus Solar“ und „aus dem Netz“, der Wert des Speichers zieht die Netzladung ab. Grundlage für einen späteren
+  dynamischen Tarif.
+- „Speicher-Einspeisung“ wird nicht zur Einspeisung addiert: die Rechnung schätzt den Rest aus dem Speicher schon über
+  Entladung − Speicher zu Haus, sonst zählte er doppelt.
+- Tests: 101 Unit-Tests (neu `tests/v31.test.mjs`), neu `scripts/v31-check.mjs` 11 Prüfungen; alles Übrige unverändert.

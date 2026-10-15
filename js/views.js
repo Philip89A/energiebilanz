@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.30.0';
-import { parseNum } from './queue.js?v=0.30.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.30.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.30.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.31.0';
+import { parseNum } from './queue.js?v=0.31.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.31.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.31.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -475,7 +475,7 @@ function renderBattery(first){
     kpi(nf(usable,2)+" kWh","Nutzbare Kapazität",`${nf(b.capGross,1)} kWh brutto, ${nf(b.reserve)} % Reserve`) +
     kpiC(mm,cc,"fullShare","pct",0,"Tage mit vollem Speicher", m.measured?`${m.full} von ${m.measured} gemessenen Tagen`:`Erst ab ${dde(is)} messbar`) +
     kpiC(mm,cc,"cyc","n1",1,"Vollzyklen",`${kwh(m.bdis)} entladen, Wirkungsgrad ${m.eff!=null?pct(m.eff):"–"} (Entladung ÷ Ladung)`) +
-    kpiC(mm,cc,"battVal","eur",1,"Wert des Speichers",`Netzstrom, den ${kwh(m.b2h)} aus dem Speicher abends und nachts ersetzt haben (Arbeitspreis)`);
+    kpiC(mm,cc,"battVal","eur",1,"Wert des Speichers",`Netzstrom, den ${kwh(m.b2h)} aus dem Speicher abends und nachts ersetzt haben (Arbeitspreis)`+(m.n2b>0.005?`, abzüglich ${kwh(m.n2b)} aus dem Netz geladen`:""));
   const sr = ankerSeries(["bch","bdis","feed"],P.from,P.to);
   const fullIn = {}; A.dates.forEach((d,i)=>{ if(d<P.from||d>P.to||d<is) return; const k=bucketOf(d,sr.g); const o=fullIn[k]=fullIn[k]||{f:0,n:0}; o.n++; if(A.c.feed[i]>=b.fullThresh) o.f++; });
   chart("bt-full",{type:"bar",data:{labels:sr.labels,datasets:[
@@ -486,7 +486,10 @@ function renderBattery(first){
   const isFull=i=>A.dates[i]>=is&&A.c.feed[i]>=b.fullThresh;
   chart("bt-daily",{type:"bar",data:{labels:idx.map(i=>dde(A.dates[i])),datasets:[
     {type:"line",label:"Speicher voll",data:idx.map(i=>isFull(i)?A.c.bch[i]:null),showLine:false,pointRadius:3,pointBackgroundColor:css("--sun"),borderColor:css("--sun"),order:0},
-    {label:"Geladen",data:idx.map(i=>A.c.bch[i]),backgroundColor:css("--batt"),order:1},
+    // v0.31: Netzladung (neues Heimsystem) getrennt, nur wenn im Zeitraum vorhanden
+    ...(idx.some(i=>A.c.n2b[i]>0)?[{label:"Geladen aus Solar",data:idx.map(i=>A.c.bch[i]-(A.c.n2b[i]||0)),backgroundColor:css("--batt"),order:1},
+      {label:"Geladen aus dem Netz",data:idx.map(i=>A.c.n2b[i]||0),backgroundColor:css("--grid"),order:1}]
+      :[{label:"Geladen",data:idx.map(i=>A.c.bch[i]),backgroundColor:css("--batt"),order:1}]),
     {label:"Entladen",data:idx.map(i=>-A.c.bdis[i]),backgroundColor:css("--grid-soft"),order:1}]},
     options:{plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${nf(Math.abs(c.parsed.y),1)} kWh`}}},scales:{x:{stacked:true,ticks:{maxTicksLimit:7}},y:{stacked:true,title:{display:true,text:"kWh pro Tag"}}}}});
   chart("bt-cyc",{type:"bar",data:{labels:sr.labels,datasets:[{label:"Vollzyklen",data:sr.rows.map(r=>r.bdis/usable),backgroundColor:css("--batt")}]},

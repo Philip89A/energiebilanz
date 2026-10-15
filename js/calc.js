@@ -8,11 +8,11 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.30.0';
+import { hpSum } from './hp.js?v=0.31.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
-  use: 'genutzt', gen: 'erzeugung', feed: 'einspeisung', pv1: 'pv1', pv2: 'pv2', pv3: 'pv3', pv4: 'pv4', plug: 'smart_plug' };
+  use: 'genutzt', gen: 'erzeugung', feed: 'einspeisung', pv1: 'pv1', pv2: 'pv2', pv3: 'pv3', pv4: 'pv4', plug: 'smart_plug', n2b: 'netz_zu_speicher' };
 
 /* ---------- Datumshilfen ---------- */
 const DAY = 86400000;
@@ -101,7 +101,8 @@ export function createCalc(S) {
   // Anker-Daten: entweder {start, n, c} (seed_state.json) oder {dates, c} (stateFromDb)
   const src = S.anker;
   const dates = src.dates ? [...src.dates] : Array.from({ length: src.n }, (_, i) => addDays(src.start, i));
-  const A = { dates, c: src.c, n: dates.length, idx: Object.fromEntries(dates.map((d, i) => [d, i])) };
+  // v0.31: Netzladung fehlt in Seed und älteren Zuständen
+  const A = { dates, c: src.c.n2b ? src.c : { ...src.c, n2b: dates.map(() => null) }, n: dates.length, idx: Object.fromEntries(dates.map((d, i) => [d, i])) };
   if (!A.n) throw new Error('Keine Anker-Daten.');
 
   // Smart-Meter-Start: Ereignis (pv/daten); ohne Ereignis der erste Tag mit gemessenem Netzbezug oder Einspeisung
@@ -312,14 +313,15 @@ export function createCalc(S) {
     const af = from > is ? from : is, autOK = af <= to && A.dates.some(d => d >= af && d <= to);
     const useA = autOK ? sumRange('use', af, to) : 0, impA = autOK ? sumRange('imp', af, to) : 0;
     let full = 0, measured = 0; A.dates.forEach((d, i) => { if (d < from || d > to || d < is) return; measured++; if (A.c.feed[i] >= b.fullThresh) full++; });
-    const gen = s('gen'), use = s('use'), bch = s('bch'), bdis = s('bdis'), b2h = s('b2h'), feed = s('feed');
+    const gen = s('gen'), use = s('use'), bch = s('bch'), bdis = s('bdis'), b2h = s('b2h'), feed = s('feed'), n2b = s('n2b');
     const as = periodCost('as', from, to), wp = periodCost('wp', from, to);
     const sav = ankDays ? valueAt('use', from, to) + feedValue(from, to) : null;
     const impDays = A.dates.filter(d => d >= from && d <= to && d >= is).length, feedOK = ankDays > 0 && impDays / ankDays >= 0.5;
-    const m = { days, ankDays, asDays: as.days, wpDays: wp.days, bch, b2h, feed: feedOK ? feed : null,
+    const m = { days, ankDays, asDays: as.days, wpDays: wp.days, bch, b2h, n2b, feed: feedOK ? feed : null,
       imp: feedOK ? impA : null, aut: feedOK && (useA + impA) > 0 ? useA / (useA + impA) : null, impDays, evq: gen > 0 ? use / gen : null,
       eff: bch > 0 ? bdis / bch : null, cyc: ankDays ? bdis / usable : null, full: feedOK ? full : null, measured, sav,
-      battVal: ankDays ? valueAt('b2h', from, to) : null, gen: ankDays ? gen : null, use: ankDays ? use : null, bdis: ankDays ? bdis : null,
+      // v0.31: Netzladung des Speichers wurde bezahlt und mindert seinen Wert
+      battVal: ankDays ? valueAt('b2h', from, to) - valueAt('n2b', from, to) : null, gen: ankDays ? gen : null, use: ankDays ? use : null, bdis: ankDays ? bdis : null,
       asKwh: as.days ? as.kwh : null, asEur: as.days ? as.eur : null, asBo: as.bo, wpKwh: wp.days ? wp.kwh : null, wpEur: wp.days ? wp.eur : null, wpBo: wp.bo,
       asTotal: as.days && ankDays ? as.kwh + use : null, pvShare: as.days && ankDays && (as.kwh + use) > 0 ? use / (as.kwh + use) : null,
       house: as.days && wp.days && ankDays ? as.kwh + use + wp.kwh : null };

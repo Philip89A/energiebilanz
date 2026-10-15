@@ -62,3 +62,11 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 2. Pull Request mergen, App neu laden (v0.27.0).
 3. **PV → Prognose:** erscheint, sobald unter „Daten → Wetter“ ein Standort gewählt ist. Ohne Schritt 1 funktioniert
    die Anzeige, nur die Trefferquote fehlt (Prognosen werden dann nicht gespeichert).
+
+# Update v0.31 (zwei Anker-Exporte, Netzladung)
+1. **Zuerst** SQL Editor → New query → Inhalt von `docs/UPDATE_V31.sql` → **Run**. Kontrolle: Ausgabe `netz_zu_speicher`.
+   Ohne diesen Schritt schlägt jeder Anker-Import fehl (auch alte Exporte), mit dem Hinweis auf diese Datei.
+2. Pull Request mergen, App neu laden (v0.31.0).
+3. **Daten → Anker-Export importieren:** bei zwei Systemen beide CSV-Dateien zusammen auswählen (in der Dateiauswahl
+   mehrere markieren). Gleiche Tage werden addiert; die Vorschau nennt sie. Wird später nur eine der beiden Dateien
+   erneut geladen, warnt die Vorschau vor kleineren Werten und fragt vor dem Übernehmen nach.

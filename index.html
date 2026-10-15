@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.30.0">
-<link rel="stylesheet" href="css/style.css?v=0.30.0">
+<meta name="app-version" content="0.31.0">
+<link rel="stylesheet" href="css/style.css?v=0.31.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -376,8 +376,8 @@
   <p class="lead">Neue Anker-Exporte ergänzen oder aktualisieren die Tageswerte. Eigene Eingaben (Zählerstände, Tarife, Investition, Tanken) bleiben erhalten.</p>
   <div class="grid g2">
     <div class="panel"><h2>Anker-Export importieren</h2>
-      <p class="note">Anker-App → Energiedetails → Export als CSV. Neue Tage werden ergänzt, geänderte Tage vor dem Übernehmen angezeigt.</p>
-      <div class="row" style="margin-top:12px"><input type="file" id="csv-file" accept=".csv,text/csv,text/comma-separated-values"></div>
+      <p class="note">Anker-App → Energiedetails → Export als CSV. Neue Tage werden ergänzt, geänderte Tage vor dem Übernehmen angezeigt. Bei zwei Anker-Systemen beide Dateien zusammen wählen: gleiche Tage werden addiert.</p>
+      <div class="row" style="margin-top:12px"><input type="file" id="csv-file" multiple accept=".csv,text/csv,text/comma-separated-values"></div>
       <div id="csv-result"></div></div>
     <div class="panel"><h2>Datenstand</h2><div id="status">Lade …</div></div>
   </div>
@@ -420,8 +420,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.30.0"></script>
-<script src="vendor/chart.umd.js?v=0.30.0"></script>
-<script type="module" src="js/app.js?v=0.30.0"></script>
+<script src="vendor/supabase.js?v=0.31.0"></script>
+<script src="vendor/chart.umd.js?v=0.31.0"></script>
+<script type="module" src="js/app.js?v=0.31.0"></script>
 </body>
 </html>
