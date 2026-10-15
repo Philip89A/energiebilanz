@@ -90,6 +90,10 @@ ok((await txt(p, '#pv-kpis')).includes('bei 1,80 kWp'), 'September: 1,8 kWp (Fle
 // Batterie-Seite: Kapazität je Stufe
 await p.goto('http://localhost:8000/#batt'); await p.waitForTimeout(400);
 ok((await txt(p, '#bt-params')).includes('je Anlagenstufe'), 'Batterie-Seite verweist auf die Stufen');
+// v0.31.1: Kachel zeigt die Kapazität der Stufe am Zeitraumende, Ø nur als Hinweis
+ok((await txt(p, '#bt-kpis')).includes('12,6 kWh brutto') && !(await txt(p, '#bt-kpis')).includes('Ø im Zeitraum'), 'September: 12,6 kWh brutto ohne Ø-Hinweis');
+await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026'); await p.waitForTimeout(400);
+ok(/12,6 kWh brutto.*Ø im Zeitraum/.test(await txt(p, '#bt-kpis')), 'Jahr 2026: aktuelle 12,6 kWh, Ø im Zeitraum als Hinweis');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();
 console.log(failures ? `${failures} Prüfung(en) fehlgeschlagen` : 'Alle Prüfungen bestanden');

@@ -3,10 +3,10 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.31.0';
-import { parseNum } from './queue.js?v=0.31.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.31.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.31.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.31.1';
+import { parseNum } from './queue.js?v=0.31.1';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.31.1';
+import { parseHpCsv, hpSum } from './hp.js?v=0.31.1';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -472,7 +472,9 @@ function renderBattery(first){
   const b=S.battery, usable=C_.usableIn(P.from,P.to), is=IMPORT_START();
   const mm={...m, fullShare:m.measured?m.full/m.measured:null}, cc=c?{...c, fullShare:c.measured?c.full/c.measured:null}:null;
   $("bt-kpis").innerHTML =
-    kpi(nf(usable,2)+" kWh","Nutzbare Kapazität",`${nf(b.capGross,1)} kWh brutto, ${nf(b.reserve)} % Reserve`) +
+    // v0.31.1: Kapazität der Stufe am Zeitraumende (bei laufenden Zeiträumen heute); Ø im Zeitraum nur noch als Hinweis
+    (()=>{ const capNow=C_.stageAt(P.to<today()?P.to:today()).capGross, uNow=capNow*(1-(+b.reserve||0)/100);
+      return kpi(nf(uNow,2)+" kWh","Nutzbare Kapazität",`${nf(capNow,1)} kWh brutto, ${nf(b.reserve)} % Reserve`+(Math.abs(usable-uNow)>0.005?`; Ø im Zeitraum ${nf(usable,2)} kWh (für Vollzyklen)`:"")); })() +
     kpiC(mm,cc,"fullShare","pct",0,"Tage mit vollem Speicher", m.measured?`${m.full} von ${m.measured} gemessenen Tagen`:`Erst ab ${dde(is)} messbar`) +
     kpiC(mm,cc,"cyc","n1",1,"Vollzyklen",`${kwh(m.bdis)} entladen, Wirkungsgrad ${m.eff!=null?pct(m.eff):"–"} (Entladung ÷ Ladung)`) +
     kpiC(mm,cc,"battVal","eur",1,"Wert des Speichers",`Netzstrom, den ${kwh(m.b2h)} aus dem Speicher abends und nachts ersetzt haben (Arbeitspreis)`+(m.n2b>0.005?`, abzüglich ${kwh(m.n2b)} aus dem Netz geladen`:""));
