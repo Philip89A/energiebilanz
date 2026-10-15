@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast } from './db.js?v=0.30.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker } from './import.js?v=0.30.0';
-import { stateFromDb } from './calc.js?v=0.30.0';
-import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.30.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.30.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast } from './db.js?v=0.31.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.31.0';
+import { stateFromDb } from './calc.js?v=0.31.0';
+import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.31.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.31.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -23,7 +23,7 @@ const TABLE_LABELS = {
 const FIELD_LABELS = {
   eigenverbrauch: 'Eigenverbrauch', netzimport: 'Netzimport', netz_zu_haus: 'Netz zu Haus',
   solar_zu_haus: 'Solar zu Haus', solar_zu_speicher: 'Solar zu Speicher', speicher_ladung: 'Ladung',
-  speicher_entladung: 'Entladung', speicher_zu_haus: 'Speicher zu Haus', genutzt: 'genutzt',
+  speicher_entladung: 'Entladung', speicher_zu_haus: 'Speicher zu Haus', genutzt: 'genutzt', netz_zu_speicher: 'Netz zu Speicher',
   erzeugung: 'Erzeugung', einspeisung: 'Einspeisung', pv1: 'PV1', pv2: 'PV2', pv3: 'PV3', pv4: 'PV4',
   smart_plug: 'Smart Plug',
 };
@@ -270,18 +270,20 @@ async function readFile(input) {
 
 $('csv-file').addEventListener('change', async e => {
   const out = $('csv-result');
-  const file = await readFile(e.target);
-  if (!file) return;
-  out.innerHTML = '<p class="hint">Lese Datei …</p>';
+  const files = await Promise.all([...e.target.files].map(async f => ({ name: f.name, text: await f.text() })));
+  e.target.value = '';            // dieselben Dateien erneut wählbar
+  if (!files.length) return;
+  out.innerHTML = `<p class="hint">Lese ${files.length > 1 ? files.length + ' Dateien' : 'Datei'} …</p>`;
   try {
-    const parsed = parseAnkerCsv(file.text);
+    // v0.31: mehrere Exporte (z. B. zwei Anker-Systeme) in einem Import, gleiche Tage werden addiert
+    const parsed = mergeAnkerParsed(files.map(f => ({ ...f, parsed: parseAnkerCsv(f.text) })));
     if (!parsed.rows.length) {
       out.innerHTML = `<p class="error">${esc(parsed.errors.join('\n'))}</p>`;
       return;
     }
     const existing = await fetchAll('anker_daily', { from: parsed.from, to: parsed.to });
     const diff = diffAnker(existing, parsed.rows);
-    renderCsvDiff(out, file.name, parsed, diff);
+    renderCsvDiff(out, files.map(f => f.name).join(' + '), parsed, diff);
   } catch (err) {
     out.innerHTML = `<p class="error">${esc(err.message)}</p>`;
   }
@@ -290,6 +292,8 @@ $('csv-file').addEventListener('change', async e => {
 function renderCsvDiff(out, name, parsed, diff) {
   const changed = diff.geaendert.slice(0, 50).flatMap(g => g.changes.map(c =>
     `<tr><td>${deDate(g.day)}</td><td>${FIELD_LABELS[c.field]}</td><td class="num">${nf(c.alt, 2)}</td><td class="num">${nf(c.neu, 2)}</td></tr>`));
+  const grid = gridChargeDays(parsed.rows);
+  const dl = ds => ds.slice(0, 8).map(deDate).join(', ') + (ds.length > 8 ? ` … (${ds.length})` : '');
   out.innerHTML = `
     <p><b>${esc(name)}</b>: ${parsed.rows.length} Tage, ${deDate(parsed.from)} bis ${deDate(parsed.to)}</p>
     <ul class="msgs">
@@ -297,6 +301,9 @@ function renderCsvDiff(out, name, parsed, diff) {
       <li class="${diff.geaendert.length ? 'warn' : ''}">${diff.geaendert.length} Tage mit geänderten Werten</li>
       <li>${diff.ergaenzt.length} Tage nur ergänzt (bisher leere Felder, z. B. Smart Plug)</li>
       <li>${diff.gleich} Tage unverändert</li>
+      ${parsed.summed.length ? `<li>Aus mehreren Dateien addiert: ${dl(parsed.summed)}</li>` : ''}
+      ${grid.length ? `<li class="warn">Speicher aus dem Netz geladen (über 0,1 kWh) an ${grid.length} Tag${grid.length > 1 ? 'en' : ''}: ${dl(grid)}</li>` : ''}
+      ${diff.kleiner.length ? `<li class="warn">Kleinere Erzeugung oder kleinerer Verbrauch als bisher an ${dl(diff.kleiner)}. Bei zwei Systemen bitte beide Dateien zusammen wählen.</li>` : ''}
     </ul>
     ${parsed.errors.length ? `<p class="error">${esc(parsed.errors.slice(0, 10).join('\n'))}${parsed.errors.length > 10 ? `\n… und ${parsed.errors.length - 10} weitere` : ''}</p>` : ''}
     ${changed.length ? `<div class="table-wrap"><table><thead><tr><th>Tag</th><th>Wert</th><th class="num">bisher</th><th class="num">neu</th></tr></thead>
@@ -307,6 +314,7 @@ function renderCsvDiff(out, name, parsed, diff) {
       <span id="csv-progress" class="hint"></span>
     </div>`;
   $('csv-apply').addEventListener('click', async ev => {
+    if (diff.kleiner.length && !confirm(`An ${diff.kleiner.length} Tag(en) würden Erzeugung oder Verbrauch kleiner. Trotzdem übernehmen?`)) return;
     ev.target.disabled = true;
     try {
       await upsertRows('anker_daily', diff.write, 'user_id,day',
@@ -314,7 +322,8 @@ function renderCsvDiff(out, name, parsed, diff) {
       $('csv-progress').innerHTML = '<span class="ok">Übernommen.</span>';
       loadModel();
     } catch (err) {
-      $('csv-progress').innerHTML = `<span class="error">${esc(err.message)}</span>`;
+      const hint = /netz_zu_speicher/.test(err.message) ? ' – bitte zuerst docs/UPDATE_V31.sql in Supabase ausführen.' : '';
+      $('csv-progress').innerHTML = `<span class="error">${esc(err.message + hint)}</span>`;
       ev.target.disabled = false;
     }
   });

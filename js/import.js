@@ -2,12 +2,13 @@
 //  - mapSeed(seed)        seed_state.json -> Datensätze je Tabelle
 //  - seedSummary(mapped)  Mengen und Kontrollsummen für Vorschau und Rückprüfung
 //  - parseAnkerCsv(text)  Anker-Export „Energiedetails“ -> Tageszeilen für anker_daily
+//  - mergeAnkerParsed(l)  mehrere Exporte (z. B. zwei Anker-Systeme) zu einem Import, gleiche Tage addiert
 //  - diffAnker(alt, neu)  neue / geänderte / ergänzte / unveränderte Tage
 
 export const ANKER_FIELDS = [
   'eigenverbrauch', 'netzimport', 'netz_zu_haus', 'solar_zu_haus', 'solar_zu_speicher',
   'speicher_ladung', 'speicher_entladung', 'speicher_zu_haus', 'genutzt', 'erzeugung', 'einspeisung',
-  'pv1', 'pv2', 'pv3', 'pv4', 'smart_plug',
+  'pv1', 'pv2', 'pv3', 'pv4', 'smart_plug', 'netz_zu_speicher',
 ];
 
 // Kürzel in seed_state.json -> Spalte in anker_daily
@@ -149,6 +150,7 @@ const CSV_COLUMNS = [
   ['netz_zu_haus', h => h.startsWith('netzstrom zu haushalt')],
   ['solar_zu_haus', h => h.startsWith('solarstrom zu haushalt')],
   ['solar_zu_speicher', h => h.startsWith('solarstrom zu speicher')],
+  ['netz_zu_speicher', h => h.startsWith('netzstrom zu speicher')],
   ['speicher_ladung', h => h.startsWith('speicherladung')],
   ['speicher_entladung', h => h.startsWith('speicherentladung')],
   ['speicher_zu_haus', h => h.startsWith('speicher zu haushalt')],
@@ -161,7 +163,11 @@ const CSV_COLUMNS = [
   ['pv4', h => /pv4-erzeugung/.test(h)],
   ['smart_plug', h => h.includes('smart plug')],
 ];
-const OPTIONAL_COLUMNS = new Set(['smart_plug', 'pv3', 'pv4']);
+// v0.31: der Export des neuen Heimsystems (Solarbank 4) hat keine Spalte „Genutzte Solarenergie“; sie wird wie im
+// alten Export als Eigenverbrauch − Netzimport berechnet. „Netzstrom zu Speicher“ gibt es im alten Export nicht, dort
+// gilt Netzimport − Netzstrom zu Haushalt (laut Definition in beiden Exporten).
+const OPTIONAL_COLUMNS = new Set(['smart_plug', 'pv3', 'pv4', 'genutzt', 'netz_zu_speicher']);
+const r3 = v => Math.round(v * 1000) / 1000;
 
 export function splitCsvLine(line, sep) {
   const out = [];
@@ -237,11 +243,39 @@ export function parseAnkerCsv(text) {
       if (Number.isNaN(n)) { errors.push(`Zeile ${li + 1}: ${col} „${cells[idx[col]]}“ ist keine Zahl.`); row[col] = null; }
       else row[col] = n;
     }
+    if (idx.genutzt === undefined) row.genutzt = row.eigenverbrauch != null && row.netzimport != null ? r3(row.eigenverbrauch - row.netzimport) : null;
+    if (idx.netz_zu_speicher === undefined) row.netz_zu_speicher = row.netzimport != null && row.netz_zu_haus != null ? Math.max(0, r3(row.netzimport - row.netz_zu_haus)) : null;
     rows.push(row);
   }
   rows.sort((a, b) => a.day.localeCompare(b.day));
   return { rows, errors, from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
 }
+
+// v0.31: mehrere Exporte in einem Import. Tage, die in mehreren Dateien stehen (Umbautag, später zwei Systeme), werden
+// addiert; leere Zellen zählen nur, wenn alle Dateien leer sind. Weil die Summe vor dem Schreiben entsteht, ergibt
+// derselbe Import zweimal dasselbe Ergebnis. Dieselbe Datei zweimal gewählt ist ein Fehler.
+export function mergeAnkerParsed(list) {
+  const errors = [], byDay = new Map(), seenText = new Set(), summed = new Set();
+  for (const { name, text, parsed } of list) {
+    if (seenText.has(text)) { errors.push(`${name}: dieselbe Datei wurde doppelt gewählt, sie zählt nur einmal.`); continue; }
+    seenText.add(text);
+    for (const e of parsed.errors) errors.push(`${name}: ${e}`);
+    for (const r of parsed.rows) {
+      const old = byDay.get(r.day);
+      if (!old) { byDay.set(r.day, { ...r }); continue; }
+      summed.add(r.day);
+      for (const f of ANKER_FIELDS) {
+        const a = old[f] ?? null, b = r[f] ?? null;
+        old[f] = a == null && b == null ? null : r3((a || 0) + (b || 0));
+      }
+    }
+  }
+  const rows = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+  return { rows, errors, summed: [...summed].sort(), from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
+}
+
+// Tage mit Netzladung des Speichers über der Schwelle (kWh), für den Hinweis im Import
+export const gridChargeDays = (rows, min = 0.1) => rows.filter(r => (r.netz_zu_speicher || 0) > min).map(r => r.day);
 
 // Vergleich mit dem Bestand. „ergänzt“ = nur bisher leere Felder bekommen einen Wert (z. B. Smart Plug nach dem
 // Seed-Import); „geändert“ = ein vorhandener Wert weicht ab. Toleranz 0,5 Wh gegen Rundung aus der Datenbank.
@@ -249,7 +283,7 @@ export function parseAnkerCsv(text) {
 // Zelle im Export nie einen vorhandenen Wert mit NULL überschreibt.
 export function diffAnker(existing, incoming) {
   const byDay = new Map(existing.map(r => [r.day, r]));
-  const out = { neu: [], geaendert: [], ergaenzt: [], gleich: 0, write: [] };
+  const out = { neu: [], geaendert: [], ergaenzt: [], gleich: 0, write: [], kleiner: [] };
   for (const r of incoming) {
     const old = byDay.get(r.day);
     if (!old) {
@@ -270,6 +304,8 @@ export function diffAnker(existing, incoming) {
       if (a == null) { filled = true; continue; }
       if (Math.abs(a - b) > 0.0005) changes.push({ field: f, alt: a, neu: b });
     }
+    // v0.31: kleinere Erzeugung oder kleinerer Eigenverbrauch deuten auf einen Teil-Import (nur eine von zwei Dateien)
+    if (changes.some(c => (c.field === 'erzeugung' || c.field === 'eigenverbrauch') && c.neu < c.alt - 0.0005)) out.kleiner.push(r.day);
     if (changes.length) { out.geaendert.push({ day: r.day, changes }); out.write.push(merged); }
     else if (filled) { out.ergaenzt.push(r.day); out.write.push(merged); }
     else out.gleich++;

@@ -27,6 +27,7 @@ create table if not exists anker_daily (
   genutzt numeric, erzeugung numeric, einspeisung numeric,
   pv1 numeric, pv2 numeric, pv3 numeric, pv4 numeric,
   smart_plug numeric,
+  netz_zu_speicher numeric,         -- ab v0.31 (neues Anker-Heimsystem, Netzladung des Speichers)
   imported_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

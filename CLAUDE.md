@@ -112,6 +112,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.28: Prognose-Rückblick mit gemessenem Wetter (`pvBacktest`), getrennte Trefferquote Modell/Prognose, Hinweis erster Vergleich. Prüfung: `v27-check`.
    - ✅ v0.29: unausgefüllte Abschläge (0 € ohne Notiz) und Tarife (ohne Arbeitspreis) zählen nicht, markiert (`abschlagEmpty`, `tariffEmpty`). Prüfung: `v29-check`.
    - ✅ v0.30: Anlagenstufen (`settings.data.stages`; `stageAt`, `kwpIn`, `usableIn`, `stageEffects`), Prognose je kWp. Prüfung: `v30-check`.
+   - ✅ v0.31: Anker-Import mehrerer Dateien (gleiche Tage addiert, `mergeAnkerParsed`), neues Exportformat ohne „Genutzte
+     Solarenergie“, Netzladung `anker_daily.netz_zu_speicher` (`docs/UPDATE_V31.sql`, Kürzel `n2b`). Prüfung: `tests/v31.test.mjs`, `scripts/v31-check.mjs`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
