@@ -503,3 +503,15 @@
 - Hinweistext unter der Grafik ersetzt: Anteil gilt nur für Tage mit Gerätewerten, monatliches Ablesen macht ihn genauer.
 - Rechenkern: `deviceWater`. Kein Datenbank-Update nötig.
 - Tests: 111 Unit-Tests (neu `tests/v35.test.mjs`), neu `scripts/v35-check.mjs` (8 Prüfungen); v32-, v34- und v26-Check unverändert grün.
+
+## v0.36 – Waschprogramme je Monat
+- **Neue Tabelle `device_programs`** (`docs/UPDATE_V36.sql`): je Gerät und Monat Programm, Temperatur, Drehzahl, Zusatz
+  (z. B. Miniload), Anzahl, kWh und Liter je Gang – so wie die Monatsanalyse der Waschmaschinen-App sie zeigt.
+- **Zähler & Verbrauch → Waschprogramme:** Kacheln „Wäschen“ (ohne Auffrischen/smartFinish, Schleudern, Spülen), Strom und
+  Wasser je Wäsche, Anteil 60 °C an Wäschen und Strom; Monatsbalken nach Temperaturklasse (Strom, Anzahl oder Wasser) mit
+  Linie je Wäsche; Tabelle je Programm mit Anteilen. Hinweis, wenn die Programme mehr als 5 % von der Monatssumme abweichen.
+- **Eingabe:** Gerät und Monat wählen, Zeilen eintragen; Speichern ersetzt den Monat. Die Summe wird als Gerätewerte
+  (Strom, Wasser, Gänge) übernommen, außer es gibt für den Monat Tageswerte einer Messsteckdose.
+- **Wasser-Kachel:** zählt Wäschen statt App-Gänge, sobald Programme die ganzen Monate abdecken.
+- Ohne SQL-Update bleibt alles nutzbar; der Abschnitt nennt dann `docs/UPDATE_V36.sql`.
+- Tests: 115 Unit-Tests (neu `tests/v36.test.mjs`), neu `scripts/v36-check.mjs` (18 Prüfungen); v26-, v32-, v34-, v35-Check grün.

@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.35.0">
-<link rel="stylesheet" href="css/style.css?v=0.35.0">
+<meta name="app-version" content="0.36.0">
+<link rel="stylesheet" href="css/style.css?v=0.36.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -191,6 +191,21 @@
         <button id="dvm-save">Monat speichern</button>
       </div>
       <p class="note" id="dvm-msg"></p>
+    </div></div>
+  <div class="panel" style="margin-top:16px" id="pg-panel" hidden><h2>Waschprogramme</h2>
+    <p class="note">Programme je Monat aus der Monatsanalyse der Waschmaschinen-App. „Wäschen“ zählen ohne Auffrischen (smartFinish), Schleudern und Spülen; diese Gänge zählt die App mit, sie verzerren sonst kWh und Liter je Wäsche.</p>
+    <div class="form" style="margin-top:8px;max-width:520px"><label class="f">Gerät<select id="pg-dev"></select></label>
+      <label class="f">Darstellung<select id="pg-metric"><option value="kwh">Strom kWh</option><option value="runs">Anzahl Gänge</option><option value="l">Wasser Liter</option></select></label></div>
+    <div id="pg-flags"></div><div class="grid g4" id="pg-kpis" style="margin-top:12px"></div>
+    <div class="chart"><canvas id="pg-chart"></canvas></div>
+    <div class="tbl-wrap"><table id="pg-tbl"></table></div><div id="pg-note"></div>
+    <div class="edit-only">
+      <h2 style="font-size:15px;margin-top:16px">Programme eines Monats eintragen</h2>
+      <div class="form" style="margin-top:8px;max-width:520px"><label class="f">Gerät<select id="pg-edev"></select></label><label class="f">Monat<input type="month" id="pg-month"></label></div>
+      <div class="tbl-wrap"><table id="pg-rows"></table></div>
+      <div class="row" style="margin-top:8px"><button class="ghost" id="pg-addrow">Zeile hinzufügen</button><button id="pg-save">Monat speichern</button></div>
+      <label class="f check" style="margin-top:8px"><input type="checkbox" id="pg-sum" checked> Monatssumme (Strom, Wasser, Gänge) als Gerätewerte übernehmen, sofern für den Monat keine Tageswerte einer Messsteckdose vorliegen</label>
+      <p class="note" id="pg-msg"></p>
     </div></div>
   <div class="panel" style="margin-top:16px" id="wt-panel"><h2>Wasser</h2>
     <p class="note">Gesamter Wasserverbrauch laut Wasserzähler (kalt und warm zusammen), Stände in m³. Zwischen zwei Ablesungen gleichmäßig verteilt; gepunktet: gleitender Durchschnitt der letzten 30 Tage.</p>
@@ -469,8 +484,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.35.0"></script>
-<script src="vendor/chart.umd.js?v=0.35.0"></script>
-<script type="module" src="js/app.js?v=0.35.0"></script>
+<script src="vendor/supabase.js?v=0.36.0"></script>
+<script src="vendor/chart.umd.js?v=0.36.0"></script>
+<script type="module" src="js/app.js?v=0.36.0"></script>
 </body>
 </html>

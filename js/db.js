@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.35.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.35.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.36.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.36.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -154,6 +154,8 @@ export async function loadAll() {
   try { db.device_daily = await fetchAll('device_daily'); } catch (e) { db.device_daily = []; db.deviceError = e.message; }
   // Raumklima (schema v10, v0.33), ebenso tolerant
   try { db.room_climate = await fetchAll('room_climate'); } catch (e) { db.room_climate = []; db.climateError = e.message; }
+  // Programme je Monat (v0.36), ebenso tolerant
+  try { db.device_programs = await fetchAll('device_programs'); } catch (e) { db.device_programs = []; db.programError = e.message; }
   // Gastzugang (schema v7): ist der Nutzer als Gast eingetragen, nur lesen
   try { const me = await uid(); db.readOnly = (await fetchAll('shares')).some(r => r.viewer_id === me); } catch (e) { db.readOnly = false; }
   return db;
@@ -197,6 +199,13 @@ export async function saveDevice(rows, onProgress) {
 }
 
 // Raumklima speichern (Upsert je Raum und Tag); nur online
+// v0.36: Programme eines Geräts für einen Monat ersetzen (alte Zeilen des Monats löschen, neue schreiben)
+export async function savePrograms(deviceId, month, rows) {
+  const user_id = await uid();
+  const { error } = await client.from('device_programs').delete().eq('user_id', user_id).eq('device_id', deviceId).eq('month', month);
+  check(error, 'Löschen device_programs');
+  if (rows.length) await upsertRows('device_programs', rows, 'user_id,device_id,month,program,temp,rpm,extra');
+}
 export async function saveClimate(rows, onProgress) {
   await upsertRows('room_climate', rows, 'user_id,room,day', onProgress);
 }
