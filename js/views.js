@@ -3,11 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.33.0';
-import { parseNum } from './queue.js?v=0.33.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.33.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.33.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.33.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.34.0';
+import { parseNum } from './queue.js?v=0.34.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.34.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.34.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.34.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -119,7 +119,7 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-hp","p-cost","p-tarif","p-ausbau","p-log"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-hp","p-rel","p-cost","p-tarif","p-ausbau","p-log"];
 // v0.16: Zeitraum für Listen und Fahrzeugdaten; „Gesamter Zeitraum“ filtert nicht (Einträge können außerhalb der Energiedaten liegen)
 function periodSel(){ const {P,C:Cp}=currentPeriods(), all=S.view.mode==="all"; return {P,Cp,all,inP:d=>all||(d>=P.from&&d<=P.to),inC:d=>!!Cp&&d>=Cp.from&&d<=Cp.to}; }
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -356,8 +356,9 @@ function renderDevices(){
     $("dv-note").innerHTML = `<p class="note">Zeitraum ${dde(P.from)} – ${dde(P.to)}. Kosten zum Arbeitspreis des Allgemeinstroms (ohne Abzug für Solarstrom). Vorjahr nur, wenn für mindestens 80 % der Tage Werte vorliegen. Die gestrichelte Linie zeigt die Außentemperatur, hilfreich beim Gefrierschrank im Keller.</p>`;
   } else { $("dv-tbl").innerHTML = ""; $("dv-note").innerHTML = ""; chart("dv-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
   // Geräteliste und Monatswerte (Bearbeiten)
-  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Notiz</th><th>Werte</th><th></th></tr></thead><tbody>${
-    devs.map((d, i) => `<tr><td class="l"><input type="text" value="${esc(d.name)}" data-dv="${i}" data-k="name"></td><td><input type="date" value="${d.from || ""}" data-dv="${i}" data-k="from"></td>
+  const roomOpt = sel => `<option value="">–</option>${(S.rooms || []).map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}`;
+  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Standort (Raum)</th><th class="l">Notiz</th><th>Werte</th><th></th></tr></thead><tbody>${
+    devs.map((d, i) => `<tr><td class="l"><input type="text" value="${esc(d.name)}" data-dv="${i}" data-k="name"></td><td><input type="date" value="${d.from || ""}" data-dv="${i}" data-k="from"></td><td class="l"><select data-dv="${i}" data-k="room">${roomOpt(d.room)}</select></td>
       <td class="l"><input type="text" value="${esc(d.note || "")}" data-dv="${i}" data-k="note" style="min-width:220px"></td><td>${nf((S.deviceDays || []).filter(r => r.dev === d.id).length)}</td>
       <td><button class="x" data-dv-del="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : "";
   const cur = $("dvm-dev").value; $("dvm-dev").innerHTML = devs.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
@@ -538,6 +539,43 @@ function wireClimate() {
       rkMsg = `${nf(n)} Tage gespeichert.`; rkImports = null; refreshCalc(); rerender();
     } catch (err) { rkMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderClimImport(); }
   });
+}
+
+
+/* ---------- Zusammenhänge (v0.34) ---------- */
+const REL_COL = ["--grid","--sun","--heat","--batt","--warn","--feed","--loss","--muted"];
+function renderRelations(){
+  const RS = periodSel(); let P = RS.P;
+  if (RS.all) P = { from: A.dates[0], to: A.dates[A.n - 1] };
+  const cards = C.relations(P.from, P.to), box = $("rel-cards");
+  box.innerHTML = cards.map(c => `<div class="panel" id="rel-${c.id}"><h2>${esc(c.title)} <span class="pill"${c.v === "belastbar" ? ' style="background:var(--ok);color:#fff"' : ""}>${c.v}</span></h2>
+    <p class="note">${esc(c.q)}</p><div class="chart"><canvas id="rel-c-${c.id}"></canvas></div><div class="note" id="rel-t-${c.id}"></div></div>`).join("");
+  for (const c of cards) {
+    const t = [];
+    if (c.bars) {
+      chart(`rel-c-${c.id}`, { type: "bar", data: { labels: c.labels, datasets: [{ label: c.y, data: c.bars, backgroundColor: css("--muted") }] },
+        options: { plugins: { legend: { display: false }, tooltip: numTip("kWh", 2) }, scales: { y: { beginAtZero: true, title: { display: true, text: c.y } } } } });
+      const v = c.bars.filter(x => x != null); if (v.length) { const avg = v.reduce((a, b) => a + b, 0) / v.length, mx = Math.max(...v), mi = c.bars.indexOf(mx);
+        t.push(`Ø ${nf(avg, 2)} kWh pro Tag ohne die gemessenen Geräte, am höchsten am ${c.labels[mi]} (${nf(mx, 2)} kWh). Grundlage: ${nf(c.f.n)} Tage.`); }
+    } else {
+      const groups = [...new Set(c.pts.map(p => p.g))];
+      const ds = groups.map((g, i) => ({ type: "scatter", label: g, data: c.pts.filter(p => p.g === g).map(p => ({ x: p.x, y: p.y, d: p.d })), backgroundColor: css(REL_COL[i % REL_COL.length]), pointRadius: c.monthly ? 5 : 3 }));
+      if (c.f.slope != null) { const xs = c.pts.map(p => p.x), x0 = Math.min(...xs), x1 = Math.max(...xs);
+        ds.push({ type: "line", label: "Anpassung", data: [{ x: x0, y: c.f.icept + c.f.slope * x0 }, { x: x1, y: c.f.icept + c.f.slope * x1 }], borderColor: css("--ink"), borderDash: [5, 4], borderWidth: 1.5, pointRadius: 0 }); }
+      chart(`rel-c-${c.id}`, { type: "scatter", data: { datasets: ds }, options: { plugins: { ebTotals: false, tooltip: { callbacks: { label: k => `${k.raw.d ? (c.monthly ? monthLabel(k.raw.d) : dde(k.raw.d)) + ": " : ""}${nf(k.parsed.x, 1)} → ${nf(k.parsed.y, 2)}` } } },
+        scales: { x: { type: "linear", title: { display: true, text: c.x } }, y: { title: { display: true, text: c.y } } } } });
+      if (c.f.slope != null) t.push(`Gerade: ${c.f.slope >= 0 ? "+" : "−"}${nf(Math.abs(c.f.slope), Math.abs(c.f.slope) < 0.1 ? 3 : 2)} ${c.unit}, R² ${nf(c.f.r2, 2)}, ${nf(c.f.n)} ${c.monthly ? "Monate" : "Tage"}.`);
+      else t.push(`${nf(c.f.n || 0)} ${c.monthly ? "Monate" : "Tage"} mit allen nötigen Werten.`);
+      const e = c.extra || {};
+      if (c.id === "freezer" && e.wash != null) t.push(`Wäschetage (${nf(e.nWash)}): Ø ${nf(e.wash, 3)} kWh, sonst ${nf(e.dry, 3)} kWh (${e.wash >= e.dry ? "+" : "−"}${pct(Math.abs(e.wash / e.dry - 1))}).`);
+      if (c.id === "heat" && e.rooms) t.push("Raumtemperatur im Zeitraum: " + e.rooms.map(r => `${esc(r.name)} ${deg(r.t)}${r.tNight != null ? ` (nachts ${deg(r.tNight)})` : ""}`).join(", ") + ".");
+      if (c.id === "dhw" && e.base != null && c.f.r2 != null) t.push(`Ohne Zapfung blieben rechnerisch ${nf(Math.max(0, e.base), 2)} kWh pro Tag – das ist die Bereitschaft (Speicherverlust, Zirkulation).`);
+      if (c.id === "wash" && e.share != null) t.push(`Waschmaschine ≈ ${pct(e.share)} des Wassers in diesen Monaten.`);
+      if (c.id === "pv" && e.full != null) t.push(`Netzbezug an Tagen mit vollem Speicher Ø ${nf(e.full, 2)} kWh (${nf(e.nFull)} Tage), sonst ${nf(e.notFull, 2)} kWh.`);
+    }
+    if (c.need) t.push(`<b>Fehlt:</b> ${esc(c.need)}`);
+    $(`rel-t-${c.id}`).innerHTML = t.map(x => `<p class="note">${x}</p>`).join("");
+  }
 }
 
 /* ---------- Charts ---------- */
@@ -1110,7 +1148,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -1126,7 +1164,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();

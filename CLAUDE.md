@@ -119,6 +119,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      `settings.data.devices`; Tapo-CSV, Meross-Excel über `vendor/xlsx.core.min.js`, Monatswerte von Hand). Prüfung: `v32-check`.
    - ✅ v0.33: Raumklima (Govee-CSV, `room_climate` je Raum und Tag mit Stundenmitteln, `docs/UPDATE_V33.sql`, `settings.data.rooms`),
      Abschnitt auf der Seite „Wärmepumpe“. Prüfung: `v33-check`.
+   - ✅ v0.34: Seite „Zusammenhänge“ (`p-rel`, `relations`/`fitLine`): 8 Karten mit Regression und Bewertung, Phasen aus
+     Ereignissen Typ „einstellung“, Standort-Raum je Gerät. Prüfung: `v34-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
