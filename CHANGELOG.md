@@ -465,3 +465,16 @@
   `parseMerossSheets`, `monthRows`, `diffDevice`.
 - Tests: 105 Unit-Tests (neu `tests/v32.test.mjs`), neu `scripts/v32-check.mjs` (21 Prüfungen); Checks v10, v11, v13, v19, v26
   öffnen die Seite „Wärmepumpe“, v14 zusätzlich; `compare.mjs` liest für „meter“ beide Seiten.
+
+## v0.33.0 – Raumklima
+- **Import Govee-Thermometer** unter „Daten → Raumklima“: CSV alle 15 min, Raum aus dem Dateinamen („Schlafzimmer_export_…“),
+  mehrere Dateien auf einmal. Gespeichert je Raum und Tag (Tabelle `room_climate`, `docs/UPDATE_V33.sql`): Tagesmittel,
+  Min/Max der Feuchte, Stunden unter 40 % und ab 60 %, 24 Stundenmittel. Räume in `settings.data.rooms` (umbenennbar, Notiz).
+- **Abschnitt „Raumklima“ auf der Seite „Wärmepumpe“**: je Raum Temperatur (gesamt/nachts), Feuchte (gesamt, nachts 0–6 Uhr,
+  tagsüber 10–18 Uhr), Min/Max, Anteil unter 40 % und ab 60 %; Grafik je Raum (Feuchte mit Linien bei 40/60 % oder
+  Temperatur mit Außentemperatur), Tagesverlauf je Stunde für einen Raum (Standard: Schlafzimmer). Hinweise bei
+  „feucht“ (≥ 30 % der Zeit ab 60 % oder nachts ≥ 60 % und 5 Punkte über tagsüber) und „trocken“ (≥ 50 % unter 40 %).
+  Tage mit weniger als 12 Stunden Werten zählen nicht.
+- Anlass: Schlafzimmer im Oktober 2026 nachts 64–70 % bei abgeschalteter Lüftung, im März 2025 dauerhaft ~32 %.
+- Rechenkern: `climateStats`, `climateSeries`, `climateProfile`; Import: `parseGoveeCsv`, `goveeRoomName`.
+- Tests: 107 Unit-Tests (neu `tests/v33.test.mjs`), neu `scripts/v33-check.mjs` (12 Prüfungen); alles Übrige unverändert.

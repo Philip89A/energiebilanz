@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.32.0">
-<link rel="stylesheet" href="css/style.css?v=0.32.0">
+<meta name="app-version" content="0.33.0">
+<link rel="stylesheet" href="css/style.css?v=0.33.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -217,7 +217,7 @@
 
 <section id="p-hp" data-title="Wärmepumpe" hidden>
   <h1>Wärmepumpe</h1>
-  <p class="lead">Verbrauch laut Zähler (alter gegen neue Wärmepumpe), Werte aus der Wärmepumpen-App (Heizung, Warmwasser, Arbeitszahl, Tagesprofil) und die Wetterbereinigung über Gradtage. Den App-Export lädst du unter „Daten“ hoch.</p>
+  <p class="lead">Verbrauch laut Zähler (alter gegen neue Wärmepumpe), Werte aus der Wärmepumpen-App (Heizung, Warmwasser, Arbeitszahl, Tagesprofil), die Wetterbereinigung über Gradtage und das Raumklima je Raum. Die Exporte lädst du unter „Daten“ hoch.</p>
   <div class="panel"><h2>Wärmepumpe alt gegen neu</h2><div id="mt-wp"></div></div>
   <div class="panel" style="margin-top:16px" id="hp-panel"><h2>Wärmepumpe laut Gerät</h2>
     <p class="note">Aus dem Energie-Export der Wärmepumpen-App (Import unter „Daten“), für den oben gewählten Zeitraum: Strom getrennt nach Heizung, Warmwasser und Kühlung, erzeugte Wärme und Arbeitszahl (Wärme ÷ Strom, ohne Kühlung). Der Zähler misst dasselbe Gerät; die Linie „Zähler“ zeigt den Monatsverbrauch laut Ablesungen, zwischen zwei Ständen nach dem Geräteprofil verteilt – sie weicht vom Gerät nur um den Unterschied der Summen je Ableseintervall ab.</p>
@@ -236,6 +236,16 @@
   <div class="panel" style="margin-top:16px" id="wx-wp-panel"><h2>Wärmepumpe wetterbereinigt</h2>
     <p class="note">Je Ableseintervall: Verbrauch gegen Gradtage (VDI 3807, Raumtemperatur und Heizgrenze unter „Daten → Wetter“). Das Modell trennt eine wetterunabhängige Grundlast (Warmwasser, Bereitschaft) von der Heizarbeit je Gradtag, getrennt vor und nach dem Gerätetausch. Der Jahresverbrauch ist auf das Wetter der letzten 365 Tage umgerechnet – so sind alte und neue Wärmepumpe fair vergleichbar. Grafik und Tabelle zeigen die Ableseintervalle im oben gewählten Zeitraum, das Modell rechnet immer mit allen Daten.</p>
     <div id="wx-wp"></div><div class="chart"><canvas id="wx-wp-chart"></canvas></div><div class="tbl-wrap"><table id="wx-wp-tbl"></table></div></div>
+  <div class="panel" style="margin-top:16px" id="rk-panel"><h2>Raumklima</h2>
+    <p class="note">Temperatur und relative Luftfeuchte je Raum aus den Govee-Thermometern (Import unter „Daten“). Richtwerte: unter 40 % empfinden viele die Luft als trocken, ab 60 % über längere Zeit steigt an kühlen Wänden das Schimmelrisiko. Nacht = 0–6 Uhr, Tag = 10–18 Uhr. Tage mit weniger als 12 Stunden Messwerten zählen nicht.</p>
+    <div id="rk-flags"></div><div class="tbl-wrap"><table id="rk-tbl"></table></div>
+    <div class="form" style="margin-top:10px;max-width:520px"><label class="f">Grafik<select id="rk-metric"><option value="rh">Luftfeuchte</option><option value="t">Temperatur</option></select></label><label class="f">Tagesverlauf für<select id="rk-room"></select></label></div>
+    <div class="grid g2" style="margin-top:8px">
+      <div><h2 style="font-size:15px" id="rk-chart-title">Luftfeuchte je Raum</h2><div class="chart"><canvas id="rk-chart"></canvas></div></div>
+      <div><h2 style="font-size:15px">Tagesverlauf (Ø je Stunde im Zeitraum)</h2><div class="chart"><canvas id="rk-prof"></canvas></div></div>
+    </div><div id="rk-note"></div>
+    <div class="edit-only"><h2 style="font-size:15px;margin-top:14px">Räume</h2><div class="tbl-wrap"><table id="rk-rooms"></table></div></div>
+  </div>
 </section>
 
 <section id="p-cost" data-title="Stromkosten" hidden>
@@ -414,6 +424,11 @@
     <div class="form" style="margin-top:10px"><label class="f">Dateien<input type="file" id="dv-file" multiple accept=".csv,.xls,.xlsx,text/csv"></label></div>
     <div id="dv-result" style="margin-top:10px"></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="rk-import"><h2>Raumklima: Govee-Export importieren</h2>
+    <p class="note">Govee-App → Thermometer → Daten exportieren (CSV, alle 15 min). Der Raum wird am Dateinamen erkannt („Schlafzimmer_export_…“), mehrere Dateien auf einmal sind möglich. Gespeichert werden Tageswerte mit Stundenmitteln; vorhandene Tage werden überschrieben. Die Thermometer speichern nur etwa 20 Tage selbst: die App regelmäßig öffnen, sonst entstehen Lücken.</p>
+    <div class="form" style="margin-top:10px"><label class="f">Dateien<input type="file" id="rk-file" multiple accept=".csv,text/csv"></label></div>
+    <div id="rk-result" style="margin-top:10px"></div>
+  </div>
   <div class="panel" style="margin-top:16px" id="wx-panel"><h2>Wetter</h2>
     <p class="note">Tageswerte von Open-Meteo (Temperatur, Globalstrahlung, Sonnenstunden) für die Wetterbereinigung der Wärmepumpe und den Ertragsvergleich der PV. Der Standort wird auf etwa 1 km gerundet und nur in deinen Einstellungen gespeichert; Open-Meteo sieht bei jedem Abruf Koordinaten und IP-Adresse. Fehlende Tage werden beim Öffnen automatisch ergänzt.</p>
     <div class="form" style="margin-top:10px">
@@ -448,8 +463,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.32.0"></script>
-<script src="vendor/chart.umd.js?v=0.32.0"></script>
-<script type="module" src="js/app.js?v=0.32.0"></script>
+<script src="vendor/supabase.js?v=0.33.0"></script>
+<script src="vendor/chart.umd.js?v=0.33.0"></script>
+<script type="module" src="js/app.js?v=0.33.0"></script>
 </body>
 </html>

@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.32.0';
+import { hpSum } from './hp.js?v=0.33.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -74,6 +74,11 @@ export function stateFromDb(db) {
     deviceDays: (db.device_daily || []).map(r => ({ dev: r.device_id, d: r.day, kwh: r.kwh == null ? null : +r.kwh,
       l: r.water_l == null ? null : +r.water_l, runs: r.runs == null ? null : +r.runs, src: r.src || 'day' })),
     deviceError: db.deviceError || null,
+    rooms: Array.isArray(s.rooms) ? s.rooms : [],
+    climate: (db.room_climate || []).map(r => ({ room: r.room, d: r.day, n: +r.n, t: r.t == null ? null : +r.t, rh: r.rh == null ? null : +r.rh,
+      lo: r.rh_min == null ? null : +r.rh_min, hi: r.rh_max == null ? null : +r.rh_max, dry: +r.h_dry || 0, wet: +r.h_wet || 0,
+      hours: Array.isArray(r.hours) ? r.hours : null })),
+    climateError: db.climateError || null,
   };
 }
 
@@ -93,7 +98,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}), ...(S.rooms && S.rooms.length ? { rooms: S.rooms } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -782,6 +787,42 @@ export function createCalc(S) {
     for (let d = from; d <= to; d = addDays(d, 1)) { const w = W[d]; if (!w || w.t == null) continue; const k = bucketOf(d, g); (temp[k] = temp[k] || { s: 0, n: 0 }); temp[k].s += w.t; temp[k].n++; }
     return { g, ks, val, temp: Object.fromEntries(Object.entries(temp).map(([k, x]) => [k, x.s / x.n])) };
   }
+  // v0.33: Raumklima je Raum und Tag (Govee). Tage mit weniger als 48 Werten (12 h) zählen nicht. Nacht = 0–6 Uhr,
+  // Tag = 10–18 Uhr (Stundenmittel). Anteile „zu trocken“ (< 40 %) und „feucht“ (≥ 60 %) über die Stunden mit Werten.
+  const CL = (() => { const by = {}; for (const r of S.climate || []) if (r.n >= 48) (by[r.room] = by[r.room] || []).push(r);
+    for (const k in by) by[k].sort((a, b) => a.d.localeCompare(b.d)); return by; })();
+  const roomName = id => ((S.rooms || []).find(r => r.id === id) || {}).name || id;
+  function climateStats(from, to) {
+    const ids = [...new Set([...(S.rooms || []).map(r => r.id), ...Object.keys(CL)])];
+    return ids.map(id => {
+      const rs = (CL[id] || []).filter(r => r.d >= from && r.d <= to); if (!rs.length) return null;
+      let hrs = 0, ns = 0, nn = 0, ds = 0, dn = 0, tn = 0, tnn = 0;
+      for (const r of rs) { if (!r.hours) continue; r.hours.forEach((x, h) => { if (!x) return; hrs++;
+        if (h < 6) { ns += x[1]; nn++; tn += x[0]; tnn++; } else if (h >= 10 && h < 18) { ds += x[1]; dn++; } }); }
+      const mean = k => rs.reduce((a, r) => a + r[k], 0) / rs.length;
+      return { id, name: roomName(id), days: rs.length, from: rs[0].d, to: rs[rs.length - 1].d, t: mean('t'), rh: mean('rh'),
+        lo: Math.min(...rs.map(r => r.lo)), hi: Math.max(...rs.map(r => r.hi)),
+        dry: hrs ? rs.reduce((a, r) => a + r.dry, 0) / hrs : null, wet: hrs ? rs.reduce((a, r) => a + r.wet, 0) / hrs : null,
+        rhNight: nn ? ns / nn : null, rhDay: dn ? ds / dn : null, tNight: tnn ? tn / tnn : null };
+    }).filter(Boolean);
+  }
+  // Reihe je Tag oder Monat: Mittel je Raum (k = 't' oder 'rh'), dazu Außentemperatur
+  function climateSeries(from, to, k = 'rh', g) {
+    g = g || gran(from, to); const ks = [], seen = new Set();
+    for (let d = from; d <= to; d = addDays(d, 1)) { const b = bucketOf(d, g); if (!seen.has(b)) { seen.add(b); ks.push(b); } }
+    const val = {};
+    for (const [id, rs] of Object.entries(CL)) { const acc = {}; for (const r of rs) { if (r.d < from || r.d > to) continue; const b = bucketOf(r.d, g); (acc[b] = acc[b] || { s: 0, n: 0 }); acc[b].s += r[k]; acc[b].n++; }
+      val[id] = Object.fromEntries(Object.entries(acc).map(([b, x]) => [b, x.s / x.n])); }
+    const tout = {}; for (let d = from; d <= to; d = addDays(d, 1)) { const w = W[d]; if (!w || w.t == null) continue; const b = bucketOf(d, g); (tout[b] = tout[b] || { s: 0, n: 0 }); tout[b].s += w.t; tout[b].n++; }
+    return { g, ks, val, tout: Object.fromEntries(Object.entries(tout).map(([b, x]) => [b, x.s / x.n])) };
+  }
+  // Tagesverlauf eines Raums: Mittel je Stunde über den Zeitraum
+  function climateProfile(id, from, to) {
+    const acc = Array.from({ length: 24 }, () => ({ t: 0, h: 0, n: 0 })); let days = 0;
+    for (const r of CL[id] || []) { if (r.d < from || r.d > to || !r.hours) continue; days++;
+      r.hours.forEach((x, h) => { if (x) { acc[h].t += x[0]; acc[h].h += x[1]; acc[h].n++; } }); }
+    return { days, hours: acc.map(x => (x.n ? { t: x.t / x.n, rh: x.h / x.n } : null)) };
+  }
   // v0.27: PV-Prognose. fcRows: Vorhersage [{day, rad_kwh}] ab heute; Monatsausblick 12 Monate ab dem laufenden Monat:
   // gemessen bis gestern + Tagesprognose + übrige Tage mit typischer Einstrahlung (Ø der eigenen Wetterjahre) × Monatsfaktor.
   function pvForecast(fcRows = [], today = addDays(A.dates[A.n - 1], 1)) {
@@ -977,7 +1018,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceSum, deviceStats, deviceAlerts, deviceSeries,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceSum, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

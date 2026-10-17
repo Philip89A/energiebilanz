@@ -404,3 +404,36 @@ export function diffDevice(existing, incoming, from = '') {
   }
   return out;
 }
+
+/* ---------- Raumklima (v0.33): Govee-Thermometer ---------- */
+
+// Raumname aus „Schlafzimmer_export_202610162354.csv“
+export function goveeRoomName(fileName) {
+  const m = String(fileName).replace(/\.[^.]+$/, '').match(/^(?:[0-9a-f]{8}-)?(.+?)_export_\d{8,14}$/i);
+  return m ? m[1].replace(/_/g, ' ').trim() : null;
+}
+
+// Govee-Export: „Zeitstempel …,Temperatur_Celsius …,Relative Luftfeuchtigkeit“, alle 15 min. Je Tag: Mittelwerte,
+// Min/Max der Feuchte (Einzelwerte), Stunden unter 40 % bzw. ab 60 % (nach Stundenmittel) und 24 Stundenmittel [Temperatur, Feuchte].
+// Die Kalibrierung („kalibriert -0.9 C“) ist in den Werten schon enthalten.
+export function parseGoveeCsv(text) {
+  const lines = String(text).replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
+  const errors = [];
+  if (!lines.length || !/zeitstempel/i.test(lines[0]) || !/luftfeucht/i.test(lines[0])) return { rows: [], errors: ['Kopfzeile nicht erkannt. Ist das ein Govee-Export (Zeitstempel, Temperatur, Luftfeuchtigkeit)?'] };
+  const byDay = new Map();
+  for (const line of lines.slice(1)) {
+    const [ts, a, b] = line.split(',').map(x => x.trim());
+    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):\d{2}/.exec(ts || ''), t = Number(a), h = Number(b);
+    if (!m || !isFinite(t) || !isFinite(h) || h < 0 || h > 100) { if (ts) errors.push(`„${line.slice(0, 40)}“ nicht lesbar.`); continue; }
+    let d = byDay.get(m[1]); if (!d) byDay.set(m[1], d = { n: 0, lo: 100, hi: 0, hrs: Array.from({ length: 24 }, () => ({ t: 0, h: 0, n: 0 })) });
+    const x = d.hrs[+m[2]]; x.t += t; x.h += h; x.n++; d.n++; if (h < d.lo) d.lo = h; if (h > d.hi) d.hi = h;
+  }
+  const r1 = v => Math.round(v * 10) / 10, rows = [];
+  for (const [day, d] of [...byDay].sort((a, b) => a[0].localeCompare(b[0]))) {
+    const hours = d.hrs.map(x => (x.n ? [r1(x.t / x.n), r1(x.h / x.n)] : null)), have = hours.filter(Boolean);
+    const sum = d.hrs.reduce((s, x) => ({ t: s.t + x.t, h: s.h + x.h }), { t: 0, h: 0 });
+    rows.push({ day, n: d.n, t: r1(sum.t / d.n), rh: r1(sum.h / d.n), rh_min: d.lo, rh_max: d.hi,
+      h_dry: have.filter(x => x[1] < 40).length, h_wet: have.filter(x => x[1] >= 60).length, hours });
+  }
+  return { rows, errors: errors.slice(0, 20), from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
+}

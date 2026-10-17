@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.32.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.32.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.33.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.33.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -152,6 +152,8 @@ export async function loadAll() {
   try { db.pv_forecast = await fetchAll('pv_forecast'); } catch (e) { db.pv_forecast = []; db.pvForecastError = e.message; }
   // Geräte (schema v9, v0.32), ebenso tolerant
   try { db.device_daily = await fetchAll('device_daily'); } catch (e) { db.device_daily = []; db.deviceError = e.message; }
+  // Raumklima (schema v10, v0.33), ebenso tolerant
+  try { db.room_climate = await fetchAll('room_climate'); } catch (e) { db.room_climate = []; db.climateError = e.message; }
   // Gastzugang (schema v7): ist der Nutzer als Gast eingetragen, nur lesen
   try { const me = await uid(); db.readOnly = (await fetchAll('shares')).some(r => r.viewer_id === me); } catch (e) { db.readOnly = false; }
   return db;
@@ -192,6 +194,11 @@ export async function savePvForecast(rows) {
 // Gerätewerte speichern (Upsert je Gerät und Tag); nur online
 export async function saveDevice(rows, onProgress) {
   await upsertRows('device_daily', rows, 'user_id,device_id,day', onProgress);
+}
+
+// Raumklima speichern (Upsert je Raum und Tag); nur online
+export async function saveClimate(rows, onProgress) {
+  await upsertRows('room_climate', rows, 'user_id,room,day', onProgress);
 }
 
 // Wärmepumpen-Export speichern (Upsert je Auflösung und Zeitpunkt)
