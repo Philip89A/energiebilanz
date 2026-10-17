@@ -495,3 +495,11 @@
 - **Geräteliste:** Standort-Raum je Gerät (`settings.data.devices[].room`).
 - Rechenkern: `relations`, `fitLine`. Kein Datenbank-Update nötig.
 - Tests: 109 Unit-Tests (neu `tests/v34.test.mjs`), neu `scripts/v34-check.mjs` (10 Prüfungen); alles Übrige unverändert.
+
+## v0.35 – Wasser: Kachel „davon Waschmaschine“
+- **Wasser-Kacheln** (Zähler & Verbrauch → Wasser): je Gerät mit Wasserwerten eine Kachel mit Litern und Anteil am Zähler,
+  Waschgängen und Litern je Waschgang sowie dem übrigen Verbrauch je Tag und je Person. Der Anteil wird nur über die Tage
+  gerechnet, an denen Gerätewerte und Zählerwerte vorliegen (vorher: Gerätesumme gegen den ganzen Zeitraum).
+- Hinweistext unter der Grafik ersetzt: Anteil gilt nur für Tage mit Gerätewerten, monatliches Ablesen macht ihn genauer.
+- Rechenkern: `deviceWater`. Kein Datenbank-Update nötig.
+- Tests: 111 Unit-Tests (neu `tests/v35.test.mjs`), neu `scripts/v35-check.mjs` (8 Prüfungen); v32-, v34- und v26-Check unverändert grün.
