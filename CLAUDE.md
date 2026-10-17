@@ -126,6 +126,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.36: Waschprogramme je Monat (`device_programs`, `docs/UPDATE_V36.sql`; `programMonths`/`programSummary`/`isWash`):
      echte Wäschen ohne smartFinish/Schleudern/Spülen und < 10 l, Temperaturklassen, Abgleich mit der Monatssumme (> 5 %),
      Eingabeformular ersetzt den Monat und übernimmt die Summe in `device_daily` (nur ohne Steckdosen-Tageswerte). Prüfung: `v36-check`.
+   - ✅ v0.37: Ereignisse unter „Daten → Ereignisse“ erfassen, ändern, löschen (Bereich `grp` as/wp/pv/car oder leer, Art
+     einstellung/geraet/zaehler/daten/sonstig); Rückfrage bei rechnungsrelevanten (daten+pv, geraet+wp, zaehler). Prüfung: `v37-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
