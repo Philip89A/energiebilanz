@@ -3,11 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.34.0';
-import { parseNum } from './queue.js?v=0.34.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.34.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.34.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.34.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.35.0';
+import { parseNum } from './queue.js?v=0.35.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.35.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.35.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.35.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -296,9 +296,13 @@ function renderWater(){
   const last=g.intervals[g.intervals.length-1].to, P0=RS.all?{from:g.intervals[0].from,to:addDaysIso(last,-1)}:RS.P;
   const a=C.waterStats(P0.from,P0.to), c=RS.Cp?C.waterStats(RS.Cp.from,RS.Cp.to):null, L=RS.Cp?RS.Cp.label:"";
   const cv=c&&c.days?c:null;
+  const dWat=C.deviceWater(P0.from,P0.to); $("wt-kpis").className=`grid ${dWat.length?"g3":"g4"}`;
   $("wt-kpis").innerHTML=kpi(`${nf(a.m3,a.m3<100?2:1)} m³`,"Wasser im Zeitraum",`${nf(a.days)} Tage mit Ablesungen`+(cv?vsTxt(a.m3,cv.m3,v=>nf(v,2)+" m³",L):""))
     +kpi(a.lpd!=null?`${nf(a.lpd)} l`:"–","pro Tag",cv?vsTxt(a.lpd,cv.lpd,v=>nf(v)+" l",L).replace(/^ · /,""):"")
     +kpi(a.lpp!=null?`${nf(a.lpp)} l`:"–","pro Person und Tag",`${nf(a.persons)} Personen; bundesweit üblich etwa 125 l`)
+    +dWat.map(x=>kpi(x.share!=null?`${nf(x.l)} l · ${pct(x.share)}`:`${nf(x.l)} l`,`davon ${esc(x.name)}`,
+      [x.runs?`${nf(x.runs)} Waschgänge, ${nf(x.perRun)} l je Waschgang`:"",x.restLpp!=null?`übriger Verbrauch ${nf(x.restPerDay)} l/Tag, ${nf(x.restLpp)} l pro Person`:"",
+       x.n<a.days?`nur ${dde(x.from)}–${dde(x.to)} (${nf(x.n)} Tage mit Werten)`:"",x.month?"teils aus Monatssummen":""].filter(Boolean).join("; "))).join("")
     +kpi(a.cost!=null?eur(a.cost):"–","Kosten (geschätzt)",a.cost!=null?`${nf(a.priceM3,2)} €/m³ Wasser und Abwasser${+w.baseYear?", Grundgebühr anteilig":""}`+(cv&&cv.cost!=null?vsTxt(a.cost,cv.cost,v=>eur(v),L):""):"Preise unten eintragen");
   const fl=[];
   if(a.high.length) fl.push(flag(`Auffällig hoher Verbrauch: ${a.high.map(iv=>`${dde(iv.from)}–${dde(iv.to)} ${nf(iv.rate*1000)} l/Tag`).join(", ")} (über 150 % des üblichen Werts von ${nf(a.median*1000)} l/Tag). Ohne erklärenden Anlass (Besuch, Gartenbewässerung, Pool): WC-Spülung und tropfende Hähne prüfen; bei geschlossenen Hähnen darf sich der Zähler nicht drehen.`));
@@ -315,9 +319,7 @@ function renderWater(){
     ...(maPts.length?[{label:"Ø 30 Tage",data:maPts,borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,borderWidth:1.5,borderDash:[2,3]}]:[])]},
     options:{parsing:true,interaction:{mode:"nearest",axis:"x",intersect:false},scales:{x:{type:"category",labels:lab,ticks:{maxTicksLimit:8,callback:function(v){return dde(this.getLabelForValue(v));}}},y:{beginAtZero:true,title:{display:true,text:"Liter pro Tag"}}},
       plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y)} l`}}}}});
-  // v0.32: Wasser der Geräte (z. B. Waschmaschine) im selben Zeitraum
-  const dw=(S.devices||[]).map(d=>({d,s:C.deviceSum(d.id,P0.from,P0.to)})).filter(x=>x.s.water!=null&&x.s.n);
-  const dwTxt=dw.length?` Davon ${dw.map(x=>`${esc(x.d.name)} ${nf(x.s.water)} l${a.m3>0?` (${pct(x.s.water/1000/a.m3)})`:""}${x.s.n<a.days?` an ${nf(x.s.n)} Tagen mit Werten`:""}`).join(", ")}.`:"";
+  const dwTxt=dWat.length?" Der Anteil der Geräte gilt nur für die Tage mit Gerätewerten; zwischen zwei Ablesungen wird der Zähler gleichmäßig verteilt, monatliches Ablesen macht ihn genauer.":"";
   const nR=S.readings.filter(r=>r.m===wm.id).length;
   $("wt-note").innerHTML=`<p class="note">${nf(nR)} Ablesungen insgesamt, letzte am ${dde(last)}. Bei Ablesungen alle 1–2 Wochen zeigt die Grafik Wochendurchschnitte, keine einzelnen Tage.${dwTxt}</p>`;
 }

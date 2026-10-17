@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.34.0';
+import { hpSum } from './hp.js?v=0.35.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -757,6 +757,19 @@ export function createCalc(S) {
       const t = tariffAt('as', d) || currentTariff('as'); if (t) eur += (r.kwh || 0) * t.ap / 100; }
     return { kwh, n, perDay: n ? kwh / n : null, water: nw ? water : null, runs: runs || null, month, eur };
   }
+  // v0.35: Wasser der Geräte (Waschmaschine) gegen den Wasserzähler – nur über die Tage, an denen beides vorliegt.
+  function deviceWater(from, to) {
+    const wd = groupSeries('water').daily;
+    return (S.devices || []).map(dv => {
+      const rows = DEV[dv.id] || {}; let l = 0, runs = 0, n = 0, d0 = null, d1 = null, m3 = 0, month = false;
+      for (const [d, r] of Object.entries(rows)) { if (d < from || d > to || r.l == null || wd[d] == null) continue;
+        l += r.l; runs += r.runs || 0; n++; m3 += wd[d]; if (r.src === 'month') month = true; if (!d0 || d < d0) d0 = d; if (!d1 || d > d1) d1 = d; }
+      if (!n) return null;
+      const w = waterStats(d0, d1), tot = m3 * 1000, rest = tot - l;
+      return { id: dv.id, name: dv.name, from: d0, to: d1, n, l, runs: runs || null, perRun: runs ? l / runs : null, month,
+        share: tot > 0 ? l / tot : null, perDay: l / n, restPerDay: tot > 0 ? rest / n : null, restLpp: tot > 0 ? rest / n / w.persons : null };
+    }).filter(Boolean);
+  }
   function deviceStats(from, to) {
     const hh = hhDay(), days = diffDays(from, to) + 1;
     const list = (S.devices || []).map(dv => {
@@ -1103,7 +1116,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceSum, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceWater, deviceSum, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

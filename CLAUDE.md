@@ -121,6 +121,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Abschnitt auf der Seite „Wärmepumpe“. Prüfung: `v33-check`.
    - ✅ v0.34: Seite „Zusammenhänge“ (`p-rel`, `relations`/`fitLine`): 8 Karten mit Regression und Bewertung, Phasen aus
      Ereignissen Typ „einstellung“, Standort-Raum je Gerät. Prüfung: `v34-check`.
+   - ✅ v0.35: Wasser-Kachel „davon <Gerät>“ (`deviceWater`): Anteil am Wasserzähler nur über Tage mit Gerätewerten,
+     Liter je Waschgang, übriger Verbrauch je Tag und Person. Prüfung: `v35-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
