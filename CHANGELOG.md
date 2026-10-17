@@ -515,3 +515,12 @@
 - **Wasser-Kachel:** zählt Wäschen statt App-Gänge, sobald Programme die ganzen Monate abdecken.
 - Ohne SQL-Update bleibt alles nutzbar; der Abschnitt nennt dann `docs/UPDATE_V36.sql`.
 - Tests: 115 Unit-Tests (neu `tests/v36.test.mjs`), neu `scripts/v36-check.mjs` (18 Prüfungen); v26-, v32-, v34-, v35-Check grün.
+
+## v0.37 – Ereignisse erfassen
+- **Daten → Ereignisse:** Formular mit Datum, Bereich (Wärmepumpe, Allgemeinstrom, PV und Batterie, Auto, ohne), Art
+  (Einstellung geändert, Gerätetausch, Zählertausch, Datenbeginn, Sonstiges) und Text. Die Liste ist neueste zuerst,
+  jede Zeile änderbar und löschbar. Bisher ließen sich Ereignisse nur ansehen; Änderungen in der Liste wurden nicht gespeichert.
+- Ereignisse, die die Rechnung steuern (Datenbeginn PV, Gerätetausch Wärmepumpe, Zählertausch), sind gekennzeichnet;
+  Anlegen, Ändern und Löschen fragen nach.
+- Kein Datenbank-Update nötig.
+- Tests: 115 Unit-Tests unverändert, neu `scripts/v37-check.mjs` (14 Prüfungen); v13-, v14-, v34-, v36- und Bearbeiten-Check grün.

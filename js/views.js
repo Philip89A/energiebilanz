@@ -3,11 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.36.0';
-import { parseNum } from './queue.js?v=0.36.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.36.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.36.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.36.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.37.0';
+import { parseNum } from './queue.js?v=0.37.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.37.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.37.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.37.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1266,10 +1266,44 @@ function rerender(first=false){
 }
 function route(){ const h=location.hash.slice(1)||"overview"; const id="p-"+h; show(PAGES.some(p=>p[0]===id)?id:"p-overview"); }
 
-/* ---------- Daten-Seite: Ereignisse (nur Anzeige) ---------- */
+/* ---------- Daten-Seite: Ereignisse (v0.37: erfassen, ändern, löschen) ---------- */
+const EV_GRP = [["wp","Wärmepumpe"],["as","Allgemeinstrom"],["pv","PV und Batterie"],["car","Auto"],["","ohne Bereich"]];
+const EV_TYPE = [["einstellung","Einstellung geändert"],["geraet","Gerätetausch"],["zaehler","Zählertausch"],["daten","Datenbeginn"],["sonstig","Sonstiges"]];
+// Diese Ereignisse steuern die Rechnung (Beginn Anker-Daten, Wechsel Wärmepumpe, Zählertausch)
+const evCritical = e => (e.type==="daten"&&e.group==="pv")||(e.type==="geraet"&&e.group==="wp")||e.type==="zaehler";
+const evOpts = (list,sel) => list.map(([v,l])=>`<option value="${v}"${v===(sel||"")?" selected":""}>${l}</option>`).join("")+(sel&&!list.some(x=>x[0]===sel)?`<option value="${esc(sel)}" selected>${esc(sel)}</option>`:"");
+let evMsg="";
 function renderData(){
-  $("ev-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Bereich</th><th class="l">Ereignis</th></tr></thead><tbody>${
-    S.events.map((e,i)=>`<tr><td><input type="date" value="${e.d}" data-ev="${i}" data-k="d"></td><td class="l">${{wp:"Wärmepumpe",as:"Allgemeinstrom",pv:"PV",car:"Auto"}[e.group]||esc(e.group)}</td><td class="l"><input type="text" value="${esc(e.text)}" data-ev="${i}" data-k="text"></td></tr>`).join("")}</tbody>`;
+  if(!$("ev-g").options.length){ $("ev-g").innerHTML=evOpts(EV_GRP,"wp"); $("ev-t").innerHTML=evOpts(EV_TYPE,"einstellung"); }
+  if(!$("ev-d").value) $("ev-d").value=iso(new Date());
+  $("ev-msg").innerHTML=evMsg;
+  const list=[...S.events].sort((a,b)=>b.d.localeCompare(a.d));
+  $("ev-tbl").innerHTML = list.length?`<thead><tr><th>Datum</th><th class="l">Bereich</th><th class="l">Art</th><th class="l">Ereignis</th><th></th></tr></thead><tbody>${
+    list.map(e=>`<tr><td><input type="date" value="${e.d}" data-ev="${e.id}" data-k="d"></td><td class="l"><select data-ev="${e.id}" data-k="group">${evOpts(EV_GRP,e.group)}</select></td>
+      <td class="l"><select data-ev="${e.id}" data-k="type">${evOpts(EV_TYPE,e.type)}</select>${evCritical(e)?` <span class="pill">steuert Rechnung</span>`:""}</td>
+      <td class="l"><input type="text" value="${esc(e.text||"")}" data-ev="${e.id}" data-k="text" style="min-width:260px"></td>
+      <td><button class="x" data-ev-del="${e.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`:"";
+}
+function wireEvents(){
+  $("ev-add").addEventListener("click",()=>{
+    const d=$("ev-d").value, text=$("ev-text").value.trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(d)||!text){ evMsg="Bitte Datum und Text angeben."; renderData(); return; }
+    const e={d,group:$("ev-g").value||null,type:$("ev-t").value||null,text};
+    if(evCritical(e)&&!confirm("Dieses Ereignis steuert die Berechnung (Beginn Anker-Daten, Wechsel Wärmepumpe oder Zählertausch). Trotzdem speichern?")) return;
+    S.events.push(e); write("event",e); $("ev-text").value=""; evMsg=`Gespeichert: ${dde(d)} – ${esc(text)}`; rerender();
+  });
+  $("ev-tbl").addEventListener("change",e=>{
+    const el=e.target, id=el.dataset.ev; if(!id) return; const ev=S.events.find(x=>x.id===id); if(!ev) return;
+    const v=el.value.trim(), next={...ev,[el.dataset.k]:v||(el.dataset.k==="d"?ev.d:null)};
+    if(el.dataset.k==="d"&&!/^\d{4}-\d{2}-\d{2}$/.test(v)){ renderData(); return; }
+    if((evCritical(ev)||evCritical(next))&&!confirm("Dieses Ereignis steuert die Berechnung. Wirklich ändern?")){ renderData(); return; }
+    Object.assign(ev,next); write("event",ev); evMsg=""; rerender();
+  });
+  $("ev-tbl").addEventListener("click",e=>{
+    const id=e.target.dataset.evDel; if(!id) return; const i=S.events.findIndex(x=>x.id===id); if(i<0) return; const ev=S.events[i];
+    if(!confirm(`Ereignis vom ${dde(ev.d)} „${ev.text||""}“ löschen?${evCritical(ev)?" Es steuert die Berechnung.":""}`)) return;
+    S.events.splice(i,1); remove("event",ev); evMsg=""; rerender();
+  });
 }
 
 /* ---------- Nach jedem Rendern ---------- */
@@ -1303,7 +1337,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate();
+    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate(); wireEvents();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);

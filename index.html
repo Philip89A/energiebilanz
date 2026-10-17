@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.36.0">
-<link rel="stylesheet" href="css/style.css?v=0.36.0">
+<meta name="app-version" content="0.37.0">
+<link rel="stylesheet" href="css/style.css?v=0.37.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -462,7 +462,14 @@
     </div>
     <div id="wx-status" style="margin-top:10px"></div>
   </div>
-  <div class="panel" style="margin-top:16px"><h2>Ereignisse</h2><p class="note">Markierungen, die Auswertungen in vorher und nachher trennen.</p><div class="tbl-wrap"><table id="ev-tbl"></table></div></div>
+  <div class="panel" style="margin-top:16px" id="ev-panel"><h2>Ereignisse</h2><p class="note">Markierungen, die Auswertungen in vorher und nachher trennen. Art „Einstellung“ (z. B. Warmwasserzeiten, Zirkulation, Heizkurve) teilt die Karten unter „Zusammenhänge“ in Phasen. Gerätetausch Wärmepumpe, Zählertausch und Datenbeginn PV steuern die Berechnung; Ändern oder Löschen fragt deshalb nach.</p>
+    <div class="edit-only"><div class="form" style="margin-top:10px" id="ev-form">
+      <label class="f">Datum<input type="date" id="ev-d"></label>
+      <label class="f">Bereich<select id="ev-g"></select></label>
+      <label class="f">Art<select id="ev-t"></select></label>
+      <label class="f" style="flex:2 1 260px">Was wurde geändert?<input type="text" id="ev-text" placeholder="z. B. Zirkulation 05:15–08:00 und 16:30–20:30"></label>
+      <button type="button" id="ev-add">Ereignis speichern</button></div><p class="note" id="ev-msg"></p></div>
+    <div class="tbl-wrap"><table id="ev-tbl"></table></div></div>
   <div class="panel" style="margin-top:16px"><h2>Startdaten importieren (einmalig)</h2>
     <p class="note"><code>seed_state.json</code> aus der Referenzversion. Die Datei wird nur im Browser gelesen.</p>
     <div class="row" style="margin-top:12px"><input type="file" id="seed-file" accept=".json,application/json"></div>
@@ -484,8 +491,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.36.0"></script>
-<script src="vendor/chart.umd.js?v=0.36.0"></script>
-<script type="module" src="js/app.js?v=0.36.0"></script>
+<script src="vendor/supabase.js?v=0.37.0"></script>
+<script src="vendor/chart.umd.js?v=0.37.0"></script>
+<script type="module" src="js/app.js?v=0.37.0"></script>
 </body>
 </html>
