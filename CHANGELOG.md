@@ -478,3 +478,20 @@
 - Anlass: Schlafzimmer im Oktober 2026 nachts 64–70 % bei abgeschalteter Lüftung, im März 2025 dauerhaft ~32 %.
 - Rechenkern: `climateStats`, `climateSeries`, `climateProfile`; Import: `parseGoveeCsv`, `goveeRoomName`.
 - Tests: 107 Unit-Tests (neu `tests/v33.test.mjs`), neu `scripts/v33-check.mjs` (12 Prüfungen); alles Übrige unverändert.
+
+## v0.34.0 – Zusammenhänge
+- **Neue Seite „Zusammenhänge“** (mit Zeitraumleiste): acht Karten zu gegenseitigen Einflüssen, je Karte Frage, Streudiagramm
+  der Tageswerte (Farben nach Jahreszeit, Phase oder Gruppe), Gerade mit Steigung, R² und Anzahl Tage, Bewertung
+  „belastbar“ (≥ 30 Tage, R² ≥ 0,3), „Hinweis“ (≥ 10 Tage, R² ≥ 0,1) oder „zu wenig Daten“, und was fehlt:
+  1. Gefrierschrank gegen Standort-Raum (sonst Außentemperatur), Wäschetage (Feuchtesprung ≥ 12 Punkte) gesondert.
+  2. Lüftung (kWh/Tag als Laufzeit) gegen Schlafzimmerfeuchte nachts minus Tagesmittel.
+  3. Heizstrom gegen Gradtage je Phase, dazu Raumtemperaturen.
+  4. Warmwasser-Strom gegen Wasser je Tag, Achsenabschnitt = Bereitschaft (Speicher, Zirkulation).
+  5. Lüftung gegen Heizstrom je Gradtag (Wärmerückgewinnung).
+  6. Waschmaschine gegen Wasser je Monat (Anteil).
+  7. Grundlast ohne gemessene Geräte je Wochentag.
+  8. PV-Erzeugung gegen Netzbezug, Tage mit vollem Speicher getrennt.
+- **Phasen** aus Ereignissen vom Typ „einstellung“ (Daten → Ereignisse).
+- **Geräteliste:** Standort-Raum je Gerät (`settings.data.devices[].room`).
+- Rechenkern: `relations`, `fitLine`. Kein Datenbank-Update nötig.
+- Tests: 109 Unit-Tests (neu `tests/v34.test.mjs`), neu `scripts/v34-check.mjs` (10 Prüfungen); alles Übrige unverändert.
