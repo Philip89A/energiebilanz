@@ -45,7 +45,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    (Toleranz 1e-9) und mit den von Hand übertragenen Referenzwerten in `data/expected.json` → `kennzahlen`.
    „Heute“ ist Parameter (`today`) für Fahrzeugbuch-Auswertungen; der Abschlag-Check rechnet bis letzter
    Zählerstand − 1 Tag, nicht bis zum Kalenderdatum.
-4. Seiten portieren: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe, Stromkosten
+4. Seiten portieren: Überblick, Kosten & Ersparnisse, PV-Anlage, Batterie, Zähler & Wärmepumpe (ab v0.32 getrennt), Stromkosten
    (inkl. Abschlag-Check), Amortisation, Auto-Vergleich, Tanken & Laden (inkl. Fahrzeugbuch), Daten.
    - ✅ 4a Anzeige (v0.4): `js/views.js` enthält die render*-Funktionen der Referenz, verbunden mit calc.js;
      Eingaben gesperrt (`body.ro`, `.edit-only`). `scripts/compare.mjs` vergleicht Referenz und App (Texte und
@@ -115,6 +115,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.31: Anker-Import mehrerer Dateien (gleiche Tage addiert, `mergeAnkerParsed`), neues Exportformat ohne „Genutzte
      Solarenergie“, Netzladung `anker_daily.netz_zu_speicher` (`docs/UPDATE_V31.sql`, Kürzel `n2b`). Prüfung: `tests/v31.test.mjs`, `scripts/v31-check.mjs`.
    - ✅ v0.31.1: Batterie-Kachel mit Kapazität der Stufe am Zeitraumende, Ø nur als Hinweis. Prüfung: `v30-check`.
+   - ✅ v0.32: Seite „Wärmepumpe“ (`p-hp`) von „Zähler & Verbrauch“ getrennt; Geräte (`device_daily`, `docs/UPDATE_V32.sql`,
+     `settings.data.devices`; Tapo-CSV, Meross-Excel über `vendor/xlsx.core.min.js`, Monatswerte von Hand). Prüfung: `v32-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

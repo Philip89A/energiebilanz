@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast } from './db.js?v=0.31.1';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.31.1';
-import { stateFromDb } from './calc.js?v=0.31.1';
-import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.31.1';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.31.1';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice } from './db.js?v=0.32.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.32.0';
+import { stateFromDb } from './calc.js?v=0.32.0';
+import { setModel, startViews, setStore, syncWeather } from './views.js?v=0.32.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.32.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -57,6 +57,7 @@ setStore({
   reload: () => { shownJson = null; loadModel(); },   // nach Fehler immer neu anzeigen (Speicher ≠ Datenbank)
   saveWeather: rows => (readOnly ? Promise.resolve('readonly') : online() ? saveWeather(rows) : Promise.reject(new Error('offline'))),
   savePvForecast: rows => (readOnly ? Promise.resolve('readonly') : online() ? savePvForecast(rows) : Promise.reject(new Error('offline'))),
+  saveDevice: rows => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? saveDevice(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut speichern.'))),
   saveHp: rows => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? saveHp(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut hochladen.'))),
 });
 

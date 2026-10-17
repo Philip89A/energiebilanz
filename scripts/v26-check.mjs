@@ -66,7 +66,7 @@ const day = (d, el, peak = 55, aux = 0, hours = 24) => Array.from({ length: hour
 DB.hp_energy = [...day('2026-03-01', 2), ...day('2026-03-02', 2), ...day('2026-03-03', 2, 68, 0.5), ...day('2026-03-04', 4), ...day('2026-03-05', 2),
   ...day('2026-03-06', 2), ...day('2026-03-07', 2), ...day('2026-03-08', 2), ...day('2026-03-09', 3, 55, 0, 10)];
 
-let { p, ctx } = await open('meter');
+let { p, ctx } = await open('hp');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
 ok(await p.inputValue('#hpd-a') === '2026-03-09' && await p.inputValue('#hpd-b') === '', 'Start: neuester Tag, kein Vergleich');
 let ds = await p.evaluate(() => window.__ebCharts['hp-hours'].data.datasets.map(d => ({ l: d.label, data: d.data, y: d.yAxisID, stack: d.stack })));

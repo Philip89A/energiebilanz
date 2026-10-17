@@ -66,9 +66,9 @@ hp.push({ ...hp.find(r => r.grain === 'month'), ts: '2025-01' });   // Vergleich
 DB.hp_energy = hp; DB.weather_daily = [];
 const view = v => JSON.stringify({ view: { mode: 'all', key: '', from: '', to: '', cmp: 'none', cfrom: '', cto: '', ...v } });
 
-let { p, ctx } = await open('meter');
+let { p, ctx } = await open('hp');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Zähler & Wärmepumpe“ sichtbar');
+ok(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Wärmepumpe“ sichtbar');
 await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200);
 await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(400);
 let k = await txt(p, '#hp-kpis');
@@ -78,9 +78,11 @@ ok(await p.evaluate(() => window.__ebCharts['hp-month'].data.labels.length) === 
 ok(await p.evaluate(() => window.__ebCharts['hp-day'].data.labels.length) === 31, 'Tagesgrafik mit 31 Tagen');
 ok((await p.$$('#hp-tbl tbody tr')).length === 1, 'Tabelle nur mit Januar');
 ok(await p.evaluate(() => window.__ebCharts['hp-month'].config.plugins.some(x => x.id === 'ebTotals')), 'v0.15: Summen über den Balken aktiv');
+await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(400);   // v0.32: Zählergrafiken auf eigener Seite
 ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Tag', 'Zähler-Monatsgrafik wird bei einem Monat zur Tagesgrafik');
 const nMt = await p.evaluate(() => window.__ebCharts['mt-month'].data.labels.length);
 ok(nMt >= 28 && nMt <= 31, `Zählergrafik: Tage im Januar (${nMt})`);
+await p.goto('http://localhost:8000/#hp'); await p.waitForTimeout(400);
 const nIv = await p.$$eval('#wx-wp-tbl tbody tr', r => r.length).catch(() => 0);
 // Vergleich mit Vorjahreszeitraum: Jan 2025 hat im Seed keine neuen Gerätedaten (vor dem Tausch)
 await p.selectOption('#pb-cmp', 'yoy'); await p.waitForTimeout(400);
@@ -93,7 +95,7 @@ ok(/Jan 2026\): 300 kWh \(−17 %\)/.test(k), 'Vergleichswert und Abweichung: ' 
 await p.selectOption('#pb-mode', 'year'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2025'); await p.selectOption('#pb-cmp', 'none'); await p.waitForTimeout(400);
 ok((await txt(p, '#hp-flags')).includes('Keine Gerätedaten im gewählten Zeitraum'), 'Hinweis bei Zeitraum ohne Gerätedaten');
 // Gesamter Zeitraum: Monatsgrafik der Zähler unverändert je Monat
-await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
+await p.selectOption('#pb-mode', 'all'); await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(400);
 ok((await txt(p, '#mt-month-title')) === 'Verbrauch pro Monat', 'Gesamter Zeitraum: je Monat');
 // Zeitraum gilt auch auf anderen Seiten (gemeinsam)
 await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(300);

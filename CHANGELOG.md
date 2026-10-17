@@ -445,3 +445,23 @@
   nach dem Speichertausch also noch die alte Kapazität. Der Ø bleibt als Hinweis („für Vollzyklen“), wenn er abweicht.
 - Rechnung unverändert. Kein Datenbank-Update nötig.
 - Tests: `scripts/v30-check.mjs` um 2 Prüfungen erweitert (13); alles Übrige unverändert.
+
+## v0.32.0 – Geräte, eigene Seite „Wärmepumpe“
+- **Seiten getrennt:** „Zähler & Wärmepumpe“ heißt jetzt **„Zähler & Verbrauch“** (Verbrauch zwischen den Ablesungen, je Monat,
+  Jahresvergleich, Geräte, Wasser, Zählerstände, Abgleich). Neue Seite **„Wärmepumpe“** mit alt gegen neu, Werten laut Gerät,
+  Tagesprofil und Wetterbereinigung. Beide mit Zeitraumleiste. Anlass: Seite war zu lang.
+- **Geräte** (Tabelle `device_daily`, `docs/UPDATE_V32.sql`; Liste in `settings.data.devices` mit „gemessen ab“):
+  - Import unter „Daten → Geräte“: Tapo-CSV „Power Monitor Day Data“ (Gerät aus dem Dateinamen, Nullen vor Messbeginn und ein
+    angebrochener erster Tag fallen weg) und Meross-Excel (Tageswerte aus „Monat“, Monate ohne Tageswerte aus „Jahr“
+    gleichmäßig verteilt und markiert, unvollständiger Exporttag weg). Mehrere Dateien auf einmal, Vorschau neu/geändert.
+  - Monatswerte von Hand (z. B. Waschmaschinen-App): kWh, Liter, Programme, gleichmäßig auf die Tage verteilt.
+  - Anzeige auf „Zähler & Verbrauch“: je Gerät kWh, kWh/Tag, Anteil am Allgemeinstrom (Netzbezug laut Zähler + genutzter
+    Solarstrom, gleiche Tage), Kosten zum Arbeitspreis, Vorjahr (ab 80 % Abdeckung), Wasser, Programme; nicht gemessener Rest;
+    Grafik je Gerät mit Außentemperatur; Hinweis bei +15 % gegenüber dem Vorjahr über 4 Wochen.
+  - Wasser: „davon Waschmaschine“ im Hinweis unter der Wassergrafik.
+- Excel-Leser: SheetJS 0.18.5 (`vendor/xlsx.core.min.js`, Apache-2.0) wird erst beim Import einer Excel-Datei geladen. Bekannte
+  Schwachstellen dieser Version betreffen das Einlesen fremder Dateien; hier werden nur eigene Exporte gelesen.
+- Rechenkern: `deviceSum`, `deviceStats`, `deviceAlerts`, `deviceSeries`; Import: `parseTapoCsv`, `tapoDeviceName`,
+  `parseMerossSheets`, `monthRows`, `diffDevice`.
+- Tests: 105 Unit-Tests (neu `tests/v32.test.mjs`), neu `scripts/v32-check.mjs` (21 Prüfungen); Checks v10, v11, v13, v19, v26
+  öffnen die Seite „Wärmepumpe“, v14 zusätzlich; `compare.mjs` liest für „meter“ beide Seiten.

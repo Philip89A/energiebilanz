@@ -52,7 +52,7 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 1. **Zuerst** SQL Editor → New query → Inhalt von `docs/UPDATE_V25.sql` → **Run** (Warnung bestätigen, betrifft nur die
    Prüfregel). Kontrolle: Ausgabe enthält `'water'`.
 2. Pull Request mergen, App neu laden (v0.25.0).
-3. **Zähler & Wärmepumpe → Wasser:** „Wasserzähler anlegen“, Personen und Preise (Wasser und Abwasser je m³, optional
+3. **Zähler & Verbrauch → Wasser** (bis v0.31 „Zähler & Wärmepumpe“): „Wasserzähler anlegen“, Personen und Preise (Wasser und Abwasser je m³, optional
    Grundgebühr pro Jahr) eintragen. Danach Stände in m³ wie beim Strom unter „Erfassen → Zählerstand“ eingeben.
    Ohne Schritt 1 schlägt das Anlegen fehl.
 
@@ -70,3 +70,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. **Daten → Anker-Export importieren:** bei zwei Systemen beide CSV-Dateien zusammen auswählen (in der Dateiauswahl
    mehrere markieren). Gleiche Tage werden addiert; die Vorschau nennt sie. Wird später nur eine der beiden Dateien
    erneut geladen, warnt die Vorschau vor kleineren Werten und fragt vor dem Übernehmen nach.
+
+# Update v0.32 (Geräte, Seite Wärmepumpe)
+1. SQL Editor → New query → Inhalt von `docs/UPDATE_V32.sql` → **Run** (Warnung bestätigen, betrifft nur Regeln und
+   Trigger der neuen Tabelle). Kontrolle: `device_daily | true | 4`.
+2. Pull Request mergen, App neu laden (v0.32.0).
+3. **Daten → Geräte: Messsteckdosen importieren:** Tapo-CSV und Meross-Excel auswählen, jeder Datei ein Gerät zuordnen
+   (Tapo erkennt den Namen aus dem Dateinamen), „Übernehmen“. Unter **Zähler & Verbrauch → Geräte → Geräteliste** bei Bedarf
+   „gemessen ab“ setzen (ältere Tage zählen dann nicht). Waschmaschine: Gerät hinzufügen und Monatswerte von Hand eintragen.
+   Ohne Schritt 1 schlägt das Speichern fehl.
