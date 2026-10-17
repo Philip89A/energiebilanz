@@ -79,3 +79,11 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    (Tapo erkennt den Namen aus dem Dateinamen), „Übernehmen“. Unter **Zähler & Verbrauch → Geräte → Geräteliste** bei Bedarf
    „gemessen ab“ setzen (ältere Tage zählen dann nicht). Waschmaschine: Gerät hinzufügen und Monatswerte von Hand eintragen.
    Ohne Schritt 1 schlägt das Speichern fehl.
+
+# Update v0.33 (Raumklima)
+1. SQL Editor → New query → Inhalt von `docs/UPDATE_V33.sql` → **Run** (Warnung bestätigen, betrifft nur Regeln und
+   Trigger der neuen Tabelle). Kontrolle: `room_climate | true | 4`.
+2. Pull Request mergen, App neu laden (v0.33.0).
+3. **Daten → Raumklima: Govee-Export importieren:** alle CSV-Dateien auswählen, Räume prüfen (Umlaute im Dateinamen ggf. von
+   Hand korrigieren), „Übernehmen“. Auswertung unter **Wärmepumpe → Raumklima**. Die Govee-App etwa alle zwei Wochen öffnen,
+   damit die Thermometer ihre Werte abgeben, und monatlich exportieren.

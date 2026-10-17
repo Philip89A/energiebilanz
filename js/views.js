@@ -3,11 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.32.0';
-import { parseNum } from './queue.js?v=0.32.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.32.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice } from './import.js?v=0.32.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.32.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.33.0';
+import { parseNum } from './queue.js?v=0.33.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.33.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.33.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.33.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -447,6 +447,96 @@ function wireDevImport() {
       if (changed) persist();
       dvImportMsg = `${nf(n)} Tageswerte gespeichert.`; dvImports = null; refreshCalc(); rerender();
     } catch (err) { dvImportMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevImport(); }
+  });
+}
+
+
+/* ---------- Raumklima (v0.33) ---------- */
+const rkColor = i => css(DV_PAL[i % DV_PAL.length]);
+function renderClimate(){
+  const RS = periodSel(), fl = [], all = (S.climate || []).filter(r => r.n >= 48).map(r => r.d).sort();
+  if (S.climateError) fl.push(flag("Tabelle für das Raumklima fehlt noch in Supabase: bitte <b>docs/UPDATE_V33.sql</b> im SQL Editor ausführen.", true));
+  let P = RS.P; if (RS.all && all.length) P = { from: all[0], to: all[all.length - 1] };
+  const st = all.length ? C.climateStats(P.from, P.to) : [];
+  if (!all.length) fl.push(flag("Noch keine Raumklima-Daten: unter „Daten → Raumklima“ die Govee-Exporte hochladen.", true));
+  else if (!st.length) fl.push(flag(`Keine Raumklima-Daten im gewählten Zeitraum. Vorhanden: ${dde(all[0])} bis ${dde(all[all.length - 1])}.`, true));
+  for (const x of st) {
+    const nightWet = x.rhNight != null && x.rhDay != null && x.rhNight >= 60 && x.rhNight - x.rhDay >= 5;
+    if (x.wet != null && (x.wet >= 0.3 || nightWet)) fl.push(flag(`${esc(x.name)}: ${pct(x.wet)} der Zeit 60 % Feuchte oder mehr${x.rhNight != null && x.rhDay != null && x.rhNight - x.rhDay >= 3 ? `, nachts ${nf(x.rhNight)} % gegen tagsüber ${nf(x.rhDay)} %` : ""}. Auf Dauer Schimmelrisiko an kühlen Wänden: mehr lüften, nachts die Lüftung nicht ganz abschalten.`));
+    if (x.dry != null && x.dry >= 0.5) fl.push(flag(`${esc(x.name)}: ${pct(x.dry)} der Zeit unter 40 % Feuchte, die Luft ist trocken. Lüftung auf kleinere Stufe oder nachts drosseln.`, true));
+  }
+  $("rk-flags").innerHTML = fl.join("");
+  const rooms = S.rooms || [], ids = [...new Set([...rooms.map(r => r.id), ...st.map(x => x.id)])], ci = id => ids.indexOf(id);
+  $("rk-tbl").innerHTML = st.length ? `<thead><tr><th class="l">Raum</th><th>Temperatur</th><th>nachts</th><th>Feuchte</th><th>nachts</th><th>tagsüber</th><th>min – max</th><th>unter 40 %</th><th>ab 60 %</th><th>Tage</th></tr></thead><tbody>${
+    st.map(x => `<tr><td class="l"><span class="dot" style="background:${rkColor(ci(x.id))}"></span>${esc(x.name)}</td><td>${deg(x.t)}</td><td>${deg(x.tNight)}</td><td>${nf(x.rh)} %</td><td>${x.rhNight != null ? nf(x.rhNight) + " %" : "–"}</td><td>${x.rhDay != null ? nf(x.rhDay) + " %" : "–"}</td><td>${nf(x.lo)} – ${nf(x.hi)} %</td>
+      <td${x.dry >= 0.5 ? ' style="color:var(--warn);font-weight:600"' : ""}>${x.dry != null ? pct(x.dry) : "–"}</td><td${x.wet >= 0.3 ? ' style="color:var(--warn);font-weight:600"' : ""}>${x.wet != null ? pct(x.wet) : "–"}</td><td>${nf(x.days)}</td></tr>`).join("")}</tbody>` : "";
+  const k = $("rk-metric").value || "rh";
+  $("rk-chart-title").textContent = k === "rh" ? "Luftfeuchte je Raum" : "Temperatur je Raum";
+  if (st.length) {
+    const ser = C.climateSeries(P.from, P.to, k), lab = ser.ks.map(b => ser.g === "day" ? dde(b).slice(0, 6) : monthLabel(b));
+    const band = v => ({ type: "line", label: v === 40 ? "40 %" : "60 %", data: ser.ks.map(() => v), borderColor: css("--muted"), borderDash: [2, 4], borderWidth: 1, pointRadius: 0, fill: false });
+    chart("rk-chart", { type: "line", data: { labels: lab, datasets: [
+      ...st.map(x => ({ label: x.name, data: ser.ks.map(b => ser.val[x.id]?.[b] ?? null), borderColor: rkColor(ci(x.id)), backgroundColor: rkColor(ci(x.id)), pointRadius: ser.g === "day" ? 0 : 2, borderWidth: 1.8, spanGaps: false })),
+      ...(k === "t" && Object.keys(ser.tout).length ? [{ label: "außen", data: ser.ks.map(b => ser.tout[b] ?? null), borderColor: css("--muted"), borderDash: [5, 4], pointRadius: 0, borderWidth: 1.2 }] : []),
+      ...(k === "rh" ? [band(40), band(60)] : [])] },
+      options: { plugins: { ebTotals: false, tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, 1)} ${k === "rh" ? "%" : "°C"}` } } },
+        scales: { x: { ticks: { maxTicksLimit: 10 } }, y: { title: { display: true, text: k === "rh" ? "% relative Feuchte" : "°C" } } } } });
+    const sel = $("rk-room"), cur = sel.value; sel.innerHTML = st.map(x => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join("");
+    sel.value = st.some(x => x.id === cur) ? cur : (st.find(x => /schlaf/i.test(x.name)) || st[0]).id;
+    const pr = C.climateProfile(sel.value, P.from, P.to);
+    chart("rk-prof", { type: "line", data: { labels: Array.from({ length: 24 }, (_, h) => `${h} Uhr`), datasets: [
+      { label: "Feuchte %", data: pr.hours.map(x => x ? x.rh : null), borderColor: css("--grid"), backgroundColor: css("--grid"), pointRadius: 2, yAxisID: "y" },
+      { label: "Temperatur °C", data: pr.hours.map(x => x ? x.t : null), borderColor: css("--heat"), backgroundColor: css("--heat"), pointRadius: 2, yAxisID: "y1" }] },
+      options: { plugins: { ebTotals: false }, scales: { x: { ticks: { maxTicksLimit: 12 } }, y: { title: { display: true, text: "%" } }, y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } } });
+    $("rk-note").innerHTML = `<p class="note">Zeitraum ${dde(P.from)} – ${dde(P.to)}; Tagesverlauf aus ${nf(pr.days)} Tagen. Steigt die Feuchte nachts deutlich an und fällt sie ab dem Einschalten der Lüftung, kommt die Feuchte von den Schlafenden und die Lüftung fehlt nachts.</p>`;
+  } else { chart("rk-chart", { type: "line", data: { labels: [], datasets: [] } }); chart("rk-prof", { type: "line", data: { labels: [], datasets: [] } }); $("rk-note").innerHTML = ""; }
+  $("rk-rooms").innerHTML = rooms.length ? `<thead><tr><th class="l">Raum</th><th class="l">Notiz</th><th>Tage</th></tr></thead><tbody>${rooms.map((r, i) => `<tr><td class="l"><input type="text" value="${esc(r.name)}" data-rk="${i}" data-k="name"></td><td class="l"><input type="text" value="${esc(r.note || "")}" data-rk="${i}" data-k="note" style="min-width:220px"></td><td>${nf((S.climate || []).filter(c => c.room === r.id).length)}</td></tr>`).join("")}</tbody>` : "";
+}
+let rkImports = null, rkMsg = "";
+function renderClimImport() {
+  const rooms = S.rooms || [], opt = sel => `${rooms.map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="new"${sel === "new" ? " selected" : ""}>Neuer Raum …</option>`;
+  let h = S.climateError ? flag("Tabelle fehlt noch in Supabase: bitte <b>docs/UPDATE_V33.sql</b> im SQL Editor ausführen.") : "";
+  if (rkImports) h += `<div class="tbl-wrap"><table><thead><tr><th class="l">Datei</th><th class="l">Raum</th><th>Tage</th><th>von – bis</th><th>vollständig</th></tr></thead><tbody>${rkImports.map((x, i) => `<tr><td class="l">${esc(x.name)}</td>
+      <td class="l"><select data-rki="${i}">${opt(x.room)}</select>${x.room === "new" ? ` <input type="text" data-rkn="${i}" value="${esc(x.newName || "")}" placeholder="Raumname">` : ""}</td><td>${nf(x.rows.length)}</td>
+      <td>${x.rows.length ? `${dde(x.from)} – ${dde(x.to)}` : "–"}</td><td>${nf(x.rows.filter(r => r.n >= 90).length)}${x.errors.length ? `<br><span class="error">${esc(x.errors[0])}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>
+    <div class="row"><button type="button" id="rki-save">Übernehmen</button><button type="button" class="ghost" id="rki-cancel">Abbrechen</button></div>`;
+  $("rk-result").innerHTML = h + (rkMsg ? `<p class="note">${rkMsg}</p>` : "")
+    + `<p class="note">Gespeichert: ${(S.rooms || []).map(r => `${esc(r.name)} ${nf((S.climate || []).filter(c => c.room === r.id).length)} Tage`).join(", ") || "noch nichts"}.</p>`;
+}
+function wireClimate() {
+  $("rk-metric").addEventListener("change", () => renderClimate());
+  $("rk-room").addEventListener("change", () => renderClimate());
+  $("rk-rooms").addEventListener("change", e => { const el = e.target; if (el.dataset.rk === undefined) return; S.rooms[+el.dataset.rk][el.dataset.k] = el.value.trim(); persist(); rerender(); });
+  $("rk-file").addEventListener("change", async e => {
+    const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
+    rkImports = await Promise.all(files.map(async f => ({ name: f.name, ...parseGoveeCsv(await f.text()), guess: goveeRoomName(f.name) })));
+    for (const x of rkImports) { const m = x.guess && (S.rooms || []).find(r => r.name.toLowerCase() === x.guess.toLowerCase() || r.id.toLowerCase() === x.guess.toLowerCase()); x.room = m ? m.id : "new"; x.newName = x.guess || ""; }
+    rkMsg = ""; renderClimImport();
+  });
+  $("rk-result").addEventListener("change", e => {
+    if (!rkImports) return; const i = e.target.dataset.rki ?? e.target.dataset.rkn; if (i === undefined) return;
+    if (e.target.dataset.rki !== undefined) rkImports[+i].room = e.target.value; else rkImports[+i].newName = e.target.value.trim();
+    renderClimImport();
+  });
+  $("rk-result").addEventListener("click", async e => {
+    if (e.target.id === "rki-cancel") { rkImports = null; rkMsg = ""; renderClimImport(); return; }
+    if (e.target.id !== "rki-save" || !rkImports) return;
+    if (rkImports.some(x => x.room === "new" && !x.newName)) { rkMsg = "Bitte jeder Datei einen Raumnamen geben."; renderClimImport(); return; }
+    e.target.disabled = true; rkMsg = "Speichert …"; renderClimImport();
+    try {
+      let n = 0, changed = false;
+      for (const x of rkImports) {
+        if (x.room === "new") { const ex = (S.rooms || []).find(r => r.name.toLowerCase() === x.newName.toLowerCase());
+          if (ex) x.room = ex.id; else { (S.rooms = S.rooms || []).push({ id: x.newName, name: x.newName, note: "" }); x.room = x.newName; changed = true; } }
+        const rows = x.rows.map(r => ({ ...r, room: x.room }));
+        if (rows.length) { await store.saveClimate(rows);
+          const key = r => r.room + "|" + r.d, map = new Map((S.climate || []).map(r => [key(r), r]));
+          for (const r of rows) map.set(r.room + "|" + r.day, { room: r.room, d: r.day, n: r.n, t: r.t, rh: r.rh, lo: r.rh_min, hi: r.rh_max, dry: r.h_dry, wet: r.h_wet, hours: r.hours });
+          S.climate = [...map.values()]; n += rows.length; }
+      }
+      if (changed) persist();
+      rkMsg = `${nf(n)} Tage gespeichert.`; rkImports = null; refreshCalc(); rerender();
+    } catch (err) { rkMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderClimImport(); }
   });
 }
 
@@ -1036,8 +1126,8 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); } })[current]();
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -1051,8 +1141,8 @@ function renderData(){
 
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
-const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
+const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file","rk-file"]);   // Importe sind Schreiben
+const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   if(!document.body.classList.contains("ro")) return;
@@ -1080,7 +1170,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport(); wireDevImport(); wireDevices();
+    wireHpImport(); wireDevImport(); wireDevices(); wireClimate();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);

@@ -206,6 +206,15 @@ create table if not exists device_daily (    -- v9 (App v0.32): Verbrauch einzel
   primary key (user_id, device_id, day)
 );
 
+create table if not exists room_climate (    -- v10 (App v0.33): Raumklima je Raum und Tag
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  room text not null, day date not null, n int not null,
+  t numeric, rh numeric, rh_min numeric, rh_max numeric, h_dry numeric, h_wet numeric, hours jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, room, day)
+);
+
 -- v3 (App v0.7): Boni als Einzelposten je Tarif, z. B.
 -- [{"name":"Sofortbonus","amount":100},{"name":"Neukundenbonus","amount":80,"minKwh":2000,"amountBelow":50}]
 alter table tariffs add column if not exists boni_items jsonb;
@@ -225,7 +234,7 @@ create index if not exists tariffs_grp    on tariffs    (user_id, grp, valid_fro
 
 -- v7 (App v0.14): Gastzugang. Die Regeln own_rows unten werden durch docs/UPDATE_V14.sql ersetzt
 -- (Tabelle shares, Funktionen eb_can_read/eb_can_write, Regeln eb_read/eb_insert/eb_update/eb_delete).
--- Bei einer Neuinstallation zuerst dieses Schema, danach docs/UPDATE_V14.sql, docs/UPDATE_V27.sql und docs/UPDATE_V32.sql ausführen.
+-- Bei einer Neuinstallation zuerst dieses Schema, danach docs/UPDATE_V14.sql, docs/UPDATE_V27.sql, docs/UPDATE_V32.sql und docs/UPDATE_V33.sql ausführen.
 
 -- updated_at automatisch setzen
 create or replace function set_updated_at() returns trigger
@@ -240,7 +249,7 @@ do $$
 declare t text;
 begin
   foreach t in array array['anker_daily','meters','meter_readings','events','tariffs','installments',
-                           'payments','investments','fuel_log','charge_log','car_log','settings','weather_daily','hp_energy','pv_forecast','device_daily']
+                           'payments','investments','fuel_log','charge_log','car_log','settings','weather_daily','hp_energy','pv_forecast','device_daily','room_climate']
   loop
     execute format('alter table %I enable row level security', t);
     execute format('drop policy if exists own_rows on %I', t);
