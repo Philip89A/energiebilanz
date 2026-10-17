@@ -72,7 +72,7 @@ for (let h = 0; h < 24; h++) {
 for (let h = 0; h < 5; h++) hr('2026-03-12', h, {});
 DB.hp_energy = H; DB.weather_daily = [];
 
-let { p, ctx } = await open('meter');
+let { p, ctx } = await open('hp');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
 ok(await p.isVisible('#hpd-a'), 'Tagesprofil sichtbar');
 const opts = await p.$$eval('#hpd-a option', o => o.map(x => x.value));
@@ -110,7 +110,7 @@ await ctx.close();
 
 // ohne Stundenwerte: Hinweis statt Fehler
 DB.hp_energy = DB.hp_energy.filter(r => r.grain !== 'hour');
-({ p, ctx } = await open('meter'));
+({ p, ctx } = await open('hp'));
 ok((await txt(p, '#hpd-flags')).includes('Noch keine Stundenwerte'), 'Hinweis ohne Stundenwerte');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();

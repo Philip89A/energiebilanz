@@ -3,10 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.31.1';
-import { parseNum } from './queue.js?v=0.31.1';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.31.1';
-import { parseHpCsv, hpSum } from './hp.js?v=0.31.1';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.32.0';
+import { parseNum } from './queue.js?v=0.32.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.32.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice } from './import.js?v=0.32.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.32.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -118,7 +119,7 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-cost","p-tarif","p-ausbau","p-log"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-hp","p-cost","p-tarif","p-ausbau","p-log"];
 // v0.16: Zeitraum für Listen und Fahrzeugdaten; „Gesamter Zeitraum“ filtert nicht (Einträge können außerhalb der Energiedaten liegen)
 function periodSel(){ const {P,C:Cp}=currentPeriods(), all=S.view.mode==="all"; return {P,Cp,all,inP:d=>all||(d>=P.from&&d<=P.to),inC:d=>!!Cp&&d>=Cp.from&&d<=Cp.to}; }
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -314,8 +315,139 @@ function renderWater(){
     ...(maPts.length?[{label:"Ø 30 Tage",data:maPts,borderColor:css("--grid"),backgroundColor:css("--grid"),pointRadius:0,borderWidth:1.5,borderDash:[2,3]}]:[])]},
     options:{parsing:true,interaction:{mode:"nearest",axis:"x",intersect:false},scales:{x:{type:"category",labels:lab,ticks:{maxTicksLimit:8,callback:function(v){return dde(this.getLabelForValue(v));}}},y:{beginAtZero:true,title:{display:true,text:"Liter pro Tag"}}},
       plugins:{tooltip:{callbacks:{title:c=>dde(c[0].raw.x),label:c=>`${c.dataset.label}: ${nf(c.parsed.y)} l`}}}}});
+  // v0.32: Wasser der Geräte (z. B. Waschmaschine) im selben Zeitraum
+  const dw=(S.devices||[]).map(d=>({d,s:C.deviceSum(d.id,P0.from,P0.to)})).filter(x=>x.s.water!=null&&x.s.n);
+  const dwTxt=dw.length?` Davon ${dw.map(x=>`${esc(x.d.name)} ${nf(x.s.water)} l${a.m3>0?` (${pct(x.s.water/1000/a.m3)})`:""}${x.s.n<a.days?` an ${nf(x.s.n)} Tagen mit Werten`:""}`).join(", ")}.`:"";
   const nR=S.readings.filter(r=>r.m===wm.id).length;
-  $("wt-note").innerHTML=`<p class="note">${nf(nR)} Ablesungen insgesamt, letzte am ${dde(last)}. Bei Ablesungen alle 1–2 Wochen zeigt die Grafik Wochendurchschnitte, keine einzelnen Tage.</p>`;
+  $("wt-note").innerHTML=`<p class="note">${nf(nR)} Ablesungen insgesamt, letzte am ${dde(last)}. Bei Ablesungen alle 1–2 Wochen zeigt die Grafik Wochendurchschnitte, keine einzelnen Tage.${dwTxt}</p>`;
+}
+
+
+/* ---------- Geräte (v0.32) ---------- */
+const DV_PAL = ["--grid","--sun","--batt","--heat","--warn","--feed","--loss","--muted"];
+const dvColor = i => css(DV_PAL[i % DV_PAL.length]);
+let dvMsg = "";
+function renderDevices(){
+  const devs = S.devices || [], RS = periodSel(), fl = [];
+  if (S.deviceError) fl.push(flag("Tabelle für Geräte fehlt noch in Supabase: bitte <b>docs/UPDATE_V32.sql</b> im SQL Editor ausführen. Bis dahin werden keine Gerätewerte gespeichert.", true));
+  const days = (S.deviceDays || []).map(r => r.d).sort();
+  let P = RS.P;
+  if (RS.all && days.length) P = { from: days[0], to: days[days.length - 1] };
+  const st = days.length ? C.deviceStats(P.from, P.to) : { list: [] };
+  for (const a of C.deviceAlerts()) fl.push(flag(`${esc(a.name)}: in den letzten 4 Wochen bis ${dde(a.to)} ${nf(a.now, 2)} kWh/Tag, ${pct(a.change)} mehr als im Vorjahr (${nf(a.prev, 2)} kWh/Tag). Bei Kühl- und Gefriergeräten Türdichtung, Vereisung und Lüftungsgitter prüfen.`));
+  if (!devs.length) fl.push(flag("Noch keine Geräte. Unter „Daten → Geräte“ einen Messsteckdosen-Export importieren, das Gerät wird dabei angelegt, oder unten ein Gerät hinzufügen.", true));
+  else if (!st.list.length) fl.push(flag(days.length ? "Keine Gerätewerte im gewählten Zeitraum." : "Noch keine Gerätewerte importiert.", true));
+  $("dv-flags").innerHTML = fl.join("");
+  if (st.list.length) {
+    const row = x => `<tr><td class="l"><span class="dot" style="background:${dvColor(devs.findIndex(d => d.id === x.id))}"></span>${esc(x.name)}${x.month ? ` <span class="pill">teils aus Monatssummen</span>` : ""}</td>
+      <td>${kwh(x.kwh, 1)}</td><td>${nf(x.perDay, 2)}</td><td>${x.share != null ? pct(x.share, 1) : "–"}</td><td>${eur(x.eur, 2)}</td>
+      <td>${x.prev ? `${nf(x.prev.perDay, 2)} (${x.change >= 0 ? "+" : "−"}${pct(Math.abs(x.change))})` : "–"}</td>
+      <td>${x.water != null ? nf(x.water) + " l" : "–"}</td><td>${x.runs ? nf(x.runs) : "–"}</td><td>${nf(x.n)}</td></tr>`;
+    $("dv-tbl").innerHTML = `<thead><tr><th class="l">Gerät</th><th>kWh</th><th>kWh/Tag</th><th>Anteil</th><th>Kosten</th><th>Vorjahr kWh/Tag</th><th>Wasser</th><th>Programme</th><th>Tage</th></tr></thead><tbody>${st.list.map(row).join("")}</tbody>
+      ${st.hhPerDay != null ? `<tfoot><tr><td class="l">Allgemeinstrom gesamt</td><td></td><td>${nf(st.hhPerDay, 2)}</td><td>100 %</td><td colspan="5"></td></tr>
+      <tr><td class="l">davon nicht gemessen</td><td></td><td>${nf(st.restPerDay, 2)}</td><td>${pct(st.restShare, 1)}</td><td colspan="5"></td></tr></tfoot>` : ""}`;
+    const ser = C.deviceSeries(P.from, P.to), lab = ser.ks.map(k => ser.g === "day" ? dde(k).slice(0, 6) : monthLabel(k)), hasT = Object.keys(ser.temp).length > 0;
+    chart("dv-chart", { type: "bar", data: { labels: lab, datasets: [
+      ...devs.map((d, i) => ({ label: d.name, data: ser.ks.map(k => ser.val[d.id]?.[k] ?? null), backgroundColor: dvColor(i), stack: "s", yAxisID: "y", order: 1 })).filter(ds => ds.data.some(v => v != null)),
+      ...(hasT ? [{ type: "line", label: "Außentemperatur Ø", data: ser.ks.map(k => ser.temp[k] ?? null), borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [4, 3], pointRadius: 0, borderWidth: 1.5, yAxisID: "y1", order: 0 }] : [])] },
+      options: { plugins: { tooltip: { callbacks: { label: c => c.dataset.yAxisID === "y1" ? `${c.dataset.label}: ${deg(c.parsed.y)}` : `${c.dataset.label}: ${nf(c.parsed.y, 2)} kWh` } } },
+        scales: { x: { stacked: true, ticks: { maxTicksLimit: 14 } }, y: { stacked: true, title: { display: true, text: ser.g === "day" ? "kWh pro Tag" : "kWh pro Monat" } },
+          ...(hasT ? { y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } : {}) } } });
+    $("dv-note").innerHTML = `<p class="note">Zeitraum ${dde(P.from)} – ${dde(P.to)}. Kosten zum Arbeitspreis des Allgemeinstroms (ohne Abzug für Solarstrom). Vorjahr nur, wenn für mindestens 80 % der Tage Werte vorliegen. Die gestrichelte Linie zeigt die Außentemperatur, hilfreich beim Gefrierschrank im Keller.</p>`;
+  } else { $("dv-tbl").innerHTML = ""; $("dv-note").innerHTML = ""; chart("dv-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
+  // Geräteliste und Monatswerte (Bearbeiten)
+  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Notiz</th><th>Werte</th><th></th></tr></thead><tbody>${
+    devs.map((d, i) => `<tr><td class="l"><input type="text" value="${esc(d.name)}" data-dv="${i}" data-k="name"></td><td><input type="date" value="${d.from || ""}" data-dv="${i}" data-k="from"></td>
+      <td class="l"><input type="text" value="${esc(d.note || "")}" data-dv="${i}" data-k="note" style="min-width:220px"></td><td>${nf((S.deviceDays || []).filter(r => r.dev === d.id).length)}</td>
+      <td><button class="x" data-dv-del="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : "";
+  const cur = $("dvm-dev").value; $("dvm-dev").innerHTML = devs.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+  if (cur && devs.some(d => d.id === cur)) $("dvm-dev").value = cur;
+  if (!$("dvm-month").value) { const t = new Date(); t.setUTCDate(0); $("dvm-month").value = t.toISOString().slice(0, 7); }
+  $("dvm-msg").innerHTML = dvMsg;
+}
+function newDevice(name, from = "") { const d = { id: crypto.randomUUID().slice(0, 8), name, from, note: "" }; (S.devices = S.devices || []).push(d); return d; }
+function wireDevices() {
+  $("dv-add").addEventListener("click", () => { newDevice("Neues Gerät"); persist(); rerender(); });
+  $("dv-list").addEventListener("change", e => { const el = e.target; if (el.dataset.dv === undefined) return; const d = S.devices[+el.dataset.dv]; d[el.dataset.k] = el.value.trim(); persist(); rerender(); });
+  $("dv-list").addEventListener("click", e => { const i = e.target.dataset.dvDel; if (i === undefined) return; const d = S.devices[+i];
+    if (!confirm(`Gerät „${d.name}“ aus der Liste entfernen? Gespeicherte Tageswerte bleiben in der Datenbank, zählen aber nicht mehr.`)) return;
+    S.devices.splice(+i, 1); persist(); rerender(); });
+  $("dvm-save").addEventListener("click", async () => {
+    const id = $("dvm-dev").value, ym = $("dvm-month").value, k = parseNum($("dvm-kwh").value), l = $("dvm-l").value.trim() ? parseNum($("dvm-l").value.trim().replace(/^(\d{1,3})((?:\.\d{3})+)$/, (m, a, b) => a + b.replace(/\./g, ""))) : null, n = $("dvm-runs").value.trim() ? parseNum($("dvm-runs").value) : null;
+    if (!id || !/^\d{4}-\d{2}$/.test(ym) || !(k >= 0) || (l != null && !(l >= 0)) || (n != null && !(n >= 0))) { dvMsg = "Bitte Gerät, Monat und kWh angeben (Zahlen ≥ 0)."; renderDevices(); return; }
+    const rows = monthRows(ym, { kwh: k, water_l: l, runs: n }).map(r => ({ ...r, device_id: id }));
+    try { await store.saveDevice(rows); mergeDeviceDays(rows); dvMsg = `${monthLabel(ym)} gespeichert: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}${n != null ? `, ${nf(n)} Programme` : ""} (gleichmäßig auf ${rows.length} Tage verteilt).`;
+      ["dvm-kwh", "dvm-l", "dvm-runs"].forEach(x => $(x).value = ""); refreshCalc(); rerender(); }
+    catch (err) { dvMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevices(); }
+  });
+}
+function mergeDeviceDays(rows) {
+  const key = r => r.dev + "|" + r.d, map = new Map((S.deviceDays || []).map(r => [key(r), r]));
+  for (const r of rows) map.set(r.device_id + "|" + r.day, { dev: r.device_id, d: r.day, kwh: r.kwh, l: r.water_l ?? null, runs: r.runs ?? null, src: r.src });
+  S.deviceDays = [...map.values()];
+}
+// Import Messsteckdosen (Daten-Seite): Tapo-CSV und Meross-Excel; SheetJS wird erst bei Bedarf geladen
+let dvImports = null, dvImportMsg = "";
+function loadXlsx() {
+  if (window.XLSX) return Promise.resolve(window.XLSX);
+  return new Promise((res, rej) => { const sc = document.createElement("script"), v = document.querySelector('meta[name="app-version"]')?.content || "";
+    sc.src = `vendor/xlsx.core.min.js?v=${v}`; sc.onload = () => res(window.XLSX); sc.onerror = () => rej(new Error("Excel-Leser konnte nicht geladen werden (offline?).")); document.head.appendChild(sc); });
+}
+async function readDeviceFile(f) {
+  if (/\.xlsx?$/i.test(f.name)) {
+    const X = await loadXlsx(), wb = X.read(await f.arrayBuffer(), { type: "array" });
+    const sheets = Object.fromEntries(wb.SheetNames.map(n => [n, X.utils.sheet_to_json(wb.Sheets[n], { header: 1, raw: true })]));
+    return { name: f.name, kind: "Meross", guess: null, ...parseMerossSheets(sheets) };
+  }
+  return { name: f.name, kind: "Tapo", guess: tapoDeviceName(f.name), ...parseTapoCsv(await f.text()) };
+}
+function renderDevImport() {
+  const devs = S.devices || [], opt = (sel) => `<option value="">– Gerät wählen –</option>${devs.map(d => `<option value="${d.id}"${d.id === sel ? " selected" : ""}>${esc(d.name)}</option>`).join("")}<option value="new"${sel === "new" ? " selected" : ""}>Neues Gerät …</option>`;
+  let h = S.deviceError ? flag("Tabelle fehlt noch in Supabase: bitte <b>docs/UPDATE_V32.sql</b> im SQL Editor ausführen.") : "";
+  if (dvImports) {
+    h += `<div class="tbl-wrap"><table><thead><tr><th class="l">Datei</th><th class="l">Gerät</th><th>Tage</th><th>von – bis</th><th>davon aus Monatssummen</th><th class="l">Vorschau</th></tr></thead><tbody>${dvImports.map((x, i) => {
+      const dv = devs.find(d => d.id === x.dev), df = dv ? diffDevice((S.deviceDays || []).filter(r => r.dev === dv.id).map(r => ({ day: r.d, kwh: r.kwh, src: r.src, water_l: r.l })), x.rows, dv.from || "") : null;
+      x.diff = df;
+      return `<tr><td class="l">${esc(x.name)} <span class="pill">${x.kind}</span></td><td class="l"><select data-dvi="${i}">${opt(x.dev)}</select>${x.dev === "new" ? ` <input type="text" data-dvn="${i}" value="${esc(x.newName || x.guess || "")}" placeholder="Name">` : ""}</td>
+        <td>${nf(x.rows.length)}</td><td>${x.rows.length ? `${dde(x.rows[0].day)} – ${dde(x.rows[x.rows.length - 1].day)}` : "–"}</td><td>${nf(x.rows.filter(r => r.src === "month").length)}</td>
+        <td class="l">${df ? `${df.neu} neu, ${df.geaendert} geändert, ${df.gleich} gleich${df.vorher ? `, ${df.vorher} vor „gemessen ab“ ignoriert` : ""}` : x.dev === "new" ? "neues Gerät" : "–"}${x.errors.length ? `<br><span class="error">${esc(x.errors.slice(0, 3).join(" "))}</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
+      <div class="row"><button type="button" id="dvi-save">Übernehmen</button><button type="button" class="ghost" id="dvi-cancel">Abbrechen</button></div>`;
+  }
+  $("dv-result").innerHTML = h + (dvImportMsg ? `<p class="note">${dvImportMsg}</p>` : "");
+}
+function wireDevImport() {
+  $("dv-file").addEventListener("change", async e => {
+    const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
+    dvImportMsg = "Lese Dateien …"; renderDevImport();
+    try {
+      dvImports = await Promise.all(files.map(readDeviceFile));
+      for (const x of dvImports) { const m = x.guess && (S.devices || []).find(d => d.name.toLowerCase() === x.guess.toLowerCase()); x.dev = m ? m.id : (x.guess ? "new" : ""); x.newName = x.guess || ""; }
+      dvImportMsg = "";
+    } catch (err) { dvImports = null; dvImportMsg = esc(err.message); }
+    renderDevImport();
+  });
+  $("dv-result").addEventListener("change", e => {
+    const i = e.target.dataset.dvi ?? e.target.dataset.dvn; if (i === undefined || !dvImports) return;
+    if (e.target.dataset.dvi !== undefined) dvImports[+i].dev = e.target.value; else dvImports[+i].newName = e.target.value.trim();
+    renderDevImport();
+  });
+  $("dv-result").addEventListener("click", async e => {
+    if (e.target.id === "dvi-cancel") { dvImports = null; dvImportMsg = ""; renderDevImport(); return; }
+    if (e.target.id !== "dvi-save" || !dvImports) return;
+    if (dvImports.some(x => !x.dev || (x.dev === "new" && !x.newName))) { dvImportMsg = "Bitte jeder Datei ein Gerät zuordnen."; renderDevImport(); return; }
+    e.target.disabled = true; dvImportMsg = "Speichert …"; renderDevImport();
+    try {
+      let n = 0, changed = false;
+      for (const x of dvImports) {
+        if (x.dev === "new") { const d = newDevice(x.newName, x.rows[0]?.day || ""); x.dev = d.id; changed = true; }
+        const dv = S.devices.find(d => d.id === x.dev);
+        const rows = x.rows.filter(r => !dv.from || r.day >= dv.from).map(r => ({ device_id: dv.id, day: r.day, kwh: r.kwh, src: r.src }));
+        if (rows.length) { await store.saveDevice(rows); mergeDeviceDays(rows); n += rows.length; }
+      }
+      if (changed) persist();
+      dvImportMsg = `${nf(n)} Tageswerte gespeichert.`; dvImports = null; refreshCalc(); rerender();
+    } catch (err) { dvImportMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevImport(); }
+  });
 }
 
 /* ---------- Charts ---------- */
@@ -544,20 +676,6 @@ function renderMeters(){
       : `nur ${nf(wd.gt)} Gradtage – außerhalb der Heizzeit ist der Wert nicht aussagekräftig.`}</p>` : "";
   $("mt-rate-note").innerHTML = rn.length ? `<p class="note">${rn.join("<br>")}${RS.Cp ? `<br>Gestrichelt: ${esc(RS.Cp.label)}, auf die Tage des Zeitraums verschoben.` : ""} Tageswerte innerhalb eines Intervalls: Grafik „Verbrauch pro Monat“ (bis 62 Tage je Tag).</p>` : "";
   $("mt-rate-note").innerHTML += maTxt + wdTxt;
-  // Wärmepumpe vorher/nachher
-  const sw = (S.events.find(e=>e.type==="geraet"&&e.group==="wp")||{}).d;
-  if(sw){
-    const bucket = (d)=>{ const m=+d.slice(5,7); return (m>=5&&m<=9)?"Sommer (Mai–Sep)":(m>=11||m<=2)?"Winter (Nov–Feb)":"Übergang"; };
-    const agg = {};
-    for(const [d,k] of Object.entries(wp.daily)){ const side=d<sw?"alt":"neu"; const b=bucket(d); const key=b+"|"+side; agg[key]=agg[key]||{k:0,n:0}; agg[key].k+=k; agg[key].n++; }
-    const rows = ["Winter (Nov–Feb)","Übergang","Sommer (Mai–Sep)"].map(b=>{
-      const a=agg[b+"|alt"], n=agg[b+"|neu"]; const ra=a?a.k/a.n:null, rn=n?n.k/n.n:null;
-      return `<tr><td>${b}</td><td>${ra?nf(ra,1):"–"}</td><td>${a?a.n:0}</td><td>${rn?nf(rn,1):"–"}</td><td>${n?n.n:0}</td><td>${ra&&rn?nf((rn/ra-1)*100)+" %":"–"}</td></tr>`;}).join("");
-    const l365 = last365Cost("wp");
-    $("mt-wp").innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>Jahreszeit</th><th>Alt kWh/Tag</th><th>Tage</th><th>Neu kWh/Tag</th><th>Tage</th><th>Veränderung</th></tr></thead><tbody>${rows}</tbody></table></div>
-      <p class="note">Tausch am ${dde(sw)}. Der Sommer ist der belastbarere Vergleich, weil dort fast nur Warmwasser läuft. Der Winter ist nicht wetterbereinigt.</p>
-      ${l365?`<p class="note">Letzte 365 Tage: ${kwh(l365.kwh)} (neue Pumpe).</p>`:""}`;
-  }
   // Tabelle Ablesungen
   const mOpts = S.meters.map(m=>`<option value="${m.id}">${esc(m.name)}</option>`).join("");
   const rdCur = $("rd-m").value; $("rd-m").innerHTML = mOpts; if (rdCur && S.meters.some(m => m.id === rdCur)) $("rd-m").value = rdCur;   // v0.25: Auswahl beim Neuzeichnen behalten
@@ -581,6 +699,25 @@ function renderMeters(){
     return `<h2 style="margin-top:16px">Einspeisung: Zähler gegen Anker</h2><div class="tbl-wrap"><table><thead><tr><th>Zeitraum</th><th>Zähler 2.8.0 kWh</th><th>Anker Einspeisung kWh</th><th>Differenz</th></tr></thead><tbody>${
       fs.intervals.map(iv=>{ const an=sumRange("feed",iv.from,addDays(iv.to,-1)); const ok=iv.from>=is; return `<tr><td>${dde(iv.from)} – ${dde(iv.to)}</td><td>${nf(iv.kwh,1)}</td><td>${ok?nf(an,1):"–"}</td><td>${ok?nf(iv.kwh-an,1):"vor Smart Meter"}</td></tr>`; }).join("")}</tbody></table></div>`;
   })();
+}
+
+// v0.32: eigene Seite „Wärmepumpe“ – Vergleich alt/neu nach Jahreszeit (vorher Teil von renderMeters)
+function renderWpCompare(){
+  const wp=groupSeries("wp");
+  const sw = (S.events.find(e=>e.type==="geraet"&&e.group==="wp")||{}).d;
+  if(sw){
+    const bucket = (d)=>{ const m=+d.slice(5,7); return (m>=5&&m<=9)?"Sommer (Mai–Sep)":(m>=11||m<=2)?"Winter (Nov–Feb)":"Übergang"; };
+    const agg = {};
+    for(const [d,k] of Object.entries(wp.daily)){ const side=d<sw?"alt":"neu"; const b=bucket(d); const key=b+"|"+side; agg[key]=agg[key]||{k:0,n:0}; agg[key].k+=k; agg[key].n++; }
+    const rows = ["Winter (Nov–Feb)","Übergang","Sommer (Mai–Sep)"].map(b=>{
+      const a=agg[b+"|alt"], n=agg[b+"|neu"]; const ra=a?a.k/a.n:null, rn=n?n.k/n.n:null;
+      return `<tr><td>${b}</td><td>${ra?nf(ra,1):"–"}</td><td>${a?a.n:0}</td><td>${rn?nf(rn,1):"–"}</td><td>${n?n.n:0}</td><td>${ra&&rn?nf((rn/ra-1)*100)+" %":"–"}</td></tr>`;}).join("");
+    const l365 = last365Cost("wp");
+    $("mt-wp").innerHTML = `<div class="tbl-wrap"><table><thead><tr><th>Jahreszeit</th><th>Alt kWh/Tag</th><th>Tage</th><th>Neu kWh/Tag</th><th>Tage</th><th>Veränderung</th></tr></thead><tbody>${rows}</tbody></table></div>
+      <p class="note">Tausch am ${dde(sw)}. Der Sommer ist der belastbarere Vergleich, weil dort fast nur Warmwasser läuft. Der Winter ist nicht wetterbereinigt.</p>
+      ${l365?`<p class="note">Letzte 365 Tage: ${kwh(l365.kwh)} (neue Pumpe).</p>`:""}`;
+  }
+  else $("mt-wp").innerHTML = "";
 }
 
 /* ---------- Abschlag-Check ---------- */
@@ -883,7 +1020,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -899,8 +1036,8 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderHp(); renderHpDay(); renderWxWp(); renderWater(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); } })[current]();
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); }, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -914,8 +1051,8 @@ function renderData(){
 
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
-const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
+const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file"]);   // Importe sind Schreiben
+const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   if(!document.body.classList.contains("ro")) return;
@@ -943,7 +1080,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport();
+    wireHpImport(); wireDevImport(); wireDevices();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);

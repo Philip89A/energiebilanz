@@ -312,3 +312,95 @@ export function diffAnker(existing, incoming) {
   }
   return out;
 }
+
+/* ---------- Geräte (v0.32): Messsteckdosen und Monatswerte ---------- */
+
+const r6 = v => Math.round(v * 1e6) / 1e6;
+const daysInMonth = ym => new Date(Date.UTC(+ym.slice(0, 4), +ym.slice(5, 7), 0)).getUTCDate();
+export const monthDays = ym => Array.from({ length: daysInMonth(ym) }, (_, i) => `${ym}-${String(i + 1).padStart(2, '0')}`);
+
+// Gerätename aus dem Tapo-Dateinamen „Power Monitor Day Data - Gefrierschrank - 20261016.csv“
+export function tapoDeviceName(fileName) {
+  const m = String(fileName).replace(/\.[^.]+$/, '').replace(/_/g, ' ').match(/day data\s*-\s*(.+?)\s*-\s*\d{8}$/i);
+  return m ? m[1].trim() : null;
+}
+
+// Tapo-Export „Power Monitor Day Data“: Zeilen „2025-05-01<TAB>,0.087<TAB>“ (Datum, kWh).
+// Nullen vor dem ersten echten Messtag zählen nicht (Steckdose noch nicht eingesteckt).
+export function parseTapoCsv(text) {
+  const rows = [], errors = [];
+  for (const line of String(text).replace(/^﻿/, '').split(/\r?\n/)) {
+    const cells = line.split(',').map(c => c.replace(/[\s"]+/g, ''));
+    if (!cells[0] || !/^\d{4}-\d{2}-\d{2}$/.test(cells[0])) continue;
+    const v = Number(cells[1]);
+    if (!isFinite(v) || v < 0) { errors.push(`${cells[0]}: „${cells[1]}“ ist keine Zahl.`); continue; }
+    rows.push({ day: cells[0], kwh: v, src: 'day' });
+  }
+  rows.sort((a, b) => a.day.localeCompare(b.day));
+  const first = rows.findIndex(r => r.kwh > 0);
+  const out = first < 0 ? [] : rows.slice(first);
+  // erster Messtag meist angebrochen (Steckdose tagsüber eingesteckt): weglassen, wenn unter halbem Median der Folgewoche
+  const next = out.slice(1, 8).map(r => r.kwh).sort((a, b) => a - b);
+  if (next.length >= 3 && out[0].kwh < next[Math.floor(next.length / 2)] / 2) out.shift();
+  if (!rows.length) errors.push('Keine Tageswerte gefunden. Ist das der Tapo-Export „Power Monitor Day Data“?');
+  return { rows: out, errors };
+}
+
+// Meross-Export (Excel, Blätter „Tag“ stündlich, „Monat“ täglich, „Jahr“ monatlich), hier schon als Zeilen-Arrays.
+// Tageswerte aus „Monat“; Monate ohne (vollständige) Tageswerte aus „Jahr“, gleichmäßig auf die fehlenden Tage
+// verteilt (src 'month'). Der Tag des Exports ist unvollständig und fällt weg, ebenso Nullen vor dem ersten Messwert.
+export function parseMerossSheets(sheets) {
+  const errors = [], byDay = new Map(), months = new Map();
+  const norm = s => String(s ?? '').trim().replace(/\//g, '-');
+  const head = (sheets.Monat?.[0]?.[0] ?? sheets.Jahr?.[0]?.[0] ?? '') + '';
+  const endM = head.match(/-\s*(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2})/);
+  const exportDay = endM ? `${endM[1]}-${endM[2]}-${endM[3]}` : null, completeEnd = endM && +endM[4] === 23 && +endM[5] >= 59;
+  for (const r of (sheets.Monat || []).slice(1)) {
+    const d = norm(r[0]), v = Number(r[1]);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(d) || !isFinite(v)) continue;
+    if (d === exportDay && !completeEnd) continue;
+    byDay.set(d, { day: d, kwh: r6(v), src: 'day' });
+  }
+  for (const r of (sheets.Jahr || []).slice(1)) {
+    const m = norm(r[0]).slice(0, 7), v = Number(r[1]);
+    if (/^\d{4}-\d{2}$/.test(m) && isFinite(v)) months.set(m, v);
+  }
+  if (!byDay.size && !months.size) errors.push('Keine Werte gefunden. Ist das der Meross-Export (Blätter „Monat“ und „Jahr“)?');
+  const firstDaily = [...byDay.keys()].sort()[0] || null;
+  for (const [m, total] of months) {
+    const days = monthDays(m).filter(d => !(exportDay && d >= exportDay));   // laufender Monat: nur aus Tageswerten
+    if (!days.length || (exportDay && m >= exportDay.slice(0, 7))) continue;
+    if (firstDaily && m > firstDaily.slice(0, 7)) continue;                    // Monat ganz durch Tageswerte gedeckt
+    const missing = days.filter(d => !byDay.has(d));
+    if (!missing.length) continue;
+    const rest = total - days.reduce((s, d) => s + (byDay.get(d)?.kwh || 0), 0);
+    if (rest < 0) { errors.push(`${m}: Monatssumme kleiner als die Tageswerte, Monat übersprungen.`); continue; }
+    for (const d of missing) byDay.set(d, { day: d, kwh: r6(rest / missing.length), src: 'month' });
+  }
+  const rows = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
+  const first = rows.findIndex(r => r.kwh > 0);
+  return { rows: first < 0 ? [] : rows.slice(first), errors, exportDay };
+}
+
+// Monatswerte von Hand (z. B. Waschmaschinen-App): gleichmäßig auf die Tage des Monats verteilt
+export function monthRows(ym, { kwh, water_l = null, runs = null }) {
+  const days = monthDays(ym), n = days.length;
+  return days.map(day => ({ day, kwh: r6(kwh / n), water_l: water_l == null ? null : r6(water_l / n),
+    runs: runs == null ? null : r6(runs / n), src: 'month' }));
+}
+
+// Vergleich mit dem Bestand eines Geräts: neu / geändert / gleich; Tage vor „gemessen ab“ fallen weg
+export function diffDevice(existing, incoming, from = '') {
+  const byDay = new Map(existing.map(r => [r.day, r]));
+  const out = { neu: 0, geaendert: 0, gleich: 0, vorher: 0, write: [] };
+  for (const r of incoming) {
+    if (from && r.day < from) { out.vorher++; continue; }
+    const o = byDay.get(r.day);
+    const same = o && Math.abs((+o.kwh || 0) - r.kwh) < 0.0005 && (o.src || 'day') === r.src
+      && (r.water_l == null || Math.abs((+o.water_l || 0) - r.water_l) < 0.05);
+    if (same) { out.gleich++; continue; }
+    o ? out.geaendert++ : out.neu++;
+    out.write.push(r);
+  }
+  return out;
+}

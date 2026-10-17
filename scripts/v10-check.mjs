@@ -77,7 +77,7 @@ ok(meteoCalls.some(c => c.includes('archive')) && meteoCalls.some(c => c.include
 await ctx.close();
 
 // 3 Wärmepumpe wetterbereinigt
-({ p, ctx } = await open('meter'));
+({ p, ctx } = await open('hp'));
 ok(!p.errs.length, 'Zähler-Seite ohne Fehler: ' + p.errs.join(' | '));
 const wp = await txt(p, '#wx-wp');
 ok(wp.includes('bei gleichem Wetter'), 'Kennzahl Jahresverbrauch bei gleichem Wetter');
@@ -103,7 +103,7 @@ ok(!meteoCalls.some(c => c.includes('archive')), 'Beim erneuten Öffnen nur aktu
 await p.fill('#wx-hl', '12'); await p.press('#wx-hl', 'Tab'); await p.waitForTimeout(1200);
 ok(DB.settings[0].data.wx.heatLimit === 12, 'Heizgrenze gespeichert');
 await ctx.close();
-({ p, ctx } = await open('meter'));
+({ p, ctx } = await open('hp'));
 ok((await txt(p, '#wx-wp')).includes('Heizgrenze 12'), 'Wärmepumpe rechnet mit neuer Heizgrenze');
 await ctx.close();
 
@@ -113,7 +113,7 @@ weatherMissing = true;
 ok(!p.errs.length && await p.isHidden('#loading'), 'App lädt ohne Wetter-Tabelle');
 ok((await txt(p, '#wx-status')).includes('UPDATE_V10.sql'), 'Hinweis auf SQL-Update');
 await ctx.close();
-({ p, ctx } = await open('meter'));
+({ p, ctx } = await open('hp'));
 ok((await txt(p, '#wx-wp')).includes('Noch keine Wetterdaten'), 'Wärmepumpe: Hinweis statt Auswertung');
 await ctx.close();
 

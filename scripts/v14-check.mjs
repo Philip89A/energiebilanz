@@ -81,7 +81,7 @@ ok(await p.isHidden('#ab-add'), 'Gast: Bearbeiten-Knöpfe ausgeblendet');
 ok(await enabled(p, '#pay-add') === false, 'Gast: „Zahlung speichern“ gesperrt');
 ok(await enabled(p, '#pb-mode') === true, 'Gast: Zeitraum wählbar');
 await p.selectOption('#pb-mode', 'r12'); await p.waitForTimeout(300);
-for (const page of ['overview', 'pv', 'meter', 'tarif', 'ausbau', 'amort', 'car', 'log', 'data', 'quick']) { await p.goto('http://localhost:8000/#' + page); await p.waitForTimeout(250); }
+for (const page of ['overview', 'pv', 'meter', 'hp', 'tarif', 'ausbau', 'amort', 'car', 'log', 'data', 'quick']) { await p.goto('http://localhost:8000/#' + page); await p.waitForTimeout(250); }
 ok(await enabled(p, '#q-grid button') === false, 'Gast: Erfassen gesperrt');
 await p.goto('http://localhost:8000/#data'); await p.waitForTimeout(300);
 ok(await enabled(p, '#hp-file') === false && await enabled(p, '#csv-file') === false, 'Gast: Importe gesperrt');

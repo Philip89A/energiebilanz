@@ -65,7 +65,7 @@ DB.events = DB.events.filter(e => !(e.grp === 'wp' && e.type === 'geraet'));
 DB.settings[0].data = { ...DB.settings[0].data, wx: { name: 'Teststadt', lat: 1.23, lon: 6.79 } };
 
 // 1 Meter-Seite ohne Gerätedaten: Hinweis
-let { p, ctx } = await open('meter');
+let { p, ctx } = await open('hp');
 ok(!p.errs.length, 'Zähler-Seite ohne Fehler: ' + p.errs.join(' | '));
 ok((await txt(p, '#hp-flags')).includes('Noch keine Gerätedaten'), 'Hinweis ohne Gerätedaten');
 await ctx.close();
@@ -85,7 +85,7 @@ ok((await txt(p, '#hp-result')).includes('Unbekanntes Format'), 'Falsche Datei w
 await ctx.close();
 
 // 3 Auswertung auf der Zähler-Seite
-({ p, ctx } = await open('meter'));
+({ p, ctx } = await open('hp'));
 ok(!p.errs.length, 'Zähler-Seite mit Gerätedaten ohne Fehler: ' + p.errs.join(' | '));
 const k = await txt(p, '#hp-kpis');
 ok(/\d+ kWh/.test(k) && k.includes('Arbeitszahl') && k.includes('Warmwasser-Strom pro Tag'), 'Kennzahlen Strom, Arbeitszahl, Warmwasser pro Tag');

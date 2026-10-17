@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.31.1';
+import { hpSum } from './hp.js?v=0.32.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -70,6 +70,10 @@ export function stateFromDb(db) {
     pvForecasts: (db.pv_forecast || []).map(r => ({ d: r.day, made: r.made_on, kwh: +r.kwh, lo: r.lo == null ? null : +r.lo, hi: r.hi == null ? null : +r.hi,
       rad: r.rad_kwh == null ? null : +r.rad_kwh, f: r.factor == null ? null : +r.factor })),
     pvForecastError: db.pvForecastError || null,
+    devices: Array.isArray(s.devices) ? s.devices : [],
+    deviceDays: (db.device_daily || []).map(r => ({ dev: r.device_id, d: r.day, kwh: r.kwh == null ? null : +r.kwh,
+      l: r.water_l == null ? null : +r.water_l, runs: r.runs == null ? null : +r.runs, src: r.src || 'day' })),
+    deviceError: db.deviceError || null,
   };
 }
 
@@ -89,7 +93,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -734,6 +738,50 @@ export function createCalc(S) {
     const high = med ? g.intervals.filter(iv => iv.to > from && iv.from <= to && iv.rate > 1.5 * med && g.intervals.length >= 4) : [];
     return { m3, days, lpd, lpp: lpd != null ? lpd / persons : null, persons, priceM3, cost: priceM3 || n(w.baseYear) ? cost : null, median: med, high, intervals: g.intervals };
   }
+  // v0.32: Geräte (Messsteckdosen, Waschmaschine) je Tag. Haushalt je Tag = Allgemeinstrom-Netzbezug laut Zähler (nach
+  // Anker-Profil verteilt) + selbst genutzter Solarstrom. Anteil eines Geräts nur über Tage, an denen beides vorliegt.
+  const DEV = (() => { const by = {}; for (const r of S.deviceDays || []) { const dv = (S.devices || []).find(x => x.id === r.dev);
+    if (!dv || (dv.from && r.d < dv.from)) continue; (by[r.dev] = by[r.dev] || {})[r.d] = r; } return by; })();
+  const hhDay = (() => { let m = null; return () => { if (m) return m; m = {}; const as = groupSeries('as').daily;
+    for (const [d, k] of Object.entries(as)) { const i = A.idx[d]; if (i !== undefined && A.c.use[i] != null) m[d] = k + (+A.c.use[i] || 0); } return m; }; })();
+  const yearBack = d => `${+d.slice(0, 4) - 1}${d.slice(4)}`.replace(/-02-29$/, '-02-28');
+  function deviceSum(id, from, to) {
+    const rows = DEV[id] || {}; let kwh = 0, n = 0, water = 0, runs = 0, nw = 0, month = false, eur = 0;
+    for (const [d, r] of Object.entries(rows)) { if (d < from || d > to) continue; n++; kwh += r.kwh || 0;
+      if (r.l != null) { water += r.l; nw++; } if (r.runs != null) runs += r.runs; if (r.src === 'month') month = true;
+      const t = tariffAt('as', d) || currentTariff('as'); if (t) eur += (r.kwh || 0) * t.ap / 100; }
+    return { kwh, n, perDay: n ? kwh / n : null, water: nw ? water : null, runs: runs || null, month, eur };
+  }
+  function deviceStats(from, to) {
+    const hh = hhDay(), days = diffDays(from, to) + 1;
+    const list = (S.devices || []).map(dv => {
+      const a = deviceSum(dv.id, from, to), rows = DEV[dv.id] || {};
+      let dk = 0, hk = 0; for (const [d, r] of Object.entries(rows)) if (d >= from && d <= to && hh[d] != null) { dk += r.kwh || 0; hk += hh[d]; }
+      const p = deviceSum(dv.id, yearBack(from), yearBack(to)), prevOk = a.n && p.n >= 0.8 * a.n;
+      return { ...dv, ...a, share: hk > 0 ? dk / hk : null, prev: prevOk ? p : null, change: prevOk && p.perDay ? a.perDay / p.perDay - 1 : null };
+    }).filter(x => x.n);
+    // Haushalt: Ø je Tag über die Tage mit Werten im Zeitraum; Rest = Haushalt − gemessene Geräte (Ø je Tag)
+    let hs = 0, hn = 0; for (const [d, v] of Object.entries(hh)) if (d >= from && d <= to) { hs += v; hn++; }
+    const hhPerDay = hn ? hs / hn : null, devPerDay = list.reduce((s, x) => s + (x.perDay || 0), 0);
+    return { list, days, hhPerDay, devPerDay, restPerDay: hhPerDay != null ? hhPerDay - devPerDay : null, restShare: hhPerDay ? 1 - devPerDay / hhPerDay : null };
+  }
+  // Auffällig: letzte 28 Tage mit Werten mindestens 15 % über denselben Tagen des Vorjahres (je mind. 24 Tage)
+  function deviceAlerts() {
+    const out = [];
+    for (const dv of S.devices || []) { const rows = DEV[dv.id] || {}, ds = Object.keys(rows).sort(); if (!ds.length) continue;
+      const to = ds[ds.length - 1], from = addDays(to, -27), a = deviceSum(dv.id, from, to), p = deviceSum(dv.id, yearBack(from), yearBack(to));
+      if (a.n >= 24 && p.n >= 24 && a.perDay > 1.15 * p.perDay) out.push({ id: dv.id, name: dv.name, from, to, now: a.perDay, prev: p.perDay, change: a.perDay / p.perDay - 1 }); }
+    return out;
+  }
+  // Reihe je Tag oder Monat: kWh je Gerät, Außentemperatur (Ø) aus dem Wetter
+  function deviceSeries(from, to, g) {
+    g = g || gran(from, to); const ks = [], seen = new Set();
+    for (let d = from; d <= to; d = addDays(d, 1)) { const k = bucketOf(d, g); if (!seen.has(k)) { seen.add(k); ks.push(k); } }
+    const val = {}, temp = {};
+    for (const dv of S.devices || []) { const v = val[dv.id] = {}; for (const [d, r] of Object.entries(DEV[dv.id] || {})) if (d >= from && d <= to) { const k = bucketOf(d, g); v[k] = (v[k] || 0) + (r.kwh || 0); } }
+    for (let d = from; d <= to; d = addDays(d, 1)) { const w = W[d]; if (!w || w.t == null) continue; const k = bucketOf(d, g); (temp[k] = temp[k] || { s: 0, n: 0 }); temp[k].s += w.t; temp[k].n++; }
+    return { g, ks, val, temp: Object.fromEntries(Object.entries(temp).map(([k, x]) => [k, x.s / x.n])) };
+  }
   // v0.27: PV-Prognose. fcRows: Vorhersage [{day, rad_kwh}] ab heute; Monatsausblick 12 Monate ab dem laufenden Monat:
   // gemessen bis gestern + Tagesprognose + übrige Tage mit typischer Einstrahlung (Ø der eigenen Wetterjahre) × Monatsfaktor.
   function pvForecast(fcRows = [], today = addDays(A.dates[A.n - 1], 1)) {
@@ -929,7 +977,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceSum, deviceStats, deviceAlerts, deviceSeries,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
