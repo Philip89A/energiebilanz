@@ -3,11 +3,11 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.35.0';
-import { parseNum } from './queue.js?v=0.35.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.35.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.35.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.35.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.36.0';
+import { parseNum } from './queue.js?v=0.36.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.36.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.36.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.36.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -301,7 +301,7 @@ function renderWater(){
     +kpi(a.lpd!=null?`${nf(a.lpd)} l`:"–","pro Tag",cv?vsTxt(a.lpd,cv.lpd,v=>nf(v)+" l",L).replace(/^ · /,""):"")
     +kpi(a.lpp!=null?`${nf(a.lpp)} l`:"–","pro Person und Tag",`${nf(a.persons)} Personen; bundesweit üblich etwa 125 l`)
     +dWat.map(x=>kpi(x.share!=null?`${nf(x.l)} l · ${pct(x.share)}`:`${nf(x.l)} l`,`davon ${esc(x.name)}`,
-      [x.runs?`${nf(x.runs)} Waschgänge, ${nf(x.perRun)} l je Waschgang`:"",x.restLpp!=null?`übriger Verbrauch ${nf(x.restPerDay)} l/Tag, ${nf(x.restLpp)} l pro Person`:"",
+      [x.wash?`${nf(x.wash)} Wäschen, ${nf(x.lPerWash)} l je Wäsche (ohne Auffrischen und Schleudern)`:x.runs?`${nf(x.runs)} Waschgänge, ${nf(x.perRun)} l je Waschgang`:"",x.restLpp!=null?`übriger Verbrauch ${nf(x.restPerDay)} l/Tag, ${nf(x.restLpp)} l pro Person`:"",
        x.n<a.days?`nur ${dde(x.from)}–${dde(x.to)} (${nf(x.n)} Tage mit Werten)`:"",x.month?"teils aus Monatssummen":""].filter(Boolean).join("; "))).join("")
     +kpi(a.cost!=null?eur(a.cost):"–","Kosten (geschätzt)",a.cost!=null?`${nf(a.priceM3,2)} €/m³ Wasser und Abwasser${+w.baseYear?", Grundgebühr anteilig":""}`+(cv&&cv.cost!=null?vsTxt(a.cost,cv.cost,v=>eur(v),L):""):"Preise unten eintragen");
   const fl=[];
@@ -367,6 +367,99 @@ function renderDevices(){
   if (cur && devs.some(d => d.id === cur)) $("dvm-dev").value = cur;
   if (!$("dvm-month").value) { const t = new Date(); t.setUTCDate(0); $("dvm-month").value = t.toISOString().slice(0, 7); }
   $("dvm-msg").innerHTML = dvMsg;
+}
+/* ---------- Waschprogramme (v0.36) ---------- */
+const PG_CLS = [["30", "30 °C", "--batt"], ["40", "40 °C", "--sun"], ["60", "60 °C und mehr", "--heat"], ["kalt", "kalt / ohne Angabe", "--feed"], ["other", "Auffrischen, Schleudern", "--muted"]];
+let pgMsg = "", pgDraft = null;
+const pgKey = () => `${$("pg-edev").value}|${$("pg-month").value}`;
+function pgLoadDraft() {
+  const dev = $("pg-edev").value, m = $("pg-month").value;
+  const rows = (S.programs || []).filter(p => p.dev === dev && p.m === m).map(p => ({ prog: p.prog, temp: p.temp || "", rpm: p.rpm || "", extra: p.extra, runs: p.runs, kwh: p.kwh == null ? "" : String(p.kwh).replace(".", ","), l: p.l == null ? "" : String(p.l).replace(".", ",") }));
+  pgDraft = { key: pgKey(), rows: rows.length ? rows : [{ prog: "", temp: "", rpm: "", extra: "", runs: "", kwh: "", l: "" }], stored: rows.length };
+}
+function renderPrograms() {
+  const devs = S.devices || [], progs = S.programs || [];
+  const panel = $("pg-panel"); panel.hidden = !devs.length && !progs.length; if (panel.hidden) return;
+  const withP = devs.filter(d => progs.some(p => p.dev === d.id)), fl = [];
+  if (S.programError) fl.push(flag("Tabelle für Programme fehlt noch in Supabase: bitte <b>docs/UPDATE_V36.sql</b> im SQL Editor ausführen.", true));
+  const cur = $("pg-dev").value; $("pg-dev").innerHTML = withP.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+  if (cur && withP.some(d => d.id === cur)) $("pg-dev").value = cur;
+  const id = $("pg-dev").value, RS = periodSel(), ms = progs.filter(p => p.dev === id).map(p => p.m).sort();
+  const P = RS.all && ms.length ? { from: `${ms[0]}-01`, to: `${ms[ms.length - 1]}-28` } : RS.P;
+  const sm = id ? C.programSummary(id, P.from, P.to) : null;
+  if (!withP.length) fl.push(flag("Noch keine Programme eingetragen. Unten Gerät und Monat wählen und die Zeilen aus der Monatsanalyse der App übernehmen.", true));
+  else if (!sm) fl.push(flag("Keine Programme im gewählten Zeitraum.", true));
+  if (sm) for (const o of sm.months) if (o.kwhDiff != null && Math.abs(o.kwhDiff) > 0.05)
+    fl.push(flag(`${monthLabel(o.m)}: Programme ergeben ${kwh(o.kwh, 2)}, die Gerätewerte ${kwh(o.dayKwh, 2)} (${o.kwhDiff > 0 ? "+" : "−"}${pct(Math.abs(o.kwhDiff))}). Fehlt eine Zeile, oder ist die Monatssumme veraltet?`));
+  $("pg-flags").innerHTML = fl.join("");
+  if (sm) {
+    $("pg-kpis").innerHTML = kpi(nf(sm.wash), "Wäschen", sm.other ? `dazu ${nf(sm.other)} Auffrischen oder Schleudern; die App zählt ${nf(sm.runs)} Gänge` : `${nf(sm.months.length)} Monate`)
+      + kpi(sm.kwhPerWash != null ? `${nf(sm.kwhPerWash, 2)} kWh` : "–", "Strom je Wäsche", `zusammen ${kwh(sm.kwh, 1)} inkl. aller Gänge`)
+      + kpi(sm.lPerWash != null ? `${nf(sm.lPerWash)} l` : "–", "Wasser je Wäsche", `zusammen ${nf(sm.l)} l`)
+      + kpi(sm.hotShareRuns != null ? pct(sm.hotShareRuns) : "–", "Wäschen mit 60 °C und mehr", sm.hotShareKwh != null ? `${nf(sm.hot)} Wäschen, ${pct(sm.hotShareKwh)} des Stroms` : "");
+    const metric = $("pg-metric").value, f = metric === "runs" ? 0 : metric === "l" ? 0 : 2, unit = metric === "runs" ? "Gänge" : metric === "l" ? "l" : "kWh";
+    const labs = sm.months.map(o => o.m), used = PG_CLS.filter(([k]) => sm.months.some(o => o.cls[k]));
+    chart("pg-chart", { type: "bar", data: { labels: labs.map(monthLabel), datasets: [
+      ...used.map(([k, lab, c]) => ({ label: lab, data: sm.months.map(o => o.cls[k] ? o.cls[k][metric] : 0), backgroundColor: css(c), stack: "s" })),
+      ...(metric !== "runs" ? [{ type: "line", label: metric === "kwh" ? "kWh je Wäsche" : "Liter je Wäsche", data: sm.months.map(o => metric === "kwh" ? o.kwhPerWash : o.lPerWash), borderColor: css("--ink"), backgroundColor: css("--ink"), yAxisID: "y1", pointRadius: 3, borderWidth: 1.5 }] : [])] },
+      options: { scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true, title: { display: true, text: unit } },
+        ...(metric !== "runs" ? { y1: { position: "right", beginAtZero: true, grid: { drawOnChartArea: false }, title: { display: true, text: metric === "kwh" ? "kWh je Wäsche" : "l je Wäsche" } } } : {}) },
+        plugins: { tooltip: { callbacks: { label: c => `${c.dataset.label}: ${nf(c.parsed.y, c.dataset.yAxisID === "y1" ? (metric === "kwh" ? 2 : 0) : f)}` } } } } });
+    $("pg-tbl").innerHTML = `<thead><tr><th class="l">Programm</th><th>Gänge</th><th>Anteil</th><th>kWh je Gang</th><th>kWh</th><th>Anteil Strom</th><th>l je Gang</th><th>Liter</th></tr></thead><tbody>${
+      sm.list.map(o => `<tr><td class="l"><span class="dot" style="background:${css(PG_CLS.find(c => c[0] === o.cls)[2])}"></span>${esc(o.label)}${o.wash ? "" : ` <span class="pill">keine Wäsche</span>`}</td>
+        <td>${nf(o.runs)}</td><td>${pct(o.shareRuns)}</td><td>${o.kwhRun != null ? nf(o.kwhRun, 2) : "–"}</td><td>${nf(o.kwh, 2)}</td><td>${o.shareKwh != null ? pct(o.shareKwh) : "–"}</td>
+        <td>${o.lRun != null ? nf(o.lRun, 1) : "–"}</td><td>${o.l ? nf(o.l) : "–"}</td></tr>`).join("")}</tbody>`;
+    $("pg-note").innerHTML = `<p class="note">${sm.months.length === 1 ? monthLabel(sm.months[0].m) : `${monthLabel(sm.months[0].m)} – ${monthLabel(sm.months[sm.months.length - 1].m)}`}, ganze Monate im gewählten Zeitraum. Eine 60-°C-Wäsche braucht etwa das Dreifache einer 30-°C-Wäsche; sie lohnt sich an Tagen mit Solarüberschuss.</p>`;
+  } else { $("pg-kpis").innerHTML = ""; $("pg-tbl").innerHTML = ""; $("pg-note").innerHTML = ""; chart("pg-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
+  // Eingabe
+  const ce = $("pg-edev").value; $("pg-edev").innerHTML = devs.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
+  if (ce && devs.some(d => d.id === ce)) $("pg-edev").value = ce; else { const w = devs.find(d => /wasch/i.test(d.name)); if (w) $("pg-edev").value = w.id; }
+  if (!$("pg-month").value) { const t = new Date(); t.setUTCDate(0); $("pg-month").value = t.toISOString().slice(0, 7); }
+  if (!pgDraft || pgDraft.key !== pgKey()) pgLoadDraft();
+  renderPgRows();
+}
+function renderPgRows() {
+  const inp = (i, k, v, w, num) => `<input type="text"${num ? ' inputmode="decimal"' : ""} value="${esc(String(v ?? ""))}" data-pr="${i}" data-k="${k}" style="width:${w}px">`;
+  const sum = pgDraft.rows.reduce((a, r) => { const n = parseNum(String(r.runs)) || 0; a.n += n; a.k += n * (parseNum(String(r.kwh)) || 0); a.l += n * (parseNum(String(r.l)) || 0); return a; }, { n: 0, k: 0, l: 0 });
+  $("pg-rows").innerHTML = `<thead><tr><th class="l">Programm</th><th>°C</th><th>U/min</th><th class="l">Zusatz</th><th>Anzahl</th><th>kWh je Gang</th><th>l je Gang</th><th></th></tr></thead><tbody>${
+    pgDraft.rows.map((r, i) => `<tr><td class="l">${inp(i, "prog", r.prog, 150)}</td><td>${inp(i, "temp", r.temp, 50, 1)}</td><td>${inp(i, "rpm", r.rpm, 60, 1)}</td><td class="l">${inp(i, "extra", r.extra, 90)}</td>
+      <td>${inp(i, "runs", r.runs, 50, 1)}</td><td>${inp(i, "kwh", r.kwh, 60, 1)}</td><td>${inp(i, "l", r.l, 60, 1)}</td><td><button class="x" data-pr-del="${i}" aria-label="Zeile löschen">×</button></td></tr>`).join("")}</tbody>
+    <tfoot><tr><td class="l">Summe${pgDraft.stored ? ` <span class="pill">gespeichert</span>` : ""}</td><td></td><td></td><td></td><td>${nf(sum.n)}</td><td>${nf(sum.k, 2)} kWh</td><td>${nf(sum.l)} l</td><td></td></tr></tfoot>`;
+  $("pg-msg").innerHTML = pgMsg;
+}
+function wirePrograms() {
+  $("pg-dev").addEventListener("change", renderPrograms); $("pg-metric").addEventListener("change", renderPrograms);
+  $("pg-edev").addEventListener("change", () => { pgMsg = ""; pgLoadDraft(); renderPgRows(); });
+  $("pg-month").addEventListener("change", () => { pgMsg = ""; pgLoadDraft(); renderPgRows(); });
+  $("pg-addrow").addEventListener("click", () => { pgDraft.rows.push({ prog: "", temp: "", rpm: "", extra: "", runs: "", kwh: "", l: "" }); renderPgRows(); });
+  $("pg-rows").addEventListener("change", e => { const i = e.target.dataset.pr; if (i === undefined) return; pgDraft.rows[+i][e.target.dataset.k] = e.target.value.trim(); renderPgRows(); });
+  $("pg-rows").addEventListener("click", e => { const i = e.target.dataset.prDel; if (i === undefined) return; pgDraft.rows.splice(+i, 1); if (!pgDraft.rows.length) pgDraft.rows.push({ prog: "", temp: "", rpm: "", extra: "", runs: "", kwh: "", l: "" }); renderPgRows(); });
+  $("pg-save").addEventListener("click", async () => {
+    const dev = $("pg-edev").value, m = $("pg-month").value, num = v => String(v ?? "").trim() === "" ? null : parseNum(String(v));
+    if (!dev || !/^\d{4}-\d{2}$/.test(m)) { pgMsg = "Bitte Gerät und Monat wählen."; renderPgRows(); return; }
+    const rows = [], seen = new Set();
+    for (const r of pgDraft.rows) {
+      if (!String(r.prog || "").trim() && String(r.runs ?? "").trim() === "") continue;
+      const x = { device_id: dev, month: `${m}-01`, program: String(r.prog).trim(), temp: Math.round(num(r.temp) || 0), rpm: Math.round(num(r.rpm) || 0), extra: String(r.extra || "").trim(),
+        runs: num(r.runs), kwh_run: num(r.kwh), l_run: num(r.l) };
+      if (!x.program || !(x.runs >= 0) || x.runs % 1 || (x.kwh_run != null && !(x.kwh_run >= 0)) || (x.l_run != null && !(x.l_run >= 0))) { pgMsg = `Zeile „${esc(x.program || "?")}“: Programm und Anzahl (ganze Zahl) angeben, kWh und Liter als Zahl ≥ 0.`; renderPgRows(); return; }
+      const k = [x.program, x.temp, x.rpm, x.extra].join("|"); if (seen.has(k)) { pgMsg = `„${esc(x.program)}“ mit gleicher Temperatur, Drehzahl und Zusatz steht doppelt da; bitte zusammenfassen.`; renderPgRows(); return; }
+      seen.add(k); rows.push(x);
+    }
+    try {
+      await store.savePrograms(dev, `${m}-01`, rows);
+      S.programs = (S.programs || []).filter(p => !(p.dev === dev && p.m === m)).concat(rows.map(r => ({ dev, m, prog: r.program, temp: r.temp, rpm: r.rpm, extra: r.extra, runs: r.runs, kwh: r.kwh_run, l: r.l_run })));
+      let extra = "";
+      if ($("pg-sum").checked && rows.length) {
+        const hasDay = (S.deviceDays || []).some(r => r.dev === dev && r.d.startsWith(m) && r.src === "day");
+        if (hasDay) extra = " Monatssumme nicht übernommen: für diesen Monat gibt es Tageswerte einer Messsteckdose.";
+        else { const k = rows.reduce((a, r) => a + r.runs * (r.kwh_run || 0), 0), l = rows.some(r => r.l_run != null) ? rows.reduce((a, r) => a + r.runs * (r.l_run || 0), 0) : null, n = rows.reduce((a, r) => a + r.runs, 0);
+          const mr = monthRows(m, { kwh: Math.round(k * 100) / 100, water_l: l != null ? Math.round(l) : null, runs: n }).map(r => ({ ...r, device_id: dev }));
+          await store.saveDevice(mr); mergeDeviceDays(mr); extra = ` Gerätewerte: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}, ${nf(n)} Gänge.`; }
+      }
+      pgMsg = `${monthLabel(m)}: ${nf(rows.length)} Programme gespeichert.${extra}`; pgDraft = null; refreshCalc(); rerender();
+    } catch (err) { pgMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderPgRows(); }
+  });
 }
 function newDevice(name, from = "") { const d = { id: crypto.randomUUID().slice(0, 8), name, from, note: "" }; (S.devices = S.devices || []).push(d); return d; }
 function wireDevices() {
@@ -1166,7 +1259,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -1210,7 +1303,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport(); wireDevImport(); wireDevices(); wireClimate();
+    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);

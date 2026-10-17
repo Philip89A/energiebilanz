@@ -87,3 +87,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. **Daten → Raumklima: Govee-Export importieren:** alle CSV-Dateien auswählen, Räume prüfen (Umlaute im Dateinamen ggf. von
    Hand korrigieren), „Übernehmen“. Auswertung unter **Wärmepumpe → Raumklima**. Die Govee-App etwa alle zwei Wochen öffnen,
    damit die Thermometer ihre Werte abgeben, und monatlich exportieren.
+
+# Update v0.36 (Waschprogramme)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V36.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V36.sql) → **Run**
+   (Warnung bestätigen, betrifft nur Regeln und Trigger der neuen Tabelle). Kontrolle: `device_programs | true | 4`.
+2. Pull Request mergen, App neu laden (v0.36.0).
+3. **Zähler & Verbrauch → Waschprogramme → Programme eines Monats eintragen:** Gerät „Waschmaschine“ und Monat wählen, je
+   Zeile der Monatsanalyse Programm, °C, U/min, Zusatz, Anzahl, kWh und Liter je Gang eintragen, „Monat speichern“.
+   Ein bereits gespeicherter Monat wird geladen und beim Speichern ersetzt.

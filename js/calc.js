@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.35.0';
+import { hpSum } from './hp.js?v=0.36.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -74,6 +74,9 @@ export function stateFromDb(db) {
     deviceDays: (db.device_daily || []).map(r => ({ dev: r.device_id, d: r.day, kwh: r.kwh == null ? null : +r.kwh,
       l: r.water_l == null ? null : +r.water_l, runs: r.runs == null ? null : +r.runs, src: r.src || 'day' })),
     deviceError: db.deviceError || null,
+    programs: (db.device_programs || []).map(r => ({ dev: r.device_id, m: String(r.month).slice(0, 7), prog: r.program, temp: +r.temp || 0, rpm: +r.rpm || 0,
+      extra: r.extra || '', runs: +r.runs || 0, kwh: r.kwh_run == null ? null : +r.kwh_run, l: r.l_run == null ? null : +r.l_run })),
+    programError: db.programError || null,
     rooms: Array.isArray(s.rooms) ? s.rooms : [],
     climate: (db.room_climate || []).map(r => ({ room: r.room, d: r.day, n: +r.n, t: r.t == null ? null : +r.t, rh: r.rh == null ? null : +r.rh,
       lo: r.rh_min == null ? null : +r.rh_min, hi: r.rh_max == null ? null : +r.rh_max, dry: +r.h_dry || 0, wet: +r.h_wet || 0,
@@ -766,9 +769,44 @@ export function createCalc(S) {
         l += r.l; runs += r.runs || 0; n++; m3 += wd[d]; if (r.src === 'month') month = true; if (!d0 || d < d0) d0 = d; if (!d1 || d > d1) d1 = d; }
       if (!n) return null;
       const w = waterStats(d0, d1), tot = m3 * 1000, rest = tot - l;
+      const pm = programMonths(dv.id, d0, d1), nm = (+d1.slice(0, 4) - +d0.slice(0, 4)) * 12 + +d1.slice(5, 7) - +d0.slice(5, 7) + 1;
+      const pw = pm.length === nm && pm.every(o => o.wash) ? { wash: pm.reduce((a, o) => a + o.wash, 0), lW: pm.reduce((a, o) => a + o.lWash, 0) } : null;
       return { id: dv.id, name: dv.name, from: d0, to: d1, n, l, runs: runs || null, perRun: runs ? l / runs : null, month,
+        wash: pw && d0.slice(8) === '01' && d1 === monthEnd(d1.slice(0, 7)) ? pw.wash : null, lPerWash: pw && pw.wash ? pw.lW / pw.wash : null,
         share: tot > 0 ? l / tot : null, perDay: l / n, restPerDay: tot > 0 ? rest / n : null, restLpp: tot > 0 ? rest / n / w.persons : null };
     }).filter(Boolean);
+  }
+  // v0.36: Programme je Monat (Waschmaschinen-App). „Echte Wäsche“ = kein Auffrischen/Schleudern/Spülen und mehr als 10 l.
+  const NOWASH = /smart ?finish|schleuder|abpump|spül|auffrisch|dampf|steam|refresh/i;
+  const isWash = p => !NOWASH.test(p.prog) && !(p.l != null && p.l < 10);
+  const tempClass = p => !isWash(p) ? 'other' : p.temp >= 60 ? '60' : p.temp >= 40 ? '40' : p.temp > 0 ? '30' : 'kalt';
+  const progLabel = p => `${p.prog}${p.temp ? ` ${p.temp} °C` : ''}${p.rpm ? `, ${p.rpm} U/min` : ''}${p.extra ? `, ${p.extra}` : ''}`;
+  function programMonths(id, from, to) {
+    const out = {};
+    for (const p of S.programs || []) { if (p.dev !== id || p.m < from.slice(0, 7) || p.m > to.slice(0, 7)) continue;
+      const o = out[p.m] = out[p.m] || { m: p.m, runs: 0, wash: 0, kwh: 0, l: 0, kwhWash: 0, lWash: 0, cls: {} };
+      const k = (p.kwh || 0) * p.runs, l = (p.l || 0) * p.runs, c = tempClass(p), w = isWash(p);
+      o.runs += p.runs; o.kwh += k; o.l += l; if (w) { o.wash += p.runs; o.kwhWash += k; o.lWash += l; }
+      const t = o.cls[c] = o.cls[c] || { runs: 0, kwh: 0, l: 0 }; t.runs += p.runs; t.kwh += k; t.l += l; }
+    return Object.values(out).sort((a, b) => a.m.localeCompare(b.m)).map(o => {
+      const tot = deviceSum(id, `${o.m}-01`, monthEnd(o.m));
+      return { ...o, kwhPerWash: o.wash ? o.kwhWash / o.wash : null, lPerWash: o.wash ? o.lWash / o.wash : null,
+        dayKwh: tot.n ? tot.kwh : null, dayL: tot.water, dayRuns: tot.runs, kwhDiff: tot.n && tot.kwh > 0 ? o.kwh / tot.kwh - 1 : null };
+    });
+  }
+  function programSummary(id, from, to) {
+    const ms = programMonths(id, from, to); if (!ms.length) return null;
+    const by = {};
+    for (const p of S.programs || []) { if (p.dev !== id || p.m < from.slice(0, 7) || p.m > to.slice(0, 7)) continue;
+      const k = progLabel(p), o = by[k] = by[k] || { label: k, prog: p.prog, temp: p.temp, wash: isWash(p), cls: tempClass(p), runs: 0, kwh: 0, l: 0 };
+      o.runs += p.runs; o.kwh += (p.kwh || 0) * p.runs; o.l += (p.l || 0) * p.runs; }
+    const sum = (f) => ms.reduce((a, o) => a + f(o), 0), runs = sum(o => o.runs), kwh = sum(o => o.kwh), wash = sum(o => o.wash);
+    const hot = sum(o => (o.cls['60'] || {}).runs || 0), hotKwh = sum(o => (o.cls['60'] || {}).kwh || 0);
+    const list = Object.values(by).map(o => ({ ...o, kwhRun: o.runs ? o.kwh / o.runs : null, lRun: o.runs && o.l ? o.l / o.runs : null,
+      shareRuns: runs ? o.runs / runs : null, shareKwh: kwh ? o.kwh / kwh : null })).sort((a, b) => b.kwh - a.kwh);
+    return { months: ms, list, runs, wash, other: runs - wash, kwh, l: sum(o => o.l), kwhWash: sum(o => o.kwhWash), lWash: sum(o => o.lWash),
+      kwhPerWash: wash ? sum(o => o.kwhWash) / wash : null, lPerWash: wash ? sum(o => o.lWash) / wash : null,
+      hot, hotKwh, hotShareRuns: wash ? hot / wash : null, hotShareKwh: kwh ? hotKwh / kwh : null };
   }
   function deviceStats(from, to) {
     const hh = hhDay(), days = diffDays(from, to) + 1;
@@ -1116,7 +1154,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceWater, deviceSum, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
