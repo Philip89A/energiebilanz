@@ -6,7 +6,7 @@ const CACHE = 'energiebilanz-' + VERSION;
 const V = '?v=' + VERSION;
 const SHELL = ['./', './index.html', './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/apple-touch-icon.png',
   './css/style.css' + V, './vendor/supabase.js' + V, './vendor/chart.umd.js' + V, './config.js' + V,
-  './js/app.js' + V, './js/db.js' + V, './js/import.js' + V, './js/calc.js' + V, './js/views.js' + V, './js/queue.js' + V, './js/weather.js' + V, './js/hp.js' + V, './js/explain.js' + V];
+  './js/app.js' + V, './js/db.js' + V, './js/import.js' + V, './js/calc.js' + V, './js/views.js' + V, './js/queue.js' + V, './js/weather.js' + V, './js/hp.js' + V, './js/explain.js' + V, './js/gridco2.js' + V];
 
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(c => Promise.all(SHELL.map(u => c.add(new Request(u, { cache: 'reload' }))))));
