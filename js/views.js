@@ -3,11 +3,12 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.37.0';
-import { parseNum } from './queue.js?v=0.37.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.37.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.37.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.37.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.38.0';
+import { parseNum } from './queue.js?v=0.38.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.38.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.38.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.38.0';
+import { explainAll } from './explain.js?v=0.38.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -643,8 +644,14 @@ function renderRelations(){
   const RS = periodSel(); let P = RS.P;
   if (RS.all) P = { from: A.dates[0], to: A.dates[A.n - 1] };
   const cards = C.relations(P.from, P.to), box = $("rel-cards");
+  const price = g => { const t = C.currentTariff(g); return t ? t.ap / 100 : null; };
+  const X = explainAll(cards, { pAs: price("as"), pWp: price("wp") || price("as") }), XI = Object.fromEntries(X.list.map(x => [x.id, x]));
+  $("rel-top").innerHTML = X.top.length
+    ? `<h2>Die wichtigsten Erkenntnisse</h2><ol class="rel-top">${X.top.map(t => `<li><b>${esc(t.title)}</b> (${t.euro >= 0 ? "" : "−"}${eur(Math.abs(t.euro))} im Jahr): ${esc(t.text || "")} <a href="#rel-${t.id}" class="note">zur Karte</a></li>`).join("")}</ol><p class="note">Nur Karten mit belastbarem Ergebnis, sortiert nach Wirkung in Euro (aktueller Arbeitspreis).</p>`
+    : `<h2>Die wichtigsten Erkenntnisse</h2><p class="note">Noch keine Karte mit belastbarem Ergebnis und Euro-Wirkung im gewählten Zeitraum. Einen längeren Zeitraum wählen oder Daten nachtragen – unter jeder Karte steht, was fehlt.</p>`;
   box.innerHTML = cards.map(c => `<div class="panel" id="rel-${c.id}"><h2>${esc(c.title)} <span class="pill"${c.v === "belastbar" ? ' style="background:var(--ok);color:#fff"' : ""}>${c.v}</span></h2>
-    <p class="note">${esc(c.q)}</p><div class="chart"><canvas id="rel-c-${c.id}"></canvas></div><div class="note" id="rel-t-${c.id}"></div></div>`).join("");
+    <p class="note">${esc(c.q)}</p><div class="chart"><canvas id="rel-c-${c.id}"></canvas></div><div class="note" id="rel-t-${c.id}"></div>
+    <div class="rel-x" id="rel-x-${c.id}"></div></div>`).join("");
   for (const c of cards) {
     const t = [];
     if (c.bars) {
@@ -670,6 +677,9 @@ function renderRelations(){
     }
     if (c.need) t.push(`<b>Fehlt:</b> ${esc(c.need)}`);
     $(`rel-t-${c.id}`).innerHTML = t.map(x => `<p class="note">${x}</p>`).join("");
+    const x = XI[c.id], row = (k, v) => v ? `<div class="rel-row"><b>${k}</b><span>${esc(v)}</span></div>` : "";
+    $(`rel-x-${c.id}`).innerHTML = `<h3>Was heißt das?</h3>${row("Ergebnis", x.result)}${row("Wie sicher", x.sure)}${row("Was es ausmacht", x.effect)}${row("Was tun", x.todo)}
+      <details><summary>Wie lese ich die Grafik?</summary><p class="note">${esc(x.help)}</p></details>`;
   }
 }
 

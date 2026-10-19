@@ -128,6 +128,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Eingabeformular ersetzt den Monat und übernimmt die Summe in `device_daily` (nur ohne Steckdosen-Tageswerte). Prüfung: `v36-check`.
    - ✅ v0.37: Ereignisse unter „Daten → Ereignisse“ erfassen, ändern, löschen (Bereich `grp` as/wp/pv/car oder leer, Art
      einstellung/geraet/zaehler/daten/sonstig); Rückfrage bei rechnungsrelevanten (daten+pv, geraet+wp, zaehler). Prüfung: `v37-check`.
+   - ✅ v0.38: Zusammenhänge mit Deutung (`js/explain.js`, rein): je Karte Ergebnis, Wie sicher, Was es ausmacht (kWh/€ im Jahr),
+     Was tun, Lesehilfe; oben die 3 belastbaren Karten mit größter €-Wirkung. Phasenvergleich Heizung (kWh/Gradtag) und
+     Warmwasser (kWh/Tag, ohne Wasserzähler). Prüfung: `v38-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

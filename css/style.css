@@ -164,3 +164,13 @@ main{min-width:0}
 #boni-tbl input,#tr-offers input,#tr-offers select{padding:5px 7px}
 .form .wide{grid-column:1/-1}
 #wb-tbl td:first-child{white-space:normal;min-width:150px}
+
+/* v0.38: Deutung der Zusammenhänge */
+.rel-x{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--bg);border:1px solid var(--line)}
+.rel-x h3{margin:0 0 8px;font-size:14px}
+.rel-row{display:grid;grid-template-columns:130px 1fr;gap:10px;padding:5px 0;border-top:1px solid var(--line);font-size:13px;line-height:1.45}
+.rel-row:first-of-type{border-top:0}
+.rel-row b{color:var(--muted);font-weight:600}
+.rel-x details{margin-top:8px;font-size:13px}.rel-x summary{cursor:pointer;color:var(--muted)}
+ol.rel-top{margin:8px 0 0 18px;padding:0;line-height:1.5}ol.rel-top li{margin:4px 0}
+@media (max-width:640px){.rel-row{grid-template-columns:1fr;gap:2px}}

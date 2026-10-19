@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.37.0';
+import { hpSum } from './hp.js?v=0.38.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -909,25 +909,31 @@ export function createCalc(S) {
     { const dv = findDev(/lüft|lueft/i), rm = findRoom(/schlaf/i), c = rm ? cl(rm.id) : {}, v = dv ? dev(dv.id) : {};
       const night = r => { const h = (r.hours || []).slice(0, 6).filter(Boolean); return h.length >= 4 ? h.reduce((a, x) => a + x[1], 0) / h.length : null; };
       const pts = days.filter(d => v[d] && v[d].src === 'day' && c[d] && night(c[d]) != null).map(d => ({ d, x: v[d].kwh, y: night(c[d]) - c[d].rh, g: phaseOf(d, 'as') === 'vorher' ? season(d) : phaseOf(d, 'as') }));
-      const f = fitLine(pts);
-      out.push({ id: 'vent', title: 'Lüftung und Schlafzimmer', q: 'Steigt die Feuchte im Schlafzimmer nachts stärker, wenn die Lüftung weniger läuft?', pts, f, v: verdict(f),
+      const f = fitLine(pts), nv = pts.map(p => night(c[p.d])), nHigh = nv.filter(v => v >= 60).length;
+      out.push({ extra: pts.length ? { night: nv.reduce((a, v) => a + v, 0) / nv.length, highShare: nHigh / nv.length } : null, id: 'vent', title: 'Lüftung und Schlafzimmer', q: 'Steigt die Feuchte im Schlafzimmer nachts stärker, wenn die Lüftung weniger läuft?', pts, f, v: verdict(f),
         x: 'Lüftung kWh pro Tag (≈ Laufzeit)', y: 'Feuchte nachts minus Tagesmittel (Prozentpunkte)', unit: 'Punkte je kWh',
         need: !dv ? 'Gerät „Lüftung“ fehlt.' : !rm ? 'Raum „Schlafzimmer“ fehlt.' : null }); }
     // 3 Heizung: Strom je Tag gegen Gradtage, je Phase; Raumtemperatur als Zusatz
     { const hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r]));
       const pts = days.filter(d => hd[d] && gtOf(d) != null && gtOf(d) > 0).map(d => ({ d, x: gtOf(d), y: hd[d].elHeat, g: phaseOf(d, 'wp') }));
       const f = fitLine(pts), rooms = climateStats(from, to).filter(x => !/keller|vorrat|bad/i.test(x.name));
+      const ph = {}; for (const p of pts) { const o = ph[p.g] = ph[p.g] || { g: p.g, n: 0, x: 0, y: 0, from: p.d }; o.n++; o.x += p.x; o.y += p.y; if (p.d < o.from) o.from = p.d; }
+      const phases = Object.values(ph).sort((a, b) => a.from.localeCompare(b.from)).map(o => ({ g: o.g, n: o.n, perGt: o.x > 0 ? o.y / o.x : null }));
+      const wd = Object.keys(W).sort(), wEnd = wd[wd.length - 1]; let gtYear = 0, nY = 0;
+      if (wEnd) for (let d = addDays(wEnd, -364); d <= wEnd; d = addDays(d, 1)) { const g = gtOf(d); if (g != null) { gtYear += g; nY++; } }
       out.push({ id: 'heat', title: 'Heizung, Wetter und Raumtemperatur', q: 'Wie viel Heizstrom kostet ein Gradtag, und welche Raumtemperatur kommt dabei heraus?', pts, f, v: verdict(f),
         x: `Gradtage (${tRoom} °C / Heizgrenze ${heatLimit} °C)`, y: 'Heizstrom kWh pro Tag', unit: 'kWh je Gradtag',
-        extra: rooms.length ? { rooms: rooms.map(x => ({ name: x.name, t: x.t, tNight: x.tNight })) } : null,
+        extra: { rooms: rooms.length ? rooms.map(x => ({ name: x.name, t: x.t, tNight: x.tNight })) : null, phases, gtYear: nY >= 300 ? gtYear * 365 / nY : null, tRoom: +tRoom },
         need: Object.keys(hd).length ? null : 'Wärmepumpen-Tageswerte fehlen.' }); }
     // 4 Warmwasser gegen Wasserverbrauch
     { const hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r])), wd = groupSeries('water').daily;
       const pts = days.filter(d => hd[d] && wd[d] != null).map(d => ({ d, x: wd[d] * 1000, y: hd[d].elDhw, g: phaseOf(d, 'wp') }));
-      const f = fitLine(pts);
+      const f = fitLine(pts), ph = {};
+      for (const d of days) { const r = hd[d]; if (!r || r.elDhw == null) continue; const g = phaseOf(d, 'wp'); const o = ph[g] = ph[g] || { g, n: 0, k: 0, from: d }; o.n++; o.k += r.elDhw; }
+      const phases = Object.values(ph).sort((a, b) => a.from.localeCompare(b.from)).map(o => ({ g: o.g, n: o.n, kwhDay: o.k / o.n }));
       out.push({ id: 'dhw', title: 'Warmwasser und Wasserverbrauch', q: 'Wie viel Warmwasser-Strom hängt am Wasserverbrauch, und wie viel ist Bereitschaft (Speicher, Zirkulation)?', pts, f, v: verdict(f),
         x: 'Wasser Liter pro Tag (zwischen Ablesungen verteilt)', y: 'Warmwasser-Strom kWh pro Tag', unit: 'kWh je Liter',
-        extra: f.slope != null ? { base: f.icept } : null, need: Object.keys(wd).length ? null : 'Wasserzähler fehlt (Zähler & Verbrauch → Wasser).' }); }
+        extra: { base: f.slope != null ? f.icept : null, phases }, need: Object.keys(wd).length ? null : 'Wasserzähler fehlt (Zähler & Verbrauch → Wasser).' }); }
     // 5 Lüftung gegen Heizstrom je Gradtag
     { const dv = findDev(/lüft|lueft/i), v = dv ? dev(dv.id) : {}, hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r]));
       const pts = days.filter(d => v[d] && v[d].src === 'day' && hd[d] && gtOf(d) >= 3).map(d => ({ d, x: v[d].kwh, y: hd[d].elHeat / gtOf(d), g: season(d) }));
@@ -941,7 +947,7 @@ export function createCalc(S) {
       const f = fitLine(pts);
       out.push({ id: 'wash', title: 'Waschmaschine und Wasser', q: 'Welcher Anteil des Wassers geht in die Waschmaschine?', pts, f, v: pts.length >= 3 ? 'Hinweis' : 'zu wenig Daten',
         x: 'Waschmaschine Liter pro Monat', y: 'Wasser gesamt Liter pro Monat', unit: 'l je l', monthly: true,
-        extra: pts.length ? { share: pts.reduce((a, p) => a + p.x, 0) / pts.reduce((a, p) => a + p.y, 0) } : null,
+        extra: { share: pts.length ? pts.reduce((a, p) => a + p.x, 0) / pts.reduce((a, p) => a + p.y, 0) : null, lPerWash: dv ? (programSummary(dv.id, from, to) || {}).lPerWash ?? null : null },
         need: !dv ? 'Gerät „Waschmaschine“ fehlt.' : Object.keys(wd).length ? null : 'Wasserzähler fehlt.' }); }
     // 7 Grundlast: nicht gemessener Allgemeinstrom nach Wochentag
     { const hh = hhDay(), wk = Array.from({ length: 7 }, () => ({ s: 0, n: 0 }));
@@ -956,7 +962,9 @@ export function createCalc(S) {
         return { d, x: +A.c.gen[i], y: +A.c.imp[i], g: (+A.c.feed[i] || 0) >= th ? 'Speicher voll' : 'Speicher nicht voll' }; });
       const f = fitLine(pts), full = pts.filter(p => p.g === 'Speicher voll'), nf = pts.filter(p => p.g !== 'Speicher voll'), avg = a => a.length ? a.reduce((s, p) => s + p.y, 0) / a.length : null;
       out.push({ id: 'pv', title: 'PV, Speicher und Netzbezug', q: 'Wie viel Netzbezug bleibt bei viel oder wenig Sonne, und an Tagen mit vollem Speicher?', pts, f, v: verdict(f),
-        x: 'PV-Erzeugung kWh pro Tag', y: 'Netzbezug kWh pro Tag', unit: 'kWh je kWh', extra: { full: avg(full), nFull: full.length, notFull: avg(nf) } }); }
+        x: 'PV-Erzeugung kWh pro Tag', y: 'Netzbezug kWh pro Tag', unit: 'kWh je kWh',
+        extra: { full: avg(full), nFull: full.length, notFull: avg(nf), fullShare: pts.length ? full.length / pts.length : null,
+          sunny: (() => { const g = pts.map(p => p.x).sort((a, b) => a - b), q = g[Math.floor(g.length * 0.7)]; const sp = pts.filter(p => p.x >= q); return pts.length >= 10 ? avg(sp) : null; })() } }); }
     return out;
   }
   // v0.27: PV-Prognose. fcRows: Vorhersage [{day, rad_kwh}] ab heute; Monatsausblick 12 Monate ab dem laufenden Monat:
