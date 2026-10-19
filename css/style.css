@@ -174,3 +174,6 @@ main{min-width:0}
 .rel-x details{margin-top:8px;font-size:13px}.rel-x summary{cursor:pointer;color:var(--muted)}
 ol.rel-top{margin:8px 0 0 18px;padding:0;line-height:1.5}ol.rel-top li{margin:4px 0}
 @media (max-width:640px){.rel-row{grid-template-columns:1fr;gap:2px}}
+/* v0.40: CO₂ – lange Erklärtexte in Tabellen umbrechen */
+#co-lev td.l,#co-cmp td.l{white-space:normal;min-width:180px}
+#co-lev td.l .note,#co-cmp td.note{font-size:12px}

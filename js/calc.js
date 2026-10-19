@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.39.0';
+import { hpSum } from './hp.js?v=0.41.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -21,6 +21,12 @@ export const iso = d => d.toISOString().slice(0, 10);
 export const addDays = (s, n) => iso(new Date(toD(s).getTime() + n * DAY));
 export const diffDays = (a, b) => Math.round((toD(b) - toD(a)) / DAY);
 export const monthKey = s => s.slice(0, 7);
+// v0.40: CO₂-Faktoren (änderbar unter CO₂ → Faktoren). Strommix laut Umweltbundesamt (g CO₂ je kWh verbrauchten
+// Stroms, ohne Vorketten): 2023 379, 2024 353, 2025 344 (Stand der UBA-Zeitreihe 2026). Spätere Jahre nutzen den
+// letzten bekannten Wert. Wärme-Vergleich: Durchschnittsheizung in Deutschland (rund 3/4 Gas und Öl) ≈ 280 g je kWh
+// Wärme (Gas 240 bzw. Öl 310 g je kWh Brennstoff nach GEG Anlage 9, Kesselwirkungsgrad ~0,9, Rest Fernwärme/Strom).
+export const CO2_DEFAULTS = { mix: { 2023: 379, 2024: 353, 2025: 344 }, contract: { as: 0, wp: 0 }, heatRef: 280, petrol: 2370,
+  pvKgKwp: 800, battKgKwh: 80, persons: 3, copFallback: 3.0 };
 export const monthEnd = k => addDays(`${k}-01`, new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7), 0)).getUTCDate() - 1);
 export function shiftYear(d, n = -1) { const y = +d.slice(0, 4) + n; let md = d.slice(5); if (md === '02-29') md = '02-28'; return `${y}-${md}`; }
 export function nextMonth(k) { const y = +k.slice(0, 4), m = +k.slice(5, 7); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; }
@@ -78,6 +84,9 @@ export function stateFromDb(db) {
       extra: r.extra || '', runs: +r.runs || 0, kwh: r.kwh_run == null ? null : +r.kwh_run, l: r.l_run == null ? null : +r.l_run })),
     programError: db.programError || null,
     rooms: Array.isArray(s.rooms) ? s.rooms : [],
+    co2: s.co2 && typeof s.co2 === 'object' ? s.co2 : {},
+    gridCo2: Object.fromEntries((db.grid_co2 || []).map(r => [r.day, { g: +r.g_mean, hours: Array.isArray(r.hours) ? r.hours.map(v => (v == null ? null : +v)) : null }])),
+    gridCo2Error: db.gridCo2Error || null,
     climate: (db.room_climate || []).map(r => ({ room: r.room, d: r.day, n: +r.n, t: r.t == null ? null : +r.t, rh: r.rh == null ? null : +r.rh,
       lo: r.rh_min == null ? null : +r.rh_min, hi: r.rh_max == null ? null : +r.rh_max, dry: +r.h_dry || 0, wet: +r.h_wet || 0,
       hours: Array.isArray(r.hours) ? r.hours : null })),
@@ -101,7 +110,7 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}), ...(S.rooms && S.rooms.length ? { rooms: S.rooms } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}), ...(S.rooms && S.rooms.length ? { rooms: S.rooms } : {}), ...(S.co2 && Object.keys(S.co2).length ? { co2: S.co2 } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -546,6 +555,83 @@ export function createCalc(S) {
       if (d <= today) { if (dly[d] != null) o.meas += dly[d]; } else if (m) { const v = m.day(d); if (v != null) o.fc += v; else if (p != null) o.fc += p; } else if (p != null) o.fc += p;
     }
     return Object.values(out);
+  }
+
+  // v0.40: CO₂-Bilanz. Zwei Sichten: „Strommix“ (physikalisch, UBA-Faktor des Jahres) und „Vertrag“ (Stromkennzeichnung,
+  // bei Ökostrom 0 g). Vergleich „ohne Technik“: Haushaltsstrom ganz aus dem Netz (ohne PV), Wärme der Wärmepumpe mit der
+  // Durchschnittsheizung, Fahrten des E-Autos mit dem Leon (Benzin). Einspeisung verdrängt Netzstrom anderer – getrennt
+  // als Gutschrift ausgewiesen. Werte in kg.
+  const co2Cfg = () => { const c = S.co2 || {}; return { ...CO2_DEFAULTS, ...c, mix: { ...CO2_DEFAULTS.mix, ...(c.mix || {}) }, contract: { ...CO2_DEFAULTS.contract, ...(c.contract || {}) },
+    persons: +c.persons || Math.round(+(S.water || {}).persons || 0) || CO2_DEFAULTS.persons }; };
+  function mixAt(d, cfg = co2Cfg()) {
+    const y = +d.slice(0, 4), ys = Object.keys(cfg.mix).map(Number).filter(k => +cfg.mix[k] > 0).sort((a, b) => a - b);
+    if (!ys.length) return 0; let v = ys[0]; for (const k of ys) if (k <= y) v = k; return +cfg.mix[v];
+  }
+  // Wärmepumpe je Tag und Stunde: [[stunde, kWh], …] aus den Stundenexporten
+  const hpHourByDay = (() => { let m = null; return () => { if (m) return m; m = {};
+    for (const r of HP) { if (r.grain !== 'hour') continue; const d = r.ts.slice(0, 10), h = +r.ts.slice(11, 13), k = (+r.el_hp || 0) + (+r.el_aux || 0); (m[d] = m[d] || []).push([h, k]); } return m; }; })();
+  // v0.41: Netz-CO₂ je Stunde, gemittelt über die Tage im Zeitraum; beste und schlechteste Stunden
+  function gridProfile(from, to) {
+    const G = S.gridCo2 || {}, s = Array(24).fill(0), c = Array(24).fill(0); let days = 0, sum = 0, nd = 0, lo = null, hi = null;
+    for (const [d, r] of Object.entries(G)) { if (d < from || d > to) continue; nd++; sum += r.g; if (!lo || r.g < lo.g) lo = { d, g: r.g }; if (!hi || r.g > hi.g) hi = { d, g: r.g };
+      if (!r.hours) continue; days++; r.hours.forEach((v, h) => { if (v != null) { s[h] += v; c[h]++; } }); }
+    const hours = s.map((v, h) => (c[h] ? v / c[h] : null)), ok = hours.map((v, h) => [h, v]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+    return { days, nd, mean: nd ? sum / nd : null, hours, best: ok.slice(0, 3).map(x => x[0]).sort((a, b) => a - b), worst: ok.slice(-3).map(x => x[0]).sort((a, b) => a - b), lo, hi,
+      spread: ok.length ? ok[ok.length - 1][1] - ok[0][1] : null };
+  }
+  function co2Range(from, to) {
+    const cfg = co2Cfg(), as = groupSeries('as').daily, wp = groupSeries('wp').daily;
+    const hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r]));
+    const hpAll = hpDays('0000-01-01', '9999-12-31'), copAvg = (() => { const s = hpAll.reduce((a, r) => { a.h += r.heat || 0; a.e += (r.el || 0) - (r.elCool || 0); return a; }, { h: 0, e: 0 }); return s.e > 20 ? s.h / s.e : cfg.copFallback; })();
+    const ev = S.cars?.ev || {}, ice = S.cars?.ice || {}, fs = fuelStats(), l100 = (ice.useLog && fs.l100) ? fs.l100 : (+ice.l100 || fs.l100 || 6.5);
+    const evKmDay = +ev.km ? +ev.km / 365 : 0, fuelBy = {}; for (const f of S.fuel || []) fuelBy[f.d] = (fuelBy[f.d] || 0) + (+f.l || 0);
+    const months = {}, T = { netDays: 0, asY: 0, wpY: 0, asKg: 0, wpKg: 0, carKg: 0, asC: 0, wpC: 0, pvSelfKg: 0, feedKg: 0, cfElecKg: 0, cfHeatKg: 0, cfCarKg: 0, heat: 0, heatEst: 0, asKwh: 0, wpKwh: 0, pvSelf: 0, feed: 0, fuelL: 0, evKm: 0, days: 0 };
+    const add = (o, k, v) => { o[k] = (o[k] || 0) + v; };
+    const G = cfg.hourly === false ? {} : (S.gridCo2 || {}), hh = hpHourByDay();
+    for (let d = from; d <= to; d = addDays(d, 1)) {
+      const fy = mixAt(d, cfg) / 1000, gd = G[d], f = gd ? gd.g / 1000 : fy, m = months[d.slice(0, 7)] = months[d.slice(0, 7)] || { k: d.slice(0, 7) }, i = A.idx[d];
+      const a = as[d], w = wp[d], self = i !== undefined ? +A.c.use[i] || 0 : 0, fd = i !== undefined ? +A.c.feed[i] || 0 : 0;
+      const any = a != null || w != null || i !== undefined; if (!any && !fuelBy[d]) continue; T.days++;
+      const h = hd[d] ? hd[d].heat : (w != null ? w * copAvg : 0); if (!hd[d] && w != null) T.heatEst += h;
+      const fuelL = fuelBy[d] || 0, evKm = ev.start && d >= ev.start ? evKmDay : 0;
+      // Wärmepumpe: Stundenwerte des Netzes mit den Stunden-kWh der Wärmepumpe gewichten (Heizen nachts/morgens zählt mit dem Nachtwert)
+      let fw = f; if (gd && gd.hours && hh[d]) { let e = 0, g = 0; for (const [h, k] of hh[d]) { const gv = gd.hours[h]; if (gv != null && k > 0) { e += k; g += k * gv; } } if (e > 0.5) fw = g / e / 1000; }
+      const parts = { netDays: gd ? 1 : 0, asY: (a || 0) * fy, wpY: (w || 0) * fy, asKg: (a || 0) * f, wpKg: (w || 0) * fw, carKg: fuelL * cfg.petrol / 1000, asC: (a || 0) * (+cfg.contract.as || 0) / 1000, wpC: (w || 0) * (+cfg.contract.wp || 0) / 1000,
+        pvSelfKg: self * f, feedKg: fd * f, cfElecKg: ((a || 0) + self) * f, cfHeatKg: h * cfg.heatRef / 1000, cfCarKg: fuelL * cfg.petrol / 1000 + evKm * l100 / 100 * cfg.petrol / 1000,
+        heat: h, asKwh: a || 0, wpKwh: w || 0, pvSelf: self, feed: fd, fuelL, evKm };
+      for (const [k, v] of Object.entries(parts)) { add(m, k, v); add(T, k, v); }
+    }
+    const fin = o => { o.actualYear = o.asY + o.wpY + o.carKg; o.actual = o.asKg + o.wpKg + o.carKg; o.contract = o.asC + o.wpC + o.carKg; o.cf = o.cfElecKg + o.cfHeatKg + o.cfCarKg; o.saved = o.cf - o.actual; o.net = o.actual - o.feedKg; return o; };
+    Object.values(months).forEach(o => { for (const k of Object.keys(T)) if (o[k] == null) o[k] = 0; fin(o); });
+    fin(T);
+    return { cfg, copAvg, l100, months: Object.values(months).sort((x, y) => x.k.localeCompare(y.k)), T, mixFrom: mixAt(from, cfg), mixTo: mixAt(to, cfg) };
+  }
+  // Graue Emissionen der Anlage (aktuelle Stufe) und Rückzahlzeit über die PV-Einsparung der letzten 365 Tage
+  function co2Grey(today) {
+    const cfg = co2Cfg(), st = stageAt(today), kwp = +(st?.kwp ?? S.pv?.kwp) || 0, cap = +(st?.capGross) || +(S.battery?.capGross) || 0;
+    const grey = kwp * cfg.pvKgKwp + cap * cfg.battKgKwh, first = STAGES.length ? STAGES[0].from : A.dates[0];
+    const y = co2Range(addDays(today, -364), today).T, all = co2Range(first, today).T, perYear = y.pvSelfKg + y.feedKg, done = all.pvSelfKg + all.feedKg;
+    return { kwp, cap, grey, pvGrey: kwp * cfg.pvKgKwp, battGrey: cap * cfg.battKgKwh, perYear, done, since: first, years: perYear > 0 ? grey / perYear : null, share: grey > 0 ? done / grey : null };
+  }
+  // Hebel: kg CO₂ und € im Jahr aus den Daten der letzten 365 Tage
+  function co2Levers(today) {
+    const cfg = co2Cfg(), from = addDays(today, -364), R = co2Range(from, today), f = mixAt(today, cfg) / 1000, T = R.T, out = [];
+    const apAs = (currentTariff('as')?.ap || 30) / 100, apWp = (currentTariff('wp')?.ap || apAs * 100) / 100;
+    const hpY = hpDays(from, today), elHeat = hpY.length >= 200 ? hpY.reduce((a, r) => a + (r.elHeat || 0), 0) : T.wpKwh * 0.7;
+    out.push({ id: 'heat1', title: 'Raumtemperatur 1 °C niedriger', kwh: elHeat * 0.06, kg: elHeat * 0.06 * f, eur: elHeat * 0.06 * apWp, note: 'etwa 6 % weniger Heizenergie je Grad' });
+    const plan = (S.stages || []).filter(x => x.status === 'planned').sort((a, b) => (+b.kwp || 0) - (+a.kwp || 0))[0], cur = stageAt(today);
+    if (plan && cur && +plan.kwp > +cur.kwp) { const yld = kwpIn(from, today) > 0 ? sumRange('gen', from, today) / kwpIn(from, today) : 900, k = (+plan.kwp - +cur.kwp) * yld;
+      out.push({ id: 'pv', title: `PV-Ausbau „${plan.name}“ (+${(+plan.kwp - +cur.kwp).toFixed(2)} kWp)`, kwh: k, kg: k * f, eur: k * 0.6 * apAs + k * 0.4 * (+S.amort?.feedin || 0) / 100, note: 'Ertrag je kWp wie in den letzten 365 Tagen; 60 % selbst genutzt angenommen' }); }
+    const ev = S.cars?.ev || {};
+    if (+ev.km) { const kwhY = +ev.km / 100 * (+ev.kwh100 || 18) * (1 + (+ev.loss || 0) / 100), gridShare = (+ev.shHome || 0) / 100 * (1 - (+ev.shPV || 0) / 100) + (1 - (+ev.shHome || 0) / 100);
+      const iceKg = +ev.km / 100 * R.l100 * cfg.petrol / 1000, evKg = kwhY * gridShare * f;
+      out.push({ id: 'ev', title: 'E-Auto statt Leon (Benzin)', kwh: null, kg: iceKg - evKg, eur: null, note: `${Math.round(+ev.km)} km im Jahr, Leon ${R.l100.toFixed(1)} l/100 km gegen ${Math.round(kwhY)} kWh Strom (${Math.round(gridShare * 100)} % aus dem Netz)` }); }
+    out.push({ id: 'base', title: 'Allgemeinstrom 10 % weniger (Grundlast, Geräte)', kwh: T.asKwh * 0.1, kg: T.asKwh * 0.1 * f, eur: T.asKwh * 0.1 * apAs, note: 'z. B. Standby, alte Geräte, Trockner' });
+    // Verschieben bringt nur, was sonst eingespeist würde (Speicher voll); eingespeiste kWh ersetzen bereits Netzstrom anderer,
+    // der Gewinn für die eigene Bilanz ist daher der Eigenverbrauch statt Einspeisung (CO₂ gleich, € = Arbeitspreis − Vergütung)
+    const sh = Math.min(365, T.feed);
+    out.push({ id: 'shift', title: 'Verbrauch in die Sonnenstunden legen', kwh: sh, kg: 0, eur: sh * (apAs - (+S.amort?.feedin || 0) / 100), note: `nur die ${Math.round(T.feed)} kWh, die im letzten Jahr eingespeist wurden, lassen sich so selbst nutzen. Fürs Klima neutral (eingespeister Strom ersetzt ohnehin Netzstrom), spart aber Geld` });
+    return out.sort((a, b) => b.kg - a.kg);
   }
 
   /* Boni: Einzelposten je Tarif (boniItems), optional mit Mengenbedingung
@@ -1262,7 +1348,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.39.0">
-<link rel="stylesheet" href="css/style.css?v=0.39.0">
+<meta name="app-version" content="0.41.0">
+<link rel="stylesheet" href="css/style.css?v=0.41.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -93,7 +93,7 @@
     <p class="hero-sentence" id="ov-sentence"></p>
     <div class="flow" id="ov-flow"></div>
     <div class="legend" id="ov-legend"></div>
-    <p class="note" id="ov-flow-note"></p><p class="note" id="ov-weather"></p>
+    <p class="note" id="ov-flow-note"></p><p class="note" id="ov-weather"></p><p class="note" id="ov-co2"></p>
   </div>
   <div class="grid g4" style="margin-top:16px" id="ov-kpis"></div>
   <div class="grid g2" style="margin-top:16px">
@@ -263,6 +263,27 @@
   </div>
 </section>
 
+<section id="p-co2" data-title="CO₂" hidden>
+  <h1>CO₂-Bilanz</h1>
+  <p class="lead">Wie viel CO₂ verursacht der Haushalt (Strom, Heizung, Auto), wie viel sparen PV, Wärmepumpe und künftig das E-Auto gegenüber einem Haushalt ohne diese Technik – und wo liegen die nächsten Hebel? Hauptwert ist der <b>Strommix</b> (physikalisch, Umweltbundesamt), daneben die Bilanz <b>laut Vertrag</b> (Ökostrom).</p>
+  <div id="co-flags"></div><div class="grid g4" id="co-kpis"></div>
+  <div class="panel" style="margin-top:16px" id="co-x"></div>
+  <div class="panel" style="margin-top:16px"><h2>Verlauf je Monat</h2><p class="note">Balken nach oben: Ausstoß (Strommix). Nach unten: durch eigenen Solarstrom vermieden und eingespeist. Linie: Vergleich „ohne Technik“.</p><div class="chart"><canvas id="co-chart"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Vergleich mit einem Haushalt ohne PV, Wärmepumpe und E-Auto</h2><div class="tbl-wrap"><table id="co-cmp"></table></div><div id="co-cmp-note"></div></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Graue Emissionen der Anlage</h2><div id="co-grey"></div></div>
+    <div class="panel"><h2>Hebel: was bringt wie viel?</h2><div class="tbl-wrap"><table id="co-lev"></table></div><p class="note">Hochgerechnet aus den letzten 365 Tagen, Strommix des aktuellen Jahres, aktuelle Arbeitspreise.</p></div>
+  </div>
+  <div class="panel" style="margin-top:16px" id="co-grid-panel"><h2>Stromnetz: wann ist Netzstrom sauber?</h2>
+    <p class="note">CO₂-Intensität des deutschen Stromnetzes je Stunde (Energy-Charts, Fraunhofer ISE), gemittelt über die Tage im gewählten Zeitraum. Große Verbraucher, die Netzstrom brauchen (Laden des E-Autos im Winter, Waschmaschine ohne Sonne), am besten in die grünen Stunden legen.</p>
+    <div id="co-grid-flags"></div><div class="grid g4" id="co-grid-kpis" style="margin-top:12px"></div><div class="chart"><canvas id="co-grid-chart"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Faktoren und Quellen</h2>
+    <p class="note">Strommix: Umweltbundesamt, CO₂-Emissionen je kWh verbrauchten Stroms (ohne Vorketten) – 2023: 379 g, 2024: 353 g, 2025: 344 g; spätere Jahre mit dem letzten bekannten Wert. Vertrag: Stromkennzeichnung der Rechnung (Ökostrom meist 0 g). Durchschnittsheizung Deutschland (rund ¾ Gas und Öl): etwa 280 g je kWh Wärme (Gas 240 g, Öl 310 g je kWh Brennstoff nach GEG Anlage 9, Wirkungsgrad ~0,9). Benzin: 2,37 kg je Liter (Verbrennung). Graue Emissionen: typische Werte für Herstellung und Transport, mit großer Spannbreite.</p>
+    <div class="form edit-only" style="margin-top:10px" id="co-form"></div>
+    <label class="f check edit-only" style="margin-top:8px"><input type="checkbox" id="co-hourly"> Netzwerte je Tag und Stunde verwenden, wo vorhanden (sonst Jahresfaktor)</label>
+    <div class="row edit-only" style="margin-top:8px"><button type="button" class="ghost" id="co-grid-sync">Netzwerte aktualisieren</button></div>
+    <p class="note" id="co-msg"></p><p class="note" id="co-grid-msg"></p></div>
+</section>
 <section id="p-rel" data-title="Zusammenhänge" hidden>
   <h1>Zusammenhänge</h1>
   <p class="lead">Gezielte Fragen, wie Wetter, Räume, Geräte, Wärmepumpe und PV einander beeinflussen. Jede Karte zeigt Tageswerte im gewählten Zeitraum, die Gerade der besten Anpassung und eine Bewertung: <b>belastbar</b> (mindestens 30 Tage, R² ≥ 0,3), <b>Hinweis</b> (mindestens 10 Tage, R² ≥ 0,1) oder <b>zu wenig Daten</b>. Ein Zusammenhang ist noch keine Ursache – er zeigt, wo sich ein gezielter Versuch lohnt. Einstellungsänderungen (Daten → Ereignisse, Typ „einstellung“) teilen die Punkte in Phasen.</p>
@@ -497,8 +518,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.39.0"></script>
-<script src="vendor/chart.umd.js?v=0.39.0"></script>
-<script type="module" src="js/app.js?v=0.39.0"></script>
+<script src="vendor/supabase.js?v=0.41.0"></script>
+<script src="vendor/chart.umd.js?v=0.41.0"></script>
+<script type="module" src="js/app.js?v=0.41.0"></script>
 </body>
 </html>
