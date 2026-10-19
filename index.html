@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.37.0">
-<link rel="stylesheet" href="css/style.css?v=0.37.0">
+<meta name="app-version" content="0.38.0">
+<link rel="stylesheet" href="css/style.css?v=0.38.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -266,6 +266,7 @@
 <section id="p-rel" data-title="Zusammenhänge" hidden>
   <h1>Zusammenhänge</h1>
   <p class="lead">Gezielte Fragen, wie Wetter, Räume, Geräte, Wärmepumpe und PV einander beeinflussen. Jede Karte zeigt Tageswerte im gewählten Zeitraum, die Gerade der besten Anpassung und eine Bewertung: <b>belastbar</b> (mindestens 30 Tage, R² ≥ 0,3), <b>Hinweis</b> (mindestens 10 Tage, R² ≥ 0,1) oder <b>zu wenig Daten</b>. Ein Zusammenhang ist noch keine Ursache – er zeigt, wo sich ein gezielter Versuch lohnt. Einstellungsänderungen (Daten → Ereignisse, Typ „einstellung“) teilen die Punkte in Phasen.</p>
+  <div class="panel" id="rel-top" style="margin-bottom:16px"></div>
   <div class="grid g2" id="rel-cards"></div>
 </section>
 
@@ -491,8 +492,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.37.0"></script>
-<script src="vendor/chart.umd.js?v=0.37.0"></script>
-<script type="module" src="js/app.js?v=0.37.0"></script>
+<script src="vendor/supabase.js?v=0.38.0"></script>
+<script src="vendor/chart.umd.js?v=0.38.0"></script>
+<script type="module" src="js/app.js?v=0.38.0"></script>
 </body>
 </html>

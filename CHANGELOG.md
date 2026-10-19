@@ -524,3 +524,16 @@
   Anlegen, Ändern und Löschen fragen nach.
 - Kein Datenbank-Update nötig.
 - Tests: 115 Unit-Tests unverändert, neu `scripts/v37-check.mjs` (14 Prüfungen); v13-, v14-, v34-, v36- und Bearbeiten-Check grün.
+
+## v0.38 – Zusammenhänge mit Deutung
+- **„Was heißt das?“** unter jeder Karte: vier Zeilen in Alltagssprache, aus den Zahlen nach festen Regeln gebildet –
+  **Ergebnis** (Steigung als Satz), **Wie sicher** (R² und Anzahl Tage in Worten), **Was es ausmacht** (kWh und € im Jahr
+  zum aktuellen Arbeitspreis) und **Was tun** (Handlung, oder was fehlt und wie viele Tage noch).
+- **„Wie lese ich die Grafik?“** zum Aufklappen je Karte.
+- **Die wichtigsten Erkenntnisse** oben: bis zu drei belastbare Karten mit der größten Wirkung in Euro.
+- Neu im Rechenkern: Phasenvergleich Heizung (kWh je Gradtag je Phase, hochgerechnet auf die Gradtage der letzten
+  365 Tage) und Warmwasser (kWh je Tag je Phase, auch ohne Wasserzähler – zeigt z. B. den Zirkulationstest);
+  Feuchte nachts absolut (Lüftung), Liter je Wäsche (Waschmaschine), Anteil voller Speichertage und Netzbezug an
+  sonnigen Tagen (PV).
+- Neues Modul `js/explain.js` (rein, testbar). Kein Datenbank-Update nötig.
+- Tests: 123 Unit-Tests (neu `tests/v38.test.mjs`), neu `scripts/v38-check.mjs` (12 Prüfungen); v34-Check grün.
