@@ -136,6 +136,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Vorjahres-Heizenergie in den Vergleichswochen ÷ 0,4; milder/kälter ±15 % Gradtage). Allgemeinstrom: Methode
      (8 Wochen, gleiche Jahreszeit über Spiegelmonate, wie Vorjahr) nach Rückblick gewählt. Abschlag-Check mit Trend-Zeilen,
      Abschnitt auf „Stromkosten“ mit Monatsgrafik und Rückblick; Warnung ab 25 % Abweichung. Prüfung: `v39-check`.
+   - ✅ v0.40: Seite „CO₂“ (`p-co2`; `co2Range`/`co2Grey`/`co2Levers`/`mixAt`, `CO2_DEFAULTS`, `settings.data.co2`): Strommix
+     (UBA 2023 379, 2024 353, 2025 344 g/kWh) als Hauptwert, Vertrag (Ökostrom 0 g) daneben; Vergleich „ohne Technik“
+     (Haushaltsstrom ohne PV, Wärme mit Durchschnittsheizung 280 g/kWh Wärme, E-Auto-km mit Leon); Einspeisung als Gutschrift;
+     graue Emissionen (800 kg/kWp, 80 kg/kWh) und Rückzahlzeit; Hebel; Faktoren änderbar; Hinweis im Überblick. Prüfung: `v40-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

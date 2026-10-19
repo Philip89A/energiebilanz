@@ -553,3 +553,20 @@
 - Warnung, wenn auch die beste Methode im Rückblick mehr als 25 % daneben lag (z. B. Vorjahr mit anderer Anlage).
 - Kein Datenbank-Update nötig.
 - Tests: 130 Unit-Tests (neu `tests/v39.test.mjs`), neu `scripts/v39-check.mjs` (8 Prüfungen); v13- und v26-Check grün.
+
+## v0.40 – CO₂-Bilanz
+- **Neue Seite „CO₂“** (mit Zeitraumleiste): Ausstoß nach Strommix (Hauptwert) und laut Vertrag (Ökostrom), Einsparung
+  gegenüber einem Haushalt ohne PV, Wärmepumpe und E-Auto, pro Person und Jahr, Einspeisung als zusätzliche Gutschrift.
+- **„Was heißt das?“** mit Ergebnis, Wirkung, Sicherheit und nächstem Schritt; aufklappbar „Wie wird gerechnet?“.
+- **Monatsgrafik:** Ausstoß (Wärmepumpe, Allgemeinstrom, Auto) nach oben, vermiedene Emissionen (selbst genutzter
+  Solarstrom, Einspeisung) nach unten, Linie „ohne Technik“.
+- **Vergleichstabelle** Heizen, Haushaltsstrom, Auto mit Annahmen. Wärme aus den Wärmepumpen-Exporten, sonst Strom ×
+  mittlere Arbeitszahl.
+- **Graue Emissionen** der aktuellen Anlagenstufe (PV je kWp, Speicher je kWh) und CO₂-Rückzahlzeit.
+- **Hebel** (kg CO₂ und € im Jahr): 1 °C weniger, geplanter PV-Ausbau, E-Auto statt Leon, 10 % weniger Allgemeinstrom,
+  Verschieben in die Sonnenstunden (nur soweit eingespeist wird).
+- **Faktoren** änderbar (Strommix je Jahr, Vertrag je Zählpunkt, Durchschnittsheizung, Benzin, graue Emissionen, Personen),
+  gespeichert in `settings.data.co2`. Quellen: Umweltbundesamt (Strommix), GEG Anlage 9 (Brennstoffe).
+- **Überblick:** ein Satz zur CO₂-Bilanz mit Link.
+- Kein Datenbank-Update nötig.
+- Tests: 134 Unit-Tests (neu `tests/v40.test.mjs`), neu `scripts/v40-check.mjs` (13 Prüfungen); v13-, v14-, v38-, v39-Check grün.

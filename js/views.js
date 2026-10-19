@@ -3,12 +3,12 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.39.0';
-import { parseNum } from './queue.js?v=0.39.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.39.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.39.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.39.0';
-import { explainAll } from './explain.js?v=0.39.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.40.0';
+import { parseNum } from './queue.js?v=0.40.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.40.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.40.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.40.0';
+import { explainAll } from './explain.js?v=0.40.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -120,7 +120,7 @@ function esc(s){ return String(s??"").replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&
 function kpi(v,l,s){ return `<div class="panel kpi"><div class="v">${v}</div><div class="l">${l}</div>${s?`<div class="s">${s}</div>`:""}</div>`; }
 function flag(t,info){ return `<div class="flag${info?" info":""}">${t}</div>`; }
 
-const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-hp","p-rel","p-cost","p-tarif","p-ausbau","p-log"];
+const PERIOD_PAGES = ["p-overview","p-fin","p-pv","p-batt","p-meter","p-hp","p-rel","p-co2","p-cost","p-tarif","p-ausbau","p-log"];
 // v0.16: Zeitraum für Listen und Fahrzeugdaten; „Gesamter Zeitraum“ filtert nicht (Einträge können außerhalb der Energiedaten liegen)
 function periodSel(){ const {P,C:Cp}=currentPeriods(), all=S.view.mode==="all"; return {P,Cp,all,inP:d=>all||(d>=P.from&&d<=P.to),inC:d=>!!Cp&&d>=Cp.from&&d<=Cp.to}; }
 const MON = ["Jan","Feb","Mär","Apr","Mai","Jun","Jul","Aug","Sep","Okt","Nov","Dez"];
@@ -681,6 +681,80 @@ function renderRelations(){
     $(`rel-x-${c.id}`).innerHTML = `<h3>Was heißt das?</h3>${row("Ergebnis", x.result)}${row("Wie sicher", x.sure)}${row("Was es ausmacht", x.effect)}${row("Was tun", x.todo)}
       <details><summary>Wie lese ich die Grafik?</summary><p class="note">${esc(x.help)}</p></details>`;
   }
+}
+
+/* ---------- CO₂ (v0.40) ---------- */
+const t_ = kg => Math.abs(kg) >= 1000 ? `${nf(kg/1000,kg>=10000?1:2)} t` : `${nf(kg)} kg`;
+const CO_FIELDS = [["y2023","Strommix 2023 g/kWh"],["y2024","Strommix 2024 g/kWh"],["y2025","Strommix 2025 g/kWh"],["y2026","Strommix 2026 g/kWh (leer = 2025)"],
+  ["cAs","Vertrag Allgemeinstrom g/kWh"],["cWp","Vertrag Wärmepumpe g/kWh"],["heatRef","Durchschnittsheizung g je kWh Wärme"],["petrol","Benzin g je Liter"],
+  ["pvKgKwp","Herstellung PV kg je kWp"],["battKgKwh","Herstellung Speicher kg je kWh"],["persons","Personen im Haushalt"]];
+function coVal(cfg,k){ return k.startsWith("y")?cfg.mix[k.slice(1)]:k==="cAs"?cfg.contract.as:k==="cWp"?cfg.contract.wp:cfg[k]; }
+function renderOvCo2(){
+  const {P}=currentPeriods(), R=C.co2Range(P.from,P.to), T=R.T;
+  $("ov-co2").innerHTML = T.days ? `CO₂ im Zeitraum: <b>${t_(T.actual)}</b> (Strommix), ${t_(T.saved)} weniger als ein Haushalt ohne PV, Wärmepumpe und E-Auto. <a href="#co2">Zur CO₂-Bilanz</a>` : "";
+}
+function renderCo2(){
+  const RS=periodSel(); let P=RS.P; if(RS.all) P={from:A.dates[0],to:A.dates[A.n-1]};
+  const R=C.co2Range(P.from,P.to), T=R.T, cfg=R.cfg, Cp=RS.Cp?C.co2Range(RS.Cp.from,RS.Cp.to).T:null, L=RS.Cp?RS.Cp.label:"";
+  const yrs=Math.max(T.days,1)/365, pp=v=>v/cfg.persons/yrs, fl=[];
+  if(!T.days){ $("co-flags").innerHTML=flag("Keine Verbrauchsdaten im gewählten Zeitraum.",true); return; }
+  if(T.heatEst>0) fl.push(flag(`Für ${nf(T.heatEst)} kWh Wärme fehlen Wärmepumpen-Exportdaten; dafür wird der Strom mit der mittleren Arbeitszahl ${nf(R.copAvg,1)} umgerechnet.`,true));
+  if(cfg.contract.as===0&&cfg.contract.wp===0) fl.push(flag("Laut Vertrag beziehst du Ökostrom mit 0 g CO₂/kWh. Das ist eine Bilanzierung über Herkunftsnachweise; physikalisch kommt der deutsche Strommix aus der Leitung. Deshalb ist der Strommix hier der Hauptwert – er zeigt, was dein Verbrauch tatsächlich bewirkt.",true));
+  $("co-flags").innerHTML=fl.join("");
+  const vs=(a,b)=>b!=null?vsTxt(a,b,v=>t_(v),L):"";
+  $("co-kpis").innerHTML=
+     kpi(t_(T.actual),"Ausstoß (Strommix)",`Wärmepumpe ${t_(T.wpKg)}, Allgemeinstrom ${t_(T.asKg)}, Auto ${t_(T.carKg)}`+vs(T.actual,Cp&&Cp.actual))
+    +kpi(t_(T.contract),"Ausstoß laut Vertrag",`Ökostrom ${nf(cfg.contract.as)} / ${nf(cfg.contract.wp)} g/kWh; übrig bleibt ${T.carKg>0?"das Benzin":"nichts"}`)
+    +kpi(t_(T.saved),"Weniger als ohne Technik",`statt ${t_(T.cf)}: ${pct(T.cf>0?T.saved/T.cf:0)} weniger`+vs(T.saved,Cp&&Cp.saved))
+    +kpi(t_(pp(T.actual)),"pro Person und Jahr",`${nf(cfg.persons)} Personen; ohne Technik ${t_(pp(T.cf))}; eingespeist zusätzlich ${t_(T.feedKg)} vermieden`);
+  // Was heißt das?
+  const big=[["die Wärmepumpe statt einer Durchschnittsheizung",T.cfHeatKg-T.wpKg],["der selbst genutzte Solarstrom",T.pvSelfKg],["das E-Auto",T.cfCarKg-T.carKg]].sort((a,b)=>b[1]-a[1]);
+  const share=k=>T.actual>0?k/T.actual:0, dom=[["die Wärmepumpe",T.wpKg],["der Allgemeinstrom",T.asKg],["das Auto",T.carKg]].sort((a,b)=>b[1]-a[1])[0];
+  const row=(k,v)=>v?`<div class="rel-row"><b>${k}</b><span>${v}</span></div>`:"";
+  $("co-x").innerHTML=`<div class="rel-x" style="margin-top:0"><h3>Was heißt das?</h3>
+    ${row("Ergebnis",`Im Zeitraum hat der Haushalt ${t_(T.actual)} CO₂ verursacht (Strommix ${nf(R.mixFrom)}${R.mixTo!==R.mixFrom?`–${nf(R.mixTo)}`:""} g/kWh). Den größten Teil macht ${dom[0]} mit ${pct(share(dom[1]))}.`)}
+    ${row("Was es ausmacht",`Ohne PV, mit einer Durchschnittsheizung und nur mit dem Benziner wären es ${t_(T.cf)} gewesen – ${t_(T.saved)} oder ${pct(T.cf>0?T.saved/T.cf:0)} weniger. Am meisten bringt ${big[0][0]} (${t_(big[0][1])}). Dazu ersetzt der eingespeiste Solarstrom ${t_(T.feedKg)} im Netz.`)}
+    ${row("Wie sicher",`Die Größenordnung stimmt; die Einzelwerte hängen an Faktoren mit Spannbreite (Strommix je Jahr, Durchschnittsheizung, graue Emissionen). Bilanz laut Vertrag: ${t_(T.contract)}.`)}
+    ${row("Was tun",T.carKg>T.wpKg?"Größter Posten ist das Auto – mit dem E-Auto ab Dezember sinkt er deutlich, vor allem bei Laden mit Solarstrom.":"Größter Posten ist die Wärmepumpe im Winter: Raumtemperatur und Warmwasser-Bereitschaft sind die wirksamsten Stellschrauben (siehe Hebel).")}
+    <details><summary>Wie wird gerechnet?</summary><p class="note">Ausstoß = Netzbezug laut Zähler × Strommix des Jahres (Allgemeinstrom und Wärmepumpe) + getankte Liter × 2,37 kg. „Ohne Technik“ = Haushaltsstrom komplett aus dem Netz (Netzbezug + selbst genutzter Solarstrom), die von der Wärmepumpe erzeugte Wärme mit der Durchschnittsheizung (${nf(cfg.heatRef)} g/kWh Wärme), Fahrten des E-Autos mit dem Leon (${nf(R.l100,1)} l/100 km). Eingespeister Strom ersetzt Netzstrom anderer und wird als zusätzliche Gutschrift gezeigt, nicht verrechnet.</p></details></div>`;
+  // Monatsgrafik
+  const ms=R.months;
+  chart("co-chart",{type:"bar",data:{labels:ms.map(m=>monthLabel(m.k)),datasets:[
+    {label:"Wärmepumpe",data:ms.map(m=>m.wpKg),backgroundColor:css("--heat"),stack:"a"},
+    {label:"Allgemeinstrom",data:ms.map(m=>m.asKg),backgroundColor:css("--grid"),stack:"a"},
+    {label:"Auto (Benzin)",data:ms.map(m=>m.carKg),backgroundColor:css("--warn"),stack:"a"},
+    {label:"Solarstrom selbst genutzt",data:ms.map(m=>-m.pvSelfKg),backgroundColor:css("--sun"),stack:"a"},
+    {label:"Eingespeist",data:ms.map(m=>-m.feedKg),backgroundColor:css("--feed"),stack:"a"},
+    {type:"line",label:"ohne Technik",data:ms.map(m=>m.cf),borderColor:css("--ink"),borderDash:[5,4],pointRadius:2,borderWidth:1.5}]},
+    options:{plugins:{ebTotals:false,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${t_(Math.abs(c.parsed.y))}`}}},scales:{x:{stacked:true},y:{stacked:true,title:{display:true,text:"kg CO₂"}}}}});
+  // Vergleich
+  const r=(l,a,b,n)=>`<tr><td class="l">${l}</td><td>${t_(a)}</td><td>${t_(b)}</td><td style="font-weight:600;color:${b-a>=0?"var(--ok)":"var(--warn)"}">${b-a>=0?"−":"+"}${t_(Math.abs(b-a))}</td><td class="l note">${n}</td></tr>`;
+  $("co-cmp").innerHTML=`<thead><tr><th class="l">Bereich</th><th>heute</th><th>ohne Technik</th><th>Unterschied</th><th class="l">Annahme</th></tr></thead><tbody>
+    ${r("Heizen und Warmwasser",T.wpKg,T.cfHeatKg,`${nf(T.heat)} kWh Wärme, Wärmepumpe gegen Durchschnittsheizung (≈ ¾ Gas/Öl)`)}
+    ${r("Haushaltsstrom",T.asKg,T.cfElecKg,`${nf(T.pvSelf)} kWh selbst genutzter Solarstrom ersetzen Netzstrom`)}
+    ${r("Auto",T.carKg,T.cfCarKg,T.evKm>0?`${nf(T.evKm)} km elektrisch statt Benzin`:`${nf(T.fuelL)} l Benzin getankt; E-Auto ab ${S.cars?.ev?.start?dde(S.cars.ev.start):"Dezember"}`)}
+    ${r("<b>Summe</b>",T.actual,T.cf,"")}</tbody>`;
+  $("co-cmp-note").innerHTML=`<p class="note">Zusätzlich ersetzt eingespeister Solarstrom ${t_(T.feedKg)} CO₂ im Netz (${nf(T.feed)} kWh). Laden des E-Autos zu Hause steckt im Allgemeinstrom.</p>`;
+  // Graue Emissionen
+  const G=C.co2Grey(A.dates[A.n-1]);
+  $("co-grey").innerHTML=`<div class="grid g2">${kpi(t_(G.grey),"Herstellung der Anlage",`${nf(G.kwp,2)} kWp × ${nf(cfg.pvKgKwp)} kg + ${nf(G.cap,1)} kWh Speicher × ${nf(cfg.battKgKwh)} kg`)}${kpi(G.years!=null?`${nf(G.years,1)} Jahre`:"–","CO₂-Rückzahlzeit",`PV spart ${t_(G.perYear)} im Jahr (selbst genutzt und eingespeist)`)}</div>
+    <p class="note">Seit ${dde(G.since)} hat die Anlage ${t_(G.done)} CO₂ vermieden – ${G.share!=null?pct(Math.min(G.share,9.99)):"–"} ihrer Herstellung. ${G.share>=1?"Die Herstellung ist bereits ausgeglichen.":"Danach arbeitet sie klimapositiv."} Lebensdauer typischerweise 20–30 Jahre (Module), 10–15 Jahre (Speicher).</p>`;
+  // Hebel
+  const lev=C.co2Levers(A.dates[A.n-1]);
+  $("co-lev").innerHTML=`<thead><tr><th class="l">Hebel</th><th>kg CO₂ / Jahr</th><th>€ / Jahr</th></tr></thead><tbody>${lev.map(x=>`<tr><td class="l">${esc(x.title)}<br><span class="note">${esc(x.note)}</span></td><td>${x.kg?nf(x.kg):"0"}</td><td>${x.eur!=null?eur(x.eur):"–"}</td></tr>`).join("")}</tbody>`;
+  // Faktoren
+  const f=$("co-form");
+  if(!f.children.length) f.innerHTML=CO_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="text" inputmode="decimal" data-co="${k}"></label>`).join("");
+  f.querySelectorAll("[data-co]").forEach(el=>{ if(document.activeElement===el) return; const v=coVal(cfg,el.dataset.co); el.value=v==null||v===""?"":String(v).replace(".",","); });
+}
+function wireCo2(){
+  $("co-form").addEventListener("change",e=>{ const k=e.target.dataset.co; if(!k) return; const raw=e.target.value.trim(), v=raw===""?null:parseNum(raw);
+    if(raw!==""&&!(v>=0)){ $("co-msg").textContent="Bitte eine Zahl ≥ 0 eingeben."; return; }
+    const c=S.co2=S.co2||{};
+    if(k.startsWith("y")){ c.mix=c.mix||{}; if(v==null) delete c.mix[k.slice(1)]; else c.mix[k.slice(1)]=v; }
+    else if(k==="cAs"||k==="cWp"){ c.contract=c.contract||{}; c.contract[k==="cAs"?"as":"wp"]=v==null?0:v; }
+    else { if(v==null) delete c[k]; else c[k]=v; }
+    $("co-msg").textContent="Gespeichert."; persist(); refreshCalc(); rerender(); });
 }
 
 /* ---------- Charts ---------- */
@@ -1294,7 +1368,7 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-co2","--ok"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
@@ -1310,7 +1384,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -1389,7 +1463,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate(); wireEvents(); wireTrend();
+    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate(); wireEvents(); wireTrend(); wireCo2();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);
