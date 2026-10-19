@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.40.0">
-<link rel="stylesheet" href="css/style.css?v=0.40.0">
+<meta name="app-version" content="0.41.0">
+<link rel="stylesheet" href="css/style.css?v=0.41.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -274,9 +274,15 @@
     <div class="panel"><h2>Graue Emissionen der Anlage</h2><div id="co-grey"></div></div>
     <div class="panel"><h2>Hebel: was bringt wie viel?</h2><div class="tbl-wrap"><table id="co-lev"></table></div><p class="note">Hochgerechnet aus den letzten 365 Tagen, Strommix des aktuellen Jahres, aktuelle Arbeitspreise.</p></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="co-grid-panel"><h2>Stromnetz: wann ist Netzstrom sauber?</h2>
+    <p class="note">CO₂-Intensität des deutschen Stromnetzes je Stunde (Energy-Charts, Fraunhofer ISE), gemittelt über die Tage im gewählten Zeitraum. Große Verbraucher, die Netzstrom brauchen (Laden des E-Autos im Winter, Waschmaschine ohne Sonne), am besten in die grünen Stunden legen.</p>
+    <div id="co-grid-flags"></div><div class="grid g4" id="co-grid-kpis" style="margin-top:12px"></div><div class="chart"><canvas id="co-grid-chart"></canvas></div></div>
   <div class="panel" style="margin-top:16px"><h2>Faktoren und Quellen</h2>
     <p class="note">Strommix: Umweltbundesamt, CO₂-Emissionen je kWh verbrauchten Stroms (ohne Vorketten) – 2023: 379 g, 2024: 353 g, 2025: 344 g; spätere Jahre mit dem letzten bekannten Wert. Vertrag: Stromkennzeichnung der Rechnung (Ökostrom meist 0 g). Durchschnittsheizung Deutschland (rund ¾ Gas und Öl): etwa 280 g je kWh Wärme (Gas 240 g, Öl 310 g je kWh Brennstoff nach GEG Anlage 9, Wirkungsgrad ~0,9). Benzin: 2,37 kg je Liter (Verbrennung). Graue Emissionen: typische Werte für Herstellung und Transport, mit großer Spannbreite.</p>
-    <div class="form edit-only" style="margin-top:10px" id="co-form"></div><p class="note" id="co-msg"></p></div>
+    <div class="form edit-only" style="margin-top:10px" id="co-form"></div>
+    <label class="f check edit-only" style="margin-top:8px"><input type="checkbox" id="co-hourly"> Netzwerte je Tag und Stunde verwenden, wo vorhanden (sonst Jahresfaktor)</label>
+    <div class="row edit-only" style="margin-top:8px"><button type="button" class="ghost" id="co-grid-sync">Netzwerte aktualisieren</button></div>
+    <p class="note" id="co-msg"></p><p class="note" id="co-grid-msg"></p></div>
 </section>
 <section id="p-rel" data-title="Zusammenhänge" hidden>
   <h1>Zusammenhänge</h1>
@@ -512,8 +518,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.40.0"></script>
-<script src="vendor/chart.umd.js?v=0.40.0"></script>
-<script type="module" src="js/app.js?v=0.40.0"></script>
+<script src="vendor/supabase.js?v=0.41.0"></script>
+<script src="vendor/chart.umd.js?v=0.41.0"></script>
+<script type="module" src="js/app.js?v=0.41.0"></script>
 </body>
 </html>

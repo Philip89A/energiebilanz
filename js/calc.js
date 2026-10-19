@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.40.0';
+import { hpSum } from './hp.js?v=0.41.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -85,6 +85,8 @@ export function stateFromDb(db) {
     programError: db.programError || null,
     rooms: Array.isArray(s.rooms) ? s.rooms : [],
     co2: s.co2 && typeof s.co2 === 'object' ? s.co2 : {},
+    gridCo2: Object.fromEntries((db.grid_co2 || []).map(r => [r.day, { g: +r.g_mean, hours: Array.isArray(r.hours) ? r.hours.map(v => (v == null ? null : +v)) : null }])),
+    gridCo2Error: db.gridCo2Error || null,
     climate: (db.room_climate || []).map(r => ({ room: r.room, d: r.day, n: +r.n, t: r.t == null ? null : +r.t, rh: r.rh == null ? null : +r.rh,
       lo: r.rh_min == null ? null : +r.rh_min, hi: r.rh_max == null ? null : +r.rh_max, dry: +r.h_dry || 0, wet: +r.h_wet || 0,
       hours: Array.isArray(r.hours) ? r.hours : null })),
@@ -565,26 +567,41 @@ export function createCalc(S) {
     const y = +d.slice(0, 4), ys = Object.keys(cfg.mix).map(Number).filter(k => +cfg.mix[k] > 0).sort((a, b) => a - b);
     if (!ys.length) return 0; let v = ys[0]; for (const k of ys) if (k <= y) v = k; return +cfg.mix[v];
   }
+  // Wärmepumpe je Tag und Stunde: [[stunde, kWh], …] aus den Stundenexporten
+  const hpHourByDay = (() => { let m = null; return () => { if (m) return m; m = {};
+    for (const r of HP) { if (r.grain !== 'hour') continue; const d = r.ts.slice(0, 10), h = +r.ts.slice(11, 13), k = (+r.el_hp || 0) + (+r.el_aux || 0); (m[d] = m[d] || []).push([h, k]); } return m; }; })();
+  // v0.41: Netz-CO₂ je Stunde, gemittelt über die Tage im Zeitraum; beste und schlechteste Stunden
+  function gridProfile(from, to) {
+    const G = S.gridCo2 || {}, s = Array(24).fill(0), c = Array(24).fill(0); let days = 0, sum = 0, nd = 0, lo = null, hi = null;
+    for (const [d, r] of Object.entries(G)) { if (d < from || d > to) continue; nd++; sum += r.g; if (!lo || r.g < lo.g) lo = { d, g: r.g }; if (!hi || r.g > hi.g) hi = { d, g: r.g };
+      if (!r.hours) continue; days++; r.hours.forEach((v, h) => { if (v != null) { s[h] += v; c[h]++; } }); }
+    const hours = s.map((v, h) => (c[h] ? v / c[h] : null)), ok = hours.map((v, h) => [h, v]).filter(x => x[1] != null).sort((a, b) => a[1] - b[1]);
+    return { days, nd, mean: nd ? sum / nd : null, hours, best: ok.slice(0, 3).map(x => x[0]).sort((a, b) => a - b), worst: ok.slice(-3).map(x => x[0]).sort((a, b) => a - b), lo, hi,
+      spread: ok.length ? ok[ok.length - 1][1] - ok[0][1] : null };
+  }
   function co2Range(from, to) {
     const cfg = co2Cfg(), as = groupSeries('as').daily, wp = groupSeries('wp').daily;
     const hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r]));
     const hpAll = hpDays('0000-01-01', '9999-12-31'), copAvg = (() => { const s = hpAll.reduce((a, r) => { a.h += r.heat || 0; a.e += (r.el || 0) - (r.elCool || 0); return a; }, { h: 0, e: 0 }); return s.e > 20 ? s.h / s.e : cfg.copFallback; })();
     const ev = S.cars?.ev || {}, ice = S.cars?.ice || {}, fs = fuelStats(), l100 = (ice.useLog && fs.l100) ? fs.l100 : (+ice.l100 || fs.l100 || 6.5);
     const evKmDay = +ev.km ? +ev.km / 365 : 0, fuelBy = {}; for (const f of S.fuel || []) fuelBy[f.d] = (fuelBy[f.d] || 0) + (+f.l || 0);
-    const months = {}, T = { asKg: 0, wpKg: 0, carKg: 0, asC: 0, wpC: 0, pvSelfKg: 0, feedKg: 0, cfElecKg: 0, cfHeatKg: 0, cfCarKg: 0, heat: 0, heatEst: 0, asKwh: 0, wpKwh: 0, pvSelf: 0, feed: 0, fuelL: 0, evKm: 0, days: 0 };
+    const months = {}, T = { netDays: 0, asY: 0, wpY: 0, asKg: 0, wpKg: 0, carKg: 0, asC: 0, wpC: 0, pvSelfKg: 0, feedKg: 0, cfElecKg: 0, cfHeatKg: 0, cfCarKg: 0, heat: 0, heatEst: 0, asKwh: 0, wpKwh: 0, pvSelf: 0, feed: 0, fuelL: 0, evKm: 0, days: 0 };
     const add = (o, k, v) => { o[k] = (o[k] || 0) + v; };
+    const G = cfg.hourly === false ? {} : (S.gridCo2 || {}), hh = hpHourByDay();
     for (let d = from; d <= to; d = addDays(d, 1)) {
-      const f = mixAt(d, cfg) / 1000, m = months[d.slice(0, 7)] = months[d.slice(0, 7)] || { k: d.slice(0, 7) }, i = A.idx[d];
+      const fy = mixAt(d, cfg) / 1000, gd = G[d], f = gd ? gd.g / 1000 : fy, m = months[d.slice(0, 7)] = months[d.slice(0, 7)] || { k: d.slice(0, 7) }, i = A.idx[d];
       const a = as[d], w = wp[d], self = i !== undefined ? +A.c.use[i] || 0 : 0, fd = i !== undefined ? +A.c.feed[i] || 0 : 0;
       const any = a != null || w != null || i !== undefined; if (!any && !fuelBy[d]) continue; T.days++;
       const h = hd[d] ? hd[d].heat : (w != null ? w * copAvg : 0); if (!hd[d] && w != null) T.heatEst += h;
       const fuelL = fuelBy[d] || 0, evKm = ev.start && d >= ev.start ? evKmDay : 0;
-      const parts = { asKg: (a || 0) * f, wpKg: (w || 0) * f, carKg: fuelL * cfg.petrol / 1000, asC: (a || 0) * (+cfg.contract.as || 0) / 1000, wpC: (w || 0) * (+cfg.contract.wp || 0) / 1000,
+      // Wärmepumpe: Stundenwerte des Netzes mit den Stunden-kWh der Wärmepumpe gewichten (Heizen nachts/morgens zählt mit dem Nachtwert)
+      let fw = f; if (gd && gd.hours && hh[d]) { let e = 0, g = 0; for (const [h, k] of hh[d]) { const gv = gd.hours[h]; if (gv != null && k > 0) { e += k; g += k * gv; } } if (e > 0.5) fw = g / e / 1000; }
+      const parts = { netDays: gd ? 1 : 0, asY: (a || 0) * fy, wpY: (w || 0) * fy, asKg: (a || 0) * f, wpKg: (w || 0) * fw, carKg: fuelL * cfg.petrol / 1000, asC: (a || 0) * (+cfg.contract.as || 0) / 1000, wpC: (w || 0) * (+cfg.contract.wp || 0) / 1000,
         pvSelfKg: self * f, feedKg: fd * f, cfElecKg: ((a || 0) + self) * f, cfHeatKg: h * cfg.heatRef / 1000, cfCarKg: fuelL * cfg.petrol / 1000 + evKm * l100 / 100 * cfg.petrol / 1000,
         heat: h, asKwh: a || 0, wpKwh: w || 0, pvSelf: self, feed: fd, fuelL, evKm };
       for (const [k, v] of Object.entries(parts)) { add(m, k, v); add(T, k, v); }
     }
-    const fin = o => { o.actual = o.asKg + o.wpKg + o.carKg; o.contract = o.asC + o.wpC + o.carKg; o.cf = o.cfElecKg + o.cfHeatKg + o.cfCarKg; o.saved = o.cf - o.actual; o.net = o.actual - o.feedKg; return o; };
+    const fin = o => { o.actualYear = o.asY + o.wpY + o.carKg; o.actual = o.asKg + o.wpKg + o.carKg; o.contract = o.asC + o.wpC + o.carKg; o.cf = o.cfElecKg + o.cfHeatKg + o.cfCarKg; o.saved = o.cf - o.actual; o.net = o.actual - o.feedKg; return o; };
     Object.values(months).forEach(o => { for (const k of Object.keys(T)) if (o[k] == null) o[k] = 0; fin(o); });
     fin(T);
     return { cfg, copAvg, l100, months: Object.values(months).sort((x, y) => x.k.localeCompare(y.k)), T, mixFrom: mixAt(from, cfg), mixTo: mixAt(to, cfg) };
@@ -1331,7 +1348,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

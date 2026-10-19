@@ -96,3 +96,11 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. **Zähler & Verbrauch → Waschprogramme → Programme eines Monats eintragen:** Gerät „Waschmaschine“ und Monat wählen, je
    Zeile der Monatsanalyse Programm, °C, U/min, Zusatz, Anzahl, kWh und Liter je Gang eintragen, „Monat speichern“.
    Ein bereits gespeicherter Monat wird geladen und beim Speichern ersetzt.
+
+# Update v0.41 (Netz-CO₂ je Stunde)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V41.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V41.sql) → **Run**
+   (Warnung bestätigen, betrifft nur Regeln und Trigger der neuen Tabelle). Kontrolle: `grid_co2 | true | 4`.
+2. Pull Request mergen, App neu laden (v0.41.0).
+3. **CO₂** öffnen: Die Netzwerte werden beim Start automatisch geladen (beim ersten Mal ab Beginn der Anker-Daten, etwa
+   20 Abrufe). Klappt der Abruf nicht, steht unter „Faktoren und Quellen“ der Grund; die Seite rechnet dann mit dem Jahresfaktor.

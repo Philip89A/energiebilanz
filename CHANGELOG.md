@@ -570,3 +570,16 @@
 - **Überblick:** ein Satz zur CO₂-Bilanz mit Link.
 - Kein Datenbank-Update nötig.
 - Tests: 134 Unit-Tests (neu `tests/v40.test.mjs`), neu `scripts/v40-check.mjs` (13 Prüfungen); v13-, v14-, v38-, v39-Check grün.
+
+## v0.41 – Netz-CO₂ je Stunde
+- **Neue Tabelle `grid_co2`** (`docs/UPDATE_V41.sql`): CO₂-Intensität des deutschen Stromnetzes je Tag mit 24 Stundenmitteln
+  (Ortszeit, auch an Tagen der Zeitumstellung), Quelle Energy-Charts (Fraunhofer ISE). Abruf wie beim Wetter: nur der
+  Eigentümer, automatisch beim Start (fehlende Tage ab Beginn der Anker-Daten, die letzten 3 Tage neu), in Stücken von 31 Tagen;
+  Knopf „Netzwerte aktualisieren“. Gäste lösen keinen Abruf aus.
+- **CO₂-Bilanz mit Netzwerten:** je Tag der echte Netzwert statt des Jahresfaktors; die Wärmepumpe nach ihren Stunden
+  gewichtet (Heizen nachts zählt mit dem Nachtwert). Vergleich mit dem Jahresfaktor in der Kachel; abschaltbar.
+- **„Stromnetz: wann ist Netzstrom sauber?“:** Stundenprofil im Zeitraum (grün sauber, rot schmutzig), sauberste und
+  schmutzigste Stunden, Unterschied je kWh.
+- Unbekanntes Antwortformat oder Fehler: Hinweis, die Seite rechnet mit dem Jahresfaktor weiter.
+- Hinweis: Das Format der Schnittstelle ist gegen eine simulierte Antwort getestet (aus der Entwicklungsumgebung nicht erreichbar).
+- Tests: 139 Unit-Tests (neu `tests/v41.test.mjs`), neu `scripts/v41-check.mjs` (16 Prüfungen); v14- und v40-Check grün.

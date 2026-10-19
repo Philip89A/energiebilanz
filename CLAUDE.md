@@ -140,6 +140,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      (UBA 2023 379, 2024 353, 2025 344 g/kWh) als Hauptwert, Vertrag (Ökostrom 0 g) daneben; Vergleich „ohne Technik“
      (Haushaltsstrom ohne PV, Wärme mit Durchschnittsheizung 280 g/kWh Wärme, E-Auto-km mit Leon); Einspeisung als Gutschrift;
      graue Emissionen (800 kg/kWp, 80 kg/kWh) und Rückzahlzeit; Hebel; Faktoren änderbar; Hinweis im Überblick. Prüfung: `v40-check`.
+   - ✅ v0.41: Netz-CO₂ je Stunde (`js/gridco2.js`, Energy-Charts `co2eq?country=de`, tolerant gelesen; `grid_co2` je Tag mit
+     24 Stundenmitteln in Ortszeit, `docs/UPDATE_V41.sql`): Bilanz mit Tagesfaktor, Wärmepumpe nach ihren Stunden gewichtet
+     (`settings.data.co2.hourly=false` schaltet ab); Profil saubere/schmutzige Stunden (`gridProfile`). Abruf wie Wetter
+     (nur Eigentümer, automatisch beim Start ab Anker-Beginn). Format gegen die echte Schnittstelle ungeprüft. Prüfung: `v41-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

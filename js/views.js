@@ -3,12 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.40.0';
-import { parseNum } from './queue.js?v=0.40.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.40.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.40.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.40.0';
-import { explainAll } from './explain.js?v=0.40.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.41.0';
+import { parseNum } from './queue.js?v=0.41.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.41.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.41.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.41.0';
+import { explainAll } from './explain.js?v=0.41.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.41.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -703,7 +704,7 @@ function renderCo2(){
   $("co-flags").innerHTML=fl.join("");
   const vs=(a,b)=>b!=null?vsTxt(a,b,v=>t_(v),L):"";
   $("co-kpis").innerHTML=
-     kpi(t_(T.actual),"Ausstoß (Strommix)",`Wärmepumpe ${t_(T.wpKg)}, Allgemeinstrom ${t_(T.asKg)}, Auto ${t_(T.carKg)}`+vs(T.actual,Cp&&Cp.actual))
+     kpi(t_(T.actual),"Ausstoß (Strommix)",`Wärmepumpe ${t_(T.wpKg)}, Allgemeinstrom ${t_(T.asKg)}, Auto ${t_(T.carKg)}`+(T.netDays?`; ${nf(T.netDays)} von ${nf(T.days)} Tagen mit Netzwerten je Stunde (mit Jahresfaktor ${t_(T.actualYear)})`:"")+vs(T.actual,Cp&&Cp.actual))
     +kpi(t_(T.contract),"Ausstoß laut Vertrag",`Ökostrom ${nf(cfg.contract.as)} / ${nf(cfg.contract.wp)} g/kWh; übrig bleibt ${T.carKg>0?"das Benzin":"nichts"}`)
     +kpi(t_(T.saved),"Weniger als ohne Technik",`statt ${t_(T.cf)}: ${pct(T.cf>0?T.saved/T.cf:0)} weniger`+vs(T.saved,Cp&&Cp.saved))
     +kpi(t_(pp(T.actual)),"pro Person und Jahr",`${nf(cfg.persons)} Personen; ohne Technik ${t_(pp(T.cf))}; eingespeist zusätzlich ${t_(T.feedKg)} vermieden`);
@@ -746,8 +747,47 @@ function renderCo2(){
   const f=$("co-form");
   if(!f.children.length) f.innerHTML=CO_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="text" inputmode="decimal" data-co="${k}"></label>`).join("");
   f.querySelectorAll("[data-co]").forEach(el=>{ if(document.activeElement===el) return; const v=coVal(cfg,el.dataset.co); el.value=v==null||v===""?"":String(v).replace(".",","); });
+  $("co-hourly").checked=cfg.hourly!==false;
+  renderGridCo2(P); $("co-grid-msg").innerHTML=gcMsg;
+}
+// v0.41: Netz-CO₂ je Stunde
+let gcMsg="", gcAutoDone=false;
+function renderGridCo2(P){
+  const fl=[]; if(S.gridCo2Error) fl.push(flag("Tabelle für Netzwerte fehlt noch in Supabase: bitte <b>docs/UPDATE_V41.sql</b> im SQL Editor ausführen. Bis dahin rechnet die Seite mit dem Jahresfaktor.",true));
+  let G=C.gridProfile(P.from,P.to), lab=null;
+  if(!G.nd){ const keys=Object.keys(S.gridCo2||{}).sort(); if(keys.length){ const to=keys[keys.length-1], from=addDaysIso(to,-29); G=C.gridProfile(from,to); lab=`letzte 30 Tage mit Werten (${dde(from)} – ${dde(to)})`; } }
+  if(!G.nd){ fl.push(flag(S.gridCo2Error?"":"Noch keine Netzwerte gespeichert. „Netzwerte aktualisieren“ unter „Faktoren und Quellen“ holt sie ab Beginn der Anker-Daten.",true)); $("co-grid-flags").innerHTML=fl.join(""); $("co-grid-kpis").innerHTML=""; chart("co-grid-chart",{type:"bar",data:{labels:[],datasets:[]}}); return; }
+  if(lab) fl.push(flag(`Im gewählten Zeitraum keine Netzwerte – gezeigt: ${lab}.`,true));
+  $("co-grid-flags").innerHTML=fl.join("");
+  const hl=h=>`${String(h).padStart(2,"0")}–${String((h+1)%24).padStart(2,"0")} Uhr`;
+  const rg=hs=>{ const v=hs.map(h=>G.hours[h]), a=Math.round(Math.min(...v)), b=Math.round(Math.max(...v)); return a===b?`Ø ${nf(a)} g`:`Ø ${nf(a)}–${nf(b)} g`; };
+  $("co-grid-kpis").innerHTML=kpi(`${nf(G.mean)} g`,"Netz-Ø je kWh",`${nf(G.nd)} Tage; Jahresfaktor ${nf(C.mixAt(P.to))} g`)
+    +kpi(G.best.map(h=>String(h).padStart(2,"0")).join(", ")+" Uhr","Sauberste Stunden",G.best.length?rg(G.best):"")
+    +kpi(G.worst.map(h=>String(h).padStart(2,"0")).join(", ")+" Uhr","Schmutzigste Stunden",G.worst.length?rg(G.worst):"")
+    +kpi(G.spread!=null?`${nf(G.spread)} g`:"–","Unterschied je kWh",G.spread!=null&&G.mean?`${pct(G.spread/G.mean)} des Mittels – so viel spart Verschieben je kWh Netzstrom`:"");
+  const mx=Math.max(...G.hours.filter(v=>v!=null)), mn=Math.min(...G.hours.filter(v=>v!=null));
+  chart("co-grid-chart",{type:"bar",data:{labels:G.hours.map((_,h)=>String(h).padStart(2,"0")),datasets:[{label:"g CO₂ je kWh",data:G.hours,
+    backgroundColor:G.hours.map(v=>v==null?css("--line"):v<=mn+(mx-mn)/3?css("--ok"):v>=mx-(mx-mn)/3?css("--warn"):css("--muted"))}]},
+    options:{plugins:{legend:{display:false},ebTotals:false,tooltip:{callbacks:{title:c=>hl(+c[0].label),label:c=>`${nf(c.parsed.y)} g CO₂ je kWh`}}},scales:{y:{beginAtZero:false,title:{display:true,text:"g CO₂ je kWh"}}}}});
+}
+export async function syncGridCo2(auto){
+  if(!S||!store?.saveGridCo2||S.gridCo2Error||document.body.classList.contains("ro")) return;
+  if(auto&&gcAutoDone) return; gcAutoDone=true;
+  const today=iso(new Date()), yest=addDaysIso(today,-1), first=A.dates[0]||addDaysIso(today,-365), have=S.gridCo2||{}, recent=addDaysIso(today,-3);
+  let from=null; for(let d=first; d<=yest; d=addDaysIso(d,1)) if(!have[d]||d>=recent){ from=d; break; }
+  if(!from) return;
+  gcMsg="Netzwerte werden geladen …"; if(current==="p-co2") $("co-grid-msg").innerHTML=gcMsg;
+  try{
+    const rows=await fetchGridCo2(from,yest);
+    if(rows.length) await store.saveGridCo2(rows);
+    const map={...(S.gridCo2||{})}; rows.forEach(r=>map[r.day]={g:+r.g_mean,hours:r.hours});
+    S.gridCo2=map; gcMsg=rows.length?`${nf(rows.length)} Tage Netzwerte gespeichert (${dde(rows[0].day)} – ${dde(rows[rows.length-1].day)}).`:"Keine neuen Netzwerte verfügbar.";
+    refreshCalc(); rerender();
+  }catch(e){ gcMsg=e.message==="offline"?"Offline – Netzwerte werden beim nächsten Öffnen ergänzt.":`Netzwerte konnten nicht geladen werden: ${esc(e.message)} Die Seite rechnet mit dem Jahresfaktor.`; if(current==="p-co2") $("co-grid-msg").innerHTML=gcMsg; }
 }
 function wireCo2(){
+  $("co-hourly").addEventListener("change",e=>{ S.co2=S.co2||{}; if(e.target.checked) delete S.co2.hourly; else S.co2.hourly=false; persist(); refreshCalc(); rerender(); });
+  $("co-grid-sync").addEventListener("click",()=>{ gcAutoDone=false; syncGridCo2(false); });
   $("co-form").addEventListener("change",e=>{ const k=e.target.dataset.co; if(!k) return; const raw=e.target.value.trim(), v=raw===""?null:parseNum(raw);
     if(raw!==""&&!(v>=0)){ $("co-msg").textContent="Bitte eine Zahl ≥ 0 eingeben."; return; }
     const c=S.co2=S.co2||{};
