@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.38.0">
-<link rel="stylesheet" href="css/style.css?v=0.38.0">
+<meta name="app-version" content="0.39.0">
+<link rel="stylesheet" href="css/style.css?v=0.39.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -282,6 +282,11 @@
     <div class="tbl-wrap"><table id="ab-edit"></table></div>
     <div class="row edit-only" style="margin-top:10px"><button class="ghost" id="ab-add">Abschlag hinzufügen</button></div>
   </div>
+  <div class="panel" style="margin-top:16px" id="tr-panel"><h2>Prognose mit Trend: dieses Jahr gegen Vorjahr</h2>
+    <p class="note">Wie entwickelt sich der Verbrauch im Vergleich zum Vorjahr, und was folgt daraus für den Rest des Abrechnungsjahres? Wärmepumpe wetterbereinigt (Warmwasser je Tag plus Heizung je Gradtag), Allgemeinstrom über den Trend der letzten 8 Wochen gegenüber denselben Wochen im Vorjahr.</p>
+    <div class="form" style="margin-top:8px;max-width:260px"><label class="f">Zählpunkt<select id="tr-g"><option value="wp">Wärmepumpe</option><option value="as">Allgemeinstrom</option></select></label></div>
+    <div id="tr-flags"></div><div class="grid g4" id="tr-kpis" style="margin-top:12px"></div>
+    <div class="chart"><canvas id="tr-chart"></canvas></div><div id="tr-note"></div></div>
   <div class="panel" style="margin-top:16px" id="evh-panel"><h2>E-Auto zu Hause</h2>
     <p class="note">Laden zu Hause läuft über den Allgemeinstrom-Zähler. Grundlage sind die Ladevorgänge mit Ort „zu Hause“ (kWh aus der Anker-App unter „Erfassen → Laden“ eintragen, je Ladung oder als Monatssumme). Der Netzanteil wird mit dem PV-Anteil aus dem Auto-Vergleich geschätzt.</p>
     <div class="grid g4" id="evh-kpis" style="margin-top:10px"></div>
@@ -492,8 +497,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.38.0"></script>
-<script src="vendor/chart.umd.js?v=0.38.0"></script>
-<script type="module" src="js/app.js?v=0.38.0"></script>
+<script src="vendor/supabase.js?v=0.39.0"></script>
+<script src="vendor/chart.umd.js?v=0.39.0"></script>
+<script type="module" src="js/app.js?v=0.39.0"></script>
 </body>
 </html>

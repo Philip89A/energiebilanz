@@ -537,3 +537,19 @@
   sonnigen Tagen (PV).
 - Neues Modul `js/explain.js` (rein, testbar). Kein Datenbank-Update nötig.
 - Tests: 123 Unit-Tests (neu `tests/v38.test.mjs`), neu `scripts/v38-check.mjs` (12 Prüfungen); v34-Check grün.
+
+## v0.39 – Prognose mit Trend: dieses Jahr gegen Vorjahr
+- **Abschlag-Check:** neue Zeilen „Prognose mit Trend“ (mit Spanne milder/kälter), Jahreskosten mit Trend und
+  „Passender Abschlag mit Trend“. Die bisherige Prognose „wie Vorjahr“ bleibt daneben stehen.
+- **Neuer Abschnitt auf „Stromkosten“:** je Zählpunkt Kacheln, Monatsgrafik (Vorjahr, dieses Jahr gemessen,
+  Prognose) und Rückblick (zu jedem Monatsersten die nächsten 30 Tage vorhergesagt und mit der Messung verglichen).
+- **Wärmepumpe wetterbereinigt:** Verbrauch = Warmwasser/Bereitschaft je Tag + Heizung je Gradtag. Grundlast aus
+  mindestens 14 heizfreien Tagen der letzten 60 Tage, sonst aus dem Sommer. Heizung: kWh je Gradtag des letzten Winters
+  mal Veränderung in denselben Wochen dieser Saison; diese Veränderung zählt erst, wenn die Vergleichswochen einen
+  nennenswerten Teil der Vorjahres-Heizenergie enthalten (volles Gewicht ab 40 %, typischerweise ab Mitte Dezember).
+  Übergangswochen mit Gradtagen, aber kaum Heizung, verfälschen die Prognose so nicht.
+- **Allgemeinstrom:** drei Methoden – Trend der letzten 8 Wochen, gleiche Jahreszeit (Monate mit gleichem Sonnenstand,
+  z. B. Dezember ↔ Januar) und „wie Vorjahr“; gewählt wird die treffsicherste im Rückblick.
+- Warnung, wenn auch die beste Methode im Rückblick mehr als 25 % daneben lag (z. B. Vorjahr mit anderer Anlage).
+- Kein Datenbank-Update nötig.
+- Tests: 130 Unit-Tests (neu `tests/v39.test.mjs`), neu `scripts/v39-check.mjs` (8 Prüfungen); v13- und v26-Check grün.

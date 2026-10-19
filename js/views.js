@@ -3,12 +3,12 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.38.0';
-import { parseNum } from './queue.js?v=0.38.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.38.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.38.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.38.0';
-import { explainAll } from './explain.js?v=0.38.0';
+import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.39.0';
+import { parseNum } from './queue.js?v=0.39.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.39.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.39.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.39.0';
+import { explainAll } from './explain.js?v=0.39.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -969,11 +969,13 @@ function renderAbschlag(){
     ${row("Stand heute",r=>`<span style="color:${col(r.paid-r.costSo)};font-weight:600">${r.paid-r.costSo>=0?"+":"−"}${eur(Math.abs(r.paid-r.costSo))}</span>`)}
     ${row("Prognose restliches Jahr",r=>`${eur(r.costRest)} (${kwh(r.kwhRest)})${r.fb?` <span class="pill">${r.fb} Tage geschätzt</span>`:""}`)}
     ${row("davon Laden Tavascan",r=>r.evK?`${kwh(r.evK)}, ${eur(r.evK*r.t.ap/100)} ab ${dde(S.cars.ev.start)}`:"–")}
-    ${row("Erwartete Jahreskosten",r=>eur(r.costTotal))}
+    ${row("Prognose mit Trend (v0.39)",r=>r.trend?`${eur(r.trend.costTrend)} <span class="pill">milder ${eur(r.trend.costMild)} · kälter ${eur(r.trend.costCold)}</span>`:"–")}
+    ${row("Erwartete Jahreskosten",r=>eur(r.costTotal)+(r.trend?` <span class="note">mit Trend ${eur(r.costSo+r.trend.costTrend)}</span>`:""))}
     ${row("Abschläge im Abrechnungsjahr",r=>`${eur(r.payTotal)} (12 × Ø ${eur(r.payTotal/12)})`)}
     ${row("<b>Erwartetes Ergebnis ohne Boni</b>",r=>`<b style="color:${col(r.bal)}">${r.bal>=0?"Guthaben ":"Nachzahlung "}${eur(Math.abs(r.bal))}</b>`)}
     ${row("Mit Vertragsboni",r=>`${r.bal+r.boni>=0?"Guthaben ":"Nachzahlung "}${eur(Math.abs(r.bal+r.boni))}`)}
     ${row("<b>Passender Abschlag ab jetzt</b>",r=>r.recNow!=null?`<b>${eur(Math.ceil(r.recNow))} / Monat</b>`:"–")}
+    ${row("Passender Abschlag mit Trend",r=>r.trend&&r.trend.recTrend!=null?`${eur(Math.ceil(r.trend.recTrend))} / Monat (Ergebnis ${r.trend.balTrend>=0?"Guthaben":"Nachzahlung"} ${eur(Math.abs(r.trend.balTrend))})`:"–")}
     ${row("Passender Abschlag im Jahresmittel",r=>eur(Math.ceil(r.recAvg))+" / Monat")}
   </tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Keine laufenden Verträge mit Zählerdaten.</td></tr></tbody>`;
   let fl=""; rs.forEach(x=>{ const r=x.r, over=r.cur-(r.recNow??r.recAvg);
@@ -987,6 +989,45 @@ function renderAbschlag(){
   const ab=[...S.abschlaege].sort((a,b)=>a.group.localeCompare(b.group)||a.from.localeCompare(b.from));
   $("ab-edit").innerHTML = `<thead><tr><th class="l">Zählpunkt</th><th class="l">Gültig ab</th><th>€ pro Monat</th><th class="l">Notiz</th><th></th></tr></thead><tbody>${
     ab.map(a=>`<tr${abschlagEmpty(a)?' style="background:color-mix(in srgb, var(--sun) 18%, transparent)" title="Betrag fehlt – Zeile ausfüllen oder löschen"':""}><td class="l"><select data-ab="${a.id}" data-k="group"><option value="as" ${a.group==="as"?"selected":""}>Allgemeinstrom</option><option value="wp" ${a.group==="wp"?"selected":""}>Wärmepumpe</option></select></td><td class="l"><input type="date" value="${a.from}" data-ab="${a.id}" data-k="from" style="min-width:140px"></td><td><input type="number" step="1" value="${a.amount}" data-ab="${a.id}" data-k="amount" style="width:90px"></td><td class="l"><input type="text" value="${esc(a.note||"")}" data-ab="${a.id}" data-k="note" style="min-width:240px"></td><td><button class="x" data-del-ab="${a.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
+}
+
+/* ---------- Prognose mit Trend (v0.39) ---------- */
+function renderTrend(){
+  const g=$("tr-g").value, r=abschlagCheck(g), fl=[];
+  if(!r){ $("tr-flags").innerHTML=flag("Kein laufender Vertrag mit Zählerdaten für diesen Zählpunkt.",true); $("tr-kpis").innerHTML=""; $("tr-note").innerHTML=""; chart("tr-chart",{type:"bar",data:{labels:[],datasets:[]}}); return; }
+  const best=C.bestMethod(g,r.today), tr=r.trend, m=tr&&tr.m, bt=C.trendBacktest(g,r.today,best.method), ap=r.t.ap/100;
+  const sp=v=>`${v>=0?"+":"−"}${pct(Math.abs(v))}`, ML={win:"Trend der letzten 8 Wochen",season:"gleiche Jahreszeit (Monate mit gleichem Sonnenstand)",flat:"wie Vorjahr"};
+  if(!tr) fl.push(flag("Für eine Trend-Prognose fehlen Vergleichsdaten aus dem Vorjahr (oder für die Wärmepumpe Wetterdaten). Bis dahin gilt die Prognose „wie Vorjahr“.",true));
+  let kp="";
+  if(m&&m.kind==="weather"){
+    const dB=m.bPrev?m.b/m.bPrev-1:null;
+    kp=kpi(`${nf(m.b,2)} kWh`,"Warmwasser und Bereitschaft je Tag",dB!=null?`Vorjahr ${nf(m.bPrev,2)} kWh (${dB>=0?"+":"−"}${pct(Math.abs(dB))})`:"aus heizfreien Tagen")
+      +kpi(m.relRaw!=null&&m.heatShare>=0.05?`${m.relRaw>=1?"+":"−"}${pct(Math.abs(m.relRaw-1))}`:"noch offen","Heizung je Gradtag gegenüber Vorjahr",m.relRaw!=null&&m.heatShare>=0.05?`gleiche Wochen: ${nf(m.kNow,2)} statt ${nf(m.kSame,2)} kWh je Gradtag`:"zu wenige Heiztage für einen Vergleich; meist ab Mitte November")
+      +kpi(pct(m.w),"Gewicht dieser Saison",`In die Vergleichswochen fiel ${pct(m.heatShare)} der Heizenergie des letzten Winters (volles Gewicht ab 40 %). Prognose ${nf(m.k,2)} kWh je Gradtag, letzter Winter ${nf(m.kPrev,2)}`)
+      +kpi(kwh(tr.trend),"Rest des Jahres mit Trend",`Vorjahr ${kwh(tr.prev)} (${tr.trend>=tr.prev?"+":"−"}${eur(Math.abs((tr.trend-tr.prev)*ap))}); milder ${kwh(tr.mild)}, kälter ${kwh(tr.cold)}`);
+    if(m.w<0.5) fl.push(flag(`Die Heizsaison hat gerade erst begonnen: Die Vergleichswochen enthalten ${pct(m.heatShare)} der Heizenergie des letzten Winters. Die Prognose stützt sich deshalb noch zu ${pct(1-m.w)} auf den letzten Winter; Einstellungsänderungen (z. B. Absenkung) wirken erst mit mehr Heiztagen voll in die Prognose – etwa ab Mitte Dezember.`,true));
+  } else if(m){
+    const sc=best.scores||{}, scTxt=Object.entries(sc).filter(([,v])=>v!=null).map(([k,v])=>`${ML[k]} ${pct(v)}`).join(", ");
+    kp=kpi(sp(m.f-1),"Trend letzte 8 Wochen",`gegenüber denselben Wochen im Vorjahr (${nf(m.n)} Tage); Spanne über 4–12 Wochen ${sp(m.lo-1)} bis ${sp(m.hi-1)}`)
+      +kpi(m.method==="flat"?"Vorjahr":m.method==="season"?"Jahreszeit":"8 Wochen","Gewählte Methode",scTxt?`treffsicherste im Rückblick (mittlere Abweichung: ${scTxt})`:"Standard, bis der Rückblick mindestens 3 Monate hat")
+      +kpi(kwh(tr.trend),"Rest des Jahres mit Trend",`Vorjahr ${kwh(tr.prev)} (${tr.trend>=tr.prev?"+":"−"}${eur(Math.abs((tr.trend-tr.prev)*ap))})`)
+      +kpi(eur(r.costSo+tr.costTrend),"Jahreskosten mit Trend",`wie Vorjahr ${eur(r.costTotal)}`);
+  }
+  $("tr-kpis").innerHTML=kp;
+  if(bt.list.length>=3){
+    const better=bt.maeTrend<bt.maePrev;
+    fl.push(flag(`Rückblick (${nf(bt.list.length)} Monate, jeweils die nächsten 30 Tage vorhergesagt): mit Trend im Schnitt ${pct(bt.maeTrend)} daneben, „wie Vorjahr“ ${pct(bt.maePrev)}. ${better?"Die Trend-Prognose war treffsicherer.":"Die Vorjahres-Prognose war bisher mindestens so gut – den Trend als Zusatzinfo lesen."}`,true));
+    if(Math.min(bt.maeTrend,bt.maePrev)>0.25) fl.unshift(flag(`Prognose unsicher: Auch die beste Methode lag im Rückblick um ${pct(Math.min(bt.maeTrend,bt.maePrev))} daneben. Häufigster Grund: Im Vorjahr lief die Anlage anders (PV, Speicher, Wärmepumpe, Zählertausch) oder es gab lange Abstände zwischen Ablesungen. Mit einem zweiten Jahr gleicher Anlage und regelmäßigen Ablesungen wird sie deutlich genauer.`));
+  }
+  $("tr-flags").innerHTML=fl.join("");
+  const ms=C.trendMonths(g,r.start,r.end,r.today);
+  chart("tr-chart",{type:"bar",data:{labels:ms.map(x=>monthLabel(x.k)),datasets:[
+    {label:"Vorjahr",data:ms.map(x=>x.nPrev?x.prev:null),backgroundColor:css("--line")},
+    {label:"dieses Jahr gemessen",data:ms.map(x=>x.meas||null),backgroundColor:css(g==="wp"?"--heat":"--grid"),stack:"n"},
+    {label:"Prognose mit Trend",data:ms.map(x=>x.fc||null),backgroundColor:`color-mix(in srgb, ${css(g==="wp"?"--heat":"--grid")} 40%, transparent)`,stack:"n"}]},
+    options:{plugins:{tooltip:numTip("kWh",0)},scales:{y:{beginAtZero:true,title:{display:true,text:"kWh je Monat"}}}}});
+  const bl=bt.list.length?`<div class="tbl-wrap" style="margin-top:8px"><table><thead><tr><th>Stand</th><th>gemessen 30 Tage</th><th>mit Trend</th><th>wie Vorjahr</th></tr></thead><tbody>${bt.list.map(x=>`<tr><td>${dde(x.cut)}</td><td>${kwh(x.act)}</td><td>${kwh(x.trend)} (${x.eT>=0?"+":"−"}${pct(Math.abs(x.eT))})</td><td>${kwh(x.prev)} (${x.eP>=0?"+":"−"}${pct(Math.abs(x.eP))})</td></tr>`).join("")}</tbody></table></div>`:"";
+  $("tr-note").innerHTML=`<p class="note">Rechenstand ${dde(r.today)} (letzte Ablesung − 1 Tag). „Milder/kälter“ = 15 % weniger/mehr Gradtage als im Vorjahr${g==="as"?"; beim Allgemeinstrom die Spanne der Trends über 4–12 Wochen":""}. Neue Ablesungen aktualisieren die Prognose.</p>${bl?`<details><summary class="note">Rückblick je Monat</summary>${bl}</details>`:""}`;
 }
 
 /* ---------- Kosten ---------- */
@@ -1023,7 +1064,7 @@ function renderCosts(){
     {label:"Wärmepumpe",data:ks.map(k=>mW[k]||0),backgroundColor:css("--heat"),stack:"s"}]},
     options:{plugins:{tooltip:{callbacks:{label:c=>{ const o=det[c.datasetIndex===0?"as":"wp"][ks[c.dataIndex]]; return o?`${c.dataset.label}: ${eur(c.parsed.y,2)} = ${kwh(o.k,0)} × Arbeitspreis (${eur(o.ap,2)}) + Grundpreis ${o.days} Tage (${eur(o.gp,2)})`:`${c.dataset.label}: –`; }}}},scales:{x:{stacked:true,ticks:{maxTicksLimit:14}},y:{stacked:true,title:{display:true,text:"€ ohne Boni"}}}}});
   $("ct-mtitle").textContent = g==="day" ? "Tägliche Kosten" : "Monatliche Kosten";
-  renderAbschlag(); renderPayments(); renderBilling(); renderBoni();
+  renderAbschlag(); renderTrend(); renderPayments(); renderBilling(); renderBoni();
   const f=(t,k,type="text",st="")=>`<input type="${type}" ${st} value="${esc(t[k])}" data-tf="${t.id}" data-k="${k}">`;
   const tfE=S.tariffs.filter(tariffEmpty);
   $("tf-flags").innerHTML = tfE.length ? flag(`${tfE.length===1?"Ein Tarif hat":`${tfE.length} Tarife haben`} keinen Arbeitspreis (${tfE.map(t=>esc(t.name||"ohne Namen")).join(", ")}): wird nicht gerechnet, bis der Preis eingetragen ist.`,true) : "";
@@ -1294,6 +1335,7 @@ function renderData(){
       <td class="l"><input type="text" value="${esc(e.text||"")}" data-ev="${e.id}" data-k="text" style="min-width:260px"></td>
       <td><button class="x" data-ev-del="${e.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`:"";
 }
+function wireTrend(){ $("tr-g").addEventListener("change",renderTrend); }
 function wireEvents(){
   $("ev-add").addEventListener("click",()=>{
     const d=$("ev-d").value, text=$("ev-text").value.trim();
@@ -1319,7 +1361,7 @@ function wireEvents(){
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
 const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file","rk-file"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","csv-file","seed-file","seed-replace"]);
+const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   if(!document.body.classList.contains("ro")) return;
@@ -1347,7 +1389,7 @@ export function startViews(){
     ["from","to","cfrom","cto"].forEach(k=>$("pb-"+k).addEventListener("change",e=>pbSet(k,e.target.value)));
     wireEditing();
     wireWeather();
-    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate(); wireEvents();
+    wireHpImport(); wireDevImport(); wireDevices(); wirePrograms(); wireClimate(); wireEvents(); wireTrend();
     $("hpd-a").addEventListener("change",e=>{ hpdSel.a=e.target.value; renderHpDay(); });
     $("hpd-b").addEventListener("change",e=>{ hpdSel.b=e.target.value; renderHpDay(); });
     window.addEventListener("hashchange",route);

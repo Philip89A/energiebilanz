@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.38.0';
+import { hpSum } from './hp.js?v=0.39.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -443,9 +443,109 @@ export function createCalc(S) {
     const nRest = 12 - nPaid, cur = abschlagAt(g, calToday && calToday > today ? calToday : today), costTotal = costSo + costRest;
     let restPay = 0; for (let m = nPaid + 1; m <= 12; m++) restPay += abschlagAt(g, addMonths(start, m));
     const payTotal = paid + restPay, nextDue = nRest > 0 ? addMonths(start, nPaid + 1) : null;
-    return { t, start, end, today, kwhSo, costSo, kwhRest, costRest, paid, nPaid, nRest, cur, payTotal, costTotal, nextDue,
+    const tr = trendRest(g, today, end), ap = t.ap / 100, trend = tr ? { ...tr, costTrend: costRest + (tr.trend - tr.prev) * ap, costMild: costRest + (tr.mild - tr.prev) * ap, costCold: costRest + (tr.cold - tr.prev) * ap } : null;
+    if (trend) { trend.balTrend = paid + restPay - (costSo + trend.costTrend); trend.recTrend = nRest > 0 ? Math.max(0, (costSo + trend.costTrend - paid) / nRest) : null; }
+    return { trend, t, start, end, today, kwhSo, costSo, kwhRest, costRest, paid, nPaid, nRest, cur, payTotal, costTotal, nextDue,
       evK, bal: payTotal - costTotal, recNow: nRest > 0 ? Math.max(0, (costTotal - paid) / nRest) : null, recAvg: costTotal / 12, fb, kwhTotal: kwhSo + kwhRest,
       paidSource, nExpected };
+  }
+
+  // v0.39: Prognose mit Trend. Wärmepumpe wetterbereinigt: Verbrauch = Grundlast (Warmwasser, je Tag) + k × Gradtage.
+  // Grundlast aus heizfreien Tagen der letzten 60 Tage (sonst Vorjahr), k dieser Saison (ab 1. September) gemischt mit
+  // k der Vorjahressaison, Gewicht w = Anteil der Vorjahres-Heizenergie in den Vergleichswochen ÷ 0,4. Restliche Tage mit den Gradtagen derselben Tage des
+  // Vorjahres; „milder“/„kälter“ = Gradtage × 0,85 / × 1,15. (Mischung: k = k Vorjahr × Veränderung gleicher Wochen,
+  // Veränderung mit Gewicht w Richtung 1 gezogen.) Allgemeinstrom: Faktor letzte 56 Tage ÷ dieselben Tage im
+  // Vorjahr, Spanne aus den Faktoren über 28 und 84 Tage. Nur Daten bis „today“ fließen ein (auch für den Rückblick).
+  const TREND = { win: 56, wShare: 0.4, band: 0.15, minGt: 30 };
+  function trendModel(g, today, opt = {}) {
+    const s = groupSeries(g), dly = s.daily, { heatLimit, room } = wxCfg();
+    const gt = d => { const w = W[d]; return w && w.t != null ? (w.t < +heatLimit ? +room - w.t : 0) : null; };
+    const sumWin = (to, n, shift) => { let a = 0, b = 0, c = 0; for (let i = 0; i < n; i++) { const d = addDays(to, -i), v = dly[d], p = dly[shiftYear(d)];
+      if (v == null || p == null) continue; a += v; b += p; c++; } return { a, b, c }; };
+    if (g !== 'wp') {
+      const r = n => { const x = sumWin(today, n); return x.c >= n * 0.7 && x.b > 0 ? x.a / x.b : null; };
+      const f = r(opt.win || TREND.win), f28 = r(28), f84 = r(84), fs = [f, f28, f84].filter(v => v != null);
+      if (f == null) return null;
+      // Faktor je Monat aus Monaten mit gleichem Sonnenstand (derselbe Monat und sein Spiegel um den Juni: Dez↔Jan,
+      // Nov↔Feb, Okt↔Mär …), jeweils das letzte vollständig gemessene Vorkommen bis „today“ gegen das Jahr davor.
+      // PV und Speicher ersetzen im Sommer viel mehr Netzstrom als im Winter – ein Sommerfaktor passt nicht für den Winter.
+      const mFac = {}, mSum = (k) => { let a = 0, b = 0, c = 0, n = +monthEnd(k).slice(8, 10);
+        for (let i = 1; i <= n; i++) { const d = `${k}-${String(i).padStart(2, '0')}`; if (d > today) return null; const v = dly[d], p = dly[shiftYear(d)]; if (v == null || p == null) continue; a += v; b += p; c++; }
+        return c >= n - 3 && b > 0 ? { a, b } : null; };
+      const lastOf = mm => { let y = +today.slice(0, 4); const k = `${y}-${String(mm).padStart(2, '0')}`; return k <= today.slice(0, 7) ? k : `${y - 1}-${String(mm).padStart(2, '0')}`; };
+      for (let mm = 1; mm <= 12; mm++) { let a = 0, b = 0; for (const x of new Set([mm, 13 - mm])) { const r = mSum(lastOf(x)); if (r) { a += r.a; b += r.b; } } mFac[mm] = b > 0 ? a / b : null; }
+      const method = opt.method || 'win', facOf = d => method === 'flat' ? 1 : method === 'season' ? (mFac[+d.slice(5, 7)] ?? f) : f, used = Object.values(mFac).filter(v => v != null).length;
+      return { g, kind: 'ratio', method, f, lo: Math.min(...fs), hi: Math.max(...fs), n: sumWin(today, TREND.win).c, mFac, used,
+        day: (d, x = 1) => { const p = dly[shiftYear(d)]; if (p == null) return null; const k = facOf(d); return p * (x === 1 ? k : x < 1 ? k * Math.min(...fs) / f : k * Math.max(...fs) / f); } };
+    }
+    // Wärmepumpe: Grundlast aus heizfreien Tagen
+    // Grundlast: heizfreie Tage (mindestens 14) der letzten 60 Tage, sonst Juni–August davor (im Winter sind
+    // heizfreie Tage selten und meist Übergangstage mit etwas Heizung – das würde die Grundlast überschätzen)
+    const baseFrom = (to, n, minN = 14) => { let k = 0, c = 0; for (let i = 0; i < n; i++) { const d = addDays(to, -i), v = dly[d]; if (v != null && gt(d) === 0) { k += v; c++; } } return c >= minN ? k / c : null; };
+    const summer = to => { const y = to.slice(5) >= '09-01' ? +to.slice(0, 4) : +to.slice(0, 4) - 1; let k = 0, c = 0;
+      for (let d = `${y}-06-01`; d <= `${y}-08-31` && d <= to; d = addDays(d, 1)) { const v = dly[d]; if (v != null) { k += v; c++; } } return c >= 30 ? k / c : null; };
+    const yr = +today.slice(0, 4), sStart = today.slice(5) >= '09-01' ? `${yr}-09-01` : `${yr - 1}-09-01`;
+    const season = (from, to, b) => { let k = 0, t = 0, c = 0; for (let d = from; d <= to; d = addDays(d, 1)) { const v = dly[d], x = gt(d); if (v == null || x == null) continue; k += v - b; t += x; c++; } return { k, t, c }; };
+    const bNow = baseFrom(today, 60) ?? summer(today), bPrev = baseFrom(shiftYear(today), 60) ?? summer(shiftYear(today));
+    const b = bNow ?? bPrev; if (b == null) return null;
+    const pS = shiftYear(sStart), pE = addDays(shiftYear(sStart), 364);
+    // k Vorjahr aus der ganzen Vorjahressaison; Veränderung aus denselben Wochen (diese Saison bis heute gegen dieselben
+    // Kalendertage im Vorjahr), damit Übergangswochen mit wenig Heizung nicht gegen einen ganzen Winter stehen
+    const prev = season(pS, pE < today ? pE : addDays(today, -1), bPrev ?? b), cur = season(sStart, today, b), same = season(pS, shiftYear(today), bPrev ?? b);
+    const kPrev = prev.t >= 100 ? Math.max(0, prev.k / prev.t) : null, kNow = cur.t >= TREND.minGt ? Math.max(0, cur.k / cur.t) : null;
+    const kSame = same.t >= TREND.minGt && same.k > 0 ? same.k / same.t : null;
+    const relRaw = kNow != null && kSame ? Math.min(2, Math.max(0.3, kNow / kSame)) : null;
+    // Gewicht: Anteil der Heizenergie des letzten Winters, der in die Vergleichswochen fiel (volles Gewicht ab 40 %)
+    const heatShare = prev.k > 0 ? Math.max(0, same.k) / prev.k : 0;
+    const w = relRaw == null ? 0 : Math.min(1, heatShare / TREND.wShare), rel = relRaw == null ? 1 : w * relRaw + (1 - w);
+    const k = kPrev != null ? kPrev * rel : kNow;
+    if (k == null) return null;
+    return { g, kind: 'weather', b, bNow, bPrev, kNow, kPrev, kSame, relRaw, rel, k, w, heatShare, gtNow: cur.t, gtPrevSeason: prev.t,
+      day: (d, x = 1) => { const t = gt(shiftYear(d)); return t == null ? null : b + k * t * x; } };
+  }
+  // Rest bis „end“: wie Vorjahr / mit Trend / milder / kälter (kWh)
+  // Allgemeinstrom: Methode nach dem Rückblick wählen (geringste mittlere Abweichung der letzten Monate)
+  const _bestCache = new Map();
+  function bestMethod(g, today) {
+    if (g === 'wp') return { method: null, scores: null };
+    const key = g + today; if (_bestCache.has(key)) return _bestCache.get(key);
+    const scores = {}; for (const mth of ['win', 'season', 'flat']) { const bt = trendBacktest(g, today, mth); scores[mth] = bt.list.length >= 3 ? bt.maeTrend : null; }
+    const ok = Object.entries(scores).filter(([, v]) => v != null).sort((a, b) => a[1] - b[1]);
+    const res = { method: ok.length ? ok[0][0] : 'win', scores }; _bestCache.set(key, res); return res;
+  }
+  function trendRest(g, today, end, method) {
+    const mth = method !== undefined ? method : bestMethod(g, today).method;
+    const m = trendModel(g, today, { method: mth }), dly = groupSeries(g).daily; if (!m) return null;
+    const lo = m.kind === 'weather' ? 1 - TREND.band : 0, hi = m.kind === 'weather' ? 1 + TREND.band : 2;
+    let prev = 0, tr = 0, mild = 0, cold = 0, miss = 0;
+    for (let d = addDays(today, 1); d <= end; d = addDays(d, 1)) {
+      const p = dly[shiftYear(d)], v = m.day(d), vl = m.day(d, lo), vh = m.day(d, hi);
+      if (v == null || p == null) { miss++; continue; } prev += p; tr += v; mild += vl; cold += vh; }
+    return { m, prev, trend: tr, mild: Math.min(mild, cold), cold: Math.max(mild, cold), miss };
+  }
+  // Rückblick: zu jedem Monatsersten der letzten 12 Monate die nächsten 30 Tage vorhersagen und mit der Messung vergleichen
+  function trendBacktest(g, lastDay, method = null) {
+    const dly = groupSeries(g).daily, out = [];
+    for (let i = 12; i >= 1; i--) {
+      const cut = addDays(`${addMonths(lastDay.slice(0, 7) + '-01', -i).slice(0, 7)}-01`, -1), end = addDays(cut, 30);
+      if (end > lastDay) continue;
+      let act = 0, n = 0; for (let d = addDays(cut, 1); d <= end; d = addDays(d, 1)) if (dly[d] != null) { act += dly[d]; n++; }
+      if (n < 28) continue;
+      const r = trendRest(g, cut, end, method); if (!r || r.miss > 2 || !act) continue;
+      out.push({ cut, act, trend: r.trend, prev: r.prev, eT: r.trend / act - 1, eP: r.prev / act - 1 });
+    }
+    const mae = k => out.length ? out.reduce((a, x) => a + Math.abs(x[k]), 0) / out.length : null;
+    return { list: out, maeTrend: mae('eT'), maePrev: mae('eP') };
+  }
+  // Monatsübersicht des Abrechnungsjahres: Vorjahr, gemessen, Prognose mit Trend
+  function trendMonths(g, start, end, today) {
+    const dly = groupSeries(g).daily, m = trendModel(g, today, { method: bestMethod(g, today).method }), out = {};
+    for (let d = start; d <= end; d = addDays(d, 1)) {
+      const k = d.slice(0, 7), o = out[k] = out[k] || { k, prev: 0, meas: 0, fc: 0, nPrev: 0 };
+      const p = dly[shiftYear(d)]; if (p != null) { o.prev += p; o.nPrev++; }
+      if (d <= today) { if (dly[d] != null) o.meas += dly[d]; } else if (m) { const v = m.day(d); if (v != null) o.fc += v; else if (p != null) o.fc += p; } else if (p != null) o.fc += p;
+    }
+    return Object.values(out);
   }
 
   /* Boni: Einzelposten je Tarif (boniItems), optional mit Mengenbedingung
@@ -1162,7 +1262,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }
