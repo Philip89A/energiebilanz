@@ -131,6 +131,11 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.38: Zusammenhänge mit Deutung (`js/explain.js`, rein): je Karte Ergebnis, Wie sicher, Was es ausmacht (kWh/€ im Jahr),
      Was tun, Lesehilfe; oben die 3 belastbaren Karten mit größter €-Wirkung. Phasenvergleich Heizung (kWh/Gradtag) und
      Warmwasser (kWh/Tag, ohne Wasserzähler). Prüfung: `v38-check`.
+   - ✅ v0.39: Prognose mit Trend (`trendModel`/`trendRest`/`trendBacktest`/`trendMonths`/`bestMethod`): WP wetterbereinigt
+     (Grundlast aus ≥ 14 heizfreien Tagen, sonst Sommer; k Vorjahr × Veränderung gleicher Wochen, Gewicht = Anteil der
+     Vorjahres-Heizenergie in den Vergleichswochen ÷ 0,4; milder/kälter ±15 % Gradtage). Allgemeinstrom: Methode
+     (8 Wochen, gleiche Jahreszeit über Spiegelmonate, wie Vorjahr) nach Rückblick gewählt. Abschlag-Check mit Trend-Zeilen,
+     Abschnitt auf „Stromkosten“ mit Monatsgrafik und Rückblick; Warnung ab 25 % Abweichung. Prüfung: `v39-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
