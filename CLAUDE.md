@@ -144,6 +144,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      24 Stundenmitteln in Ortszeit, `docs/UPDATE_V41.sql`): Bilanz mit Tagesfaktor, Wärmepumpe nach ihren Stunden gewichtet
      (`settings.data.co2.hourly=false` schaltet ab); Profil saubere/schmutzige Stunden (`gridProfile`). Abruf wie Wetter
      (nur Eigentümer, automatisch beim Start ab Anker-Beginn). Format gegen die echte Schnittstelle ungeprüft. Prüfung: `v41-check`.
+   - ✅ v0.42: PV-Seite: Kalender je Jahr untereinander (Zeilen Monate, Spalten Tage 1–31, nur Zeitraum, Farbe relativ zum
+     besten Tag), kumulierte Erzeugung ab Zeitraumbeginn mit Vergleichszeitraum Tag für Tag. Prüfung: `v42-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

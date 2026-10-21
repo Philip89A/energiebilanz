@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.41.0';
-import { parseNum } from './queue.js?v=0.41.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.41.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.41.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.41.0';
-import { explainAll } from './explain.js?v=0.41.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.41.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.42.0';
+import { parseNum } from './queue.js?v=0.42.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.42.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.42.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.42.0';
+import { explainAll } from './explain.js?v=0.42.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.42.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -248,18 +248,28 @@ function renderCarAnalytics(){
 }
 
 /* ---------- PV-Kalender ---------- */
-function renderHeat(){
-  const max=Math.max(...A.c.gen), start=weekKey(A.dates[0]), end=A.dates[A.n-1];
-  let html='<div class="heat">', d=start, col=0, months='';
-  while(d<=end){ html+='<div class="hcol">';
-    if(d.slice(8,10)<="07") months+=`<span style="grid-column:${col+1}">${MON[+d.slice(5,7)-1]}</span>`;
-    for(let j=0;j<7;j++){ const dd=addDays(d,j), i=A.idx[dd]; const v=i===undefined?null:A.c.gen[i];
-      html+= v==null?'<i class="e"></i>':`<i style="background:color-mix(in srgb,var(--sun) ${Math.round(8+92*v/max)}%,var(--bg))" title="${dde(dd)}: ${nf(v,2)} kWh"></i>`; }
-    html+='</div>'; d=addDays(d,7); col++; }
-  html+='</div>';
-  $("pv-heat").innerHTML = `<div class="heat-months" style="grid-template-columns:repeat(${col},12px)">${months}</div>`+html;
-  const top=A.dates.map((d,i)=>({d,v:A.c.gen[i]})).sort((a,b)=>b.v-a.v).slice(0,5);
-  $("pv-top").innerHTML = `Beste Tage: ${top.map(x=>`${dde(x.d)} (${nf(x.v,2)} kWh)`).join(", ")}.`;
+// v0.42: Kalender je Jahr untereinander, Zeilen = Monate, Spalten = Tage 1–31; nur der gewählte Zeitraum,
+// Farbstufen relativ zum besten Tag im Zeitraum.
+function renderHeat(P){
+  const days=A.dates.filter(d=>d>=P.from&&d<=P.to&&A.c.gen[A.idx[d]]!=null), vals=days.map(d=>+A.c.gen[A.idx[d]]||0);
+  if(!days.length){ $("pv-heat").innerHTML=""; $("pv-top").textContent="Keine Anker-Daten im gewählten Zeitraum."; return; }
+  const max=Math.max(...vals)||1, months=[...new Set(days.map(d=>d.slice(0,7)))].sort().reverse(), years=[...new Set(months.map(k=>k.slice(0,4)))];
+  const head=`<div class="cal-row cal-head"><span></span>${Array.from({length:31},(_,i)=>`<b>${[1,5,10,15,20,25,31].includes(i+1)?i+1:""}</b>`).join("")}</div>`;
+  let html="";
+  for(const y of years){
+    html+=`<div class="cal-year"><h3>${y}</h3>${head}`;
+    for(const k of months.filter(x=>x.startsWith(y))){
+      const dim=+monthEnd(k).slice(8,10); let row=`<div class="cal-row"><span>${MON[+k.slice(5,7)-1]}</span>`;
+      for(let i=1;i<=31;i++){ const d=`${k}-${String(i).padStart(2,"0")}`, j=A.idx[d];
+        if(i>dim){ row+='<i class="x"></i>'; continue; }
+        const v=j===undefined||d<P.from||d>P.to?null:A.c.gen[j];
+        row+= v==null?`<i class="e" title="${dde(d)}: keine Daten"></i>`:`<i style="background:color-mix(in srgb,var(--sun) ${Math.round(8+92*v/max)}%,var(--bg))" title="${dde(d)}: ${nf(v,2)} kWh"></i>`; }
+      html+=row+"</div>"; }
+    html+="</div>"; }
+  $("pv-heat").innerHTML=html+`<p class="note" style="margin-top:6px">Kräftigstes Gelb = ${nf(max,1)} kWh (bester Tag im Zeitraum), blass = wenig, umrandet = keine Daten.</p>`;
+  const list=days.map((d,i)=>({d,v:vals[i]})), top=[...list].sort((a,b)=>b.v-a.v).slice(0,5), low=[...list].sort((a,b)=>a.v-b.v).slice(0,3);
+  const avg=vals.reduce((a,b)=>a+b,0)/vals.length;
+  $("pv-top").innerHTML=`Im Zeitraum Ø ${nf(avg,2)} kWh am Tag. Beste Tage: ${top.map(x=>`${dde(x.d)} (${nf(x.v,2)} kWh)`).join(", ")}. Schwächste: ${low.map(x=>`${dde(x.d)} (${nf(x.v,2)} kWh)`).join(", ")}.`;
 }
 
 /* ---------- Zähler: Filter und Monatsgrafiken ---------- */
@@ -918,20 +928,26 @@ function renderPV(){
     {label:"Eingespeist",data:sr.rows.map(r=>r.feed),backgroundColor:css("--feed"),stack:"s"}]},
     options:{plugins:{tooltip:wxTip(numTip("kWh",1),sr)},scales:{x:{stacked:true,ticks:{maxTicksLimit:14}},y:{stacked:true,title:{display:true,text:"kWh"}}}}});
   $("pv-gran").textContent = sr.g==="day" ? "je Tag" : "je Monat";
-  renderHeat();
-  // kumuliert: immer Gesamtzeitraum, gewählter Zeitraum hervorgehoben
-  const off=+S.pv.offset||0; let cg=off, cu=0, cf=0; const cG=[], cU=[], cF=[], inP=[];
-  A.dates.forEach((d,i)=>{ cg+=A.c.gen[i]; cu+=A.c.use[i]; cf+=A.c.feed[i]; cG.push(cg); cU.push(cu); cF.push(cf); inP.push(d>=P.from&&d<=P.to?cg:null); });
-  const savAll = pvSavings(A.dates[0], A.dates[A.n-1]);
-  $("pv-cum-note").textContent = `Gesamt seit ${dde(A.dates[0])}: ${kwh(cg)} erzeugt${off?` (inkl. ${kwh(off)} vor Exportbeginn)`:""}, davon ${kwh(cu)} selbst genutzt und ${kwh(cf)} eingespeist. Ersetzter Netzstrom: ${eur(savAll.eur)}. Der gewählte Zeitraum ist farbig hervorgehoben.`;
+  renderHeat(P);
+  // v0.42: kumuliert ab Beginn des gewählten Zeitraums; Vergleichszeitraum Tag für Tag ausgerichtet (gestrichelt)
+  const off=+S.pv.offset||0; let tg=off, tu=0, tf=0; A.dates.forEach((d,i)=>{ tg+=A.c.gen[i]; tu+=A.c.use[i]; tf+=A.c.feed[i]; });
+  const pd=[]; for(let d=P.from; d<=P.to && d<=A.dates[A.n-1]; d=addDays(d,1)) pd.push(d);
+  const cum=(from,n,key)=>{ let s=0, any=false; const out=[]; for(let i=0;i<n;i++){ const j=A.idx[addDays(from,i)]; if(j!==undefined){ s+=+A.c[key][j]||0; any=true; } out.push(any?s:null); } return out; };
+  const cG=cum(P.from,pd.length,"gen"), cU=cum(P.from,pd.length,"use"), cF=cum(P.from,pd.length,"feed");
+  const cmpN=C?Math.min(pd.length,diffDays(C.from,C.to)+1):0, cC=C?cum(C.from,cmpN,"gen"):null;
+  const last=a=>{ for(let i=a.length-1;i>=0;i--) if(a[i]!=null) return a[i]; return 0; };
+  const savAll = pvSavings(A.dates[0], A.dates[A.n-1]), pg=last(cG), cg=cC?last(cC):null;
+  $("pv-cum-note").innerHTML = `Im Zeitraum (${P.label}): <b>${kwh(pg)}</b> erzeugt, ${kwh(last(cU))} selbst genutzt, ${kwh(last(cF))} eingespeist.`
+    +(cC?` Vergleich ${esc(C.label)}: ${kwh(cg)} in den ersten ${nf(cmpN)} Tagen (${pg>=cg?"+":"−"}${pct(Math.abs(cg?pg/cg-1:0))}).`:"")
+    +` Gesamt seit ${dde(A.dates[0])}: ${kwh(tg)}${off?` (inkl. ${kwh(off)} vor Exportbeginn)`:""}, ersetzter Netzstrom ${eur(savAll.eur)}.`;
   const po=$("pv-offset"); if(document.activeElement!==po) po.value=off;
   po.onchange=()=>{ S.pv.offset=+po.value||0; persist(); rerender(); };
-  chart("pv-cum",{type:"line",data:{labels:A.dates.map(dde),datasets:[
-    {label:"Gewählter Zeitraum",data:inP,borderColor:css("--sun"),backgroundColor:css("--sun")+"40",fill:"origin",pointRadius:0,borderWidth:3},
-    {label:"Erzeugung",data:cG,borderColor:css("--sun"),backgroundColor:"transparent",pointRadius:0,borderWidth:1.5},
+  chart("pv-cum",{type:"line",data:{labels:pd.map(dde),datasets:[
+    {label:"Erzeugung",data:cG,borderColor:css("--sun"),backgroundColor:css("--sun")+"30",fill:"origin",pointRadius:0,borderWidth:2.5},
     {label:"Selbst genutzt",data:cU,borderColor:css("--batt"),backgroundColor:css("--batt"),pointRadius:0,borderWidth:2},
-    {label:"Eingespeist",data:cF,borderColor:css("--feed"),backgroundColor:css("--feed"),pointRadius:0,borderWidth:2}]},
-    options:{plugins:{tooltip:numTip("kWh")},scales:{x:{ticks:{maxTicksLimit:8}},y:{title:{display:true,text:"kWh"}}}}});
+    {label:"Eingespeist",data:cF,borderColor:css("--feed"),backgroundColor:css("--feed"),pointRadius:0,borderWidth:2},
+    ...(cC?[{label:`Erzeugung ${C.label}`,data:cC,borderColor:css("--muted"),backgroundColor:"transparent",borderDash:[5,4],pointRadius:0,borderWidth:2}]:[])]},
+    options:{plugins:{tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${kwh(c.parsed.y)}`}}},scales:{x:{ticks:{maxTicksLimit:8}},y:{beginAtZero:true,title:{display:true,text:"kWh seit Beginn des Zeitraums"}}}}});
 }
 
 /* ---------- Batterie ---------- */
