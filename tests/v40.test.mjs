@@ -43,6 +43,8 @@ test('Graue Emissionen und Rückzahlzeit', () => {
 test('Hebel: 1 °C, PV-Ausbau aus geplanter Stufe, Verschieben nur so weit eingespeist wird, sortiert', () => {
   const L = calc().co2Levers('2026-01-31'), by = Object.fromEntries(L.map(x => [x.id, x]));
   assert.ok(by.heat1.kg > 0 && by.pv.kg > 0 && /\+1\.00 kWp/.test(by.pv.title));
+  assert.ok(Math.abs(by.pv.q - 2 / 3) < 1e-9, 'Eigenverbrauchsquote ' + by.pv.q);   // genutzt 2 von 3 kWh
+  assert.ok(Math.abs(by.pv.eur - by.pv.kwh * (2 / 3 * 0.3 + 1 / 3 * 0.08)) < 1e-6);
   assert.equal(by.shift.kg, 0); assert.ok(by.shift.kwh <= 31 + 1e-9);
   assert.ok(L.every((x, i) => !i || L[i - 1].kg >= x.kg));
 });

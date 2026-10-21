@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.42.0';
-import { parseNum } from './queue.js?v=0.42.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.42.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.42.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.42.0';
-import { explainAll } from './explain.js?v=0.42.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.42.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.43.0';
+import { parseNum } from './queue.js?v=0.43.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.43.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.43.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.43.0';
+import { explainAll } from './explain.js?v=0.43.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.43.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -781,14 +781,14 @@ function renderGridCo2(P){
     options:{plugins:{legend:{display:false},ebTotals:false,tooltip:{callbacks:{title:c=>hl(+c[0].label),label:c=>`${nf(c.parsed.y)} g CO₂ je kWh`}}},scales:{y:{beginAtZero:false,title:{display:true,text:"g CO₂ je kWh"}}}}});
 }
 export async function syncGridCo2(auto){
-  if(!S||!store?.saveGridCo2||S.gridCo2Error||document.body.classList.contains("ro")) return;
+  if(!S||!store?.saveGridCo2||!store?.gridCo2Raw||S.gridCo2Error||document.body.classList.contains("ro")) return;
   if(auto&&gcAutoDone) return; gcAutoDone=true;
   const today=iso(new Date()), yest=addDaysIso(today,-1), first=A.dates[0]||addDaysIso(today,-365), have=S.gridCo2||{}, recent=addDaysIso(today,-3);
   let from=null; for(let d=first; d<=yest; d=addDaysIso(d,1)) if(!have[d]||d>=recent){ from=d; break; }
   if(!from) return;
   gcMsg="Netzwerte werden geladen …"; if(current==="p-co2") $("co-grid-msg").innerHTML=gcMsg;
   try{
-    const rows=await fetchGridCo2(from,yest);
+    const rows=await fetchGridCo2(from,yest,store.gridCo2Raw);
     if(rows.length) await store.saveGridCo2(rows);
     const map={...(S.gridCo2||{})}; rows.forEach(r=>map[r.day]={g:+r.g_mean,hours:r.hours});
     S.gridCo2=map; gcMsg=rows.length?`${nf(rows.length)} Tage Netzwerte gespeichert (${dde(rows[0].day)} – ${dde(rows[rows.length-1].day)}).`:"Keine neuen Netzwerte verfügbar.";

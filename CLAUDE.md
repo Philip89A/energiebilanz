@@ -146,6 +146,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      (nur Eigentümer, automatisch beim Start ab Anker-Beginn). Format gegen die echte Schnittstelle ungeprüft. Prüfung: `v41-check`.
    - ✅ v0.42: PV-Seite: Kalender je Jahr untereinander (Zeilen Monate, Spalten Tage 1–31, nur Zeitraum, Farbe relativ zum
      besten Tag), kumulierte Erzeugung ab Zeitraumbeginn mit Vergleichszeitraum Tag für Tag. Prüfung: `v42-check`.
+   - ✅ v0.43: Netzwerte über Supabase Edge Function `grid-co2` (`supabase/functions/grid-co2/index.ts`, verify_jwt, nur
+     GET start/end ≤ 40 Tage, feste Zieladresse) – Energy-Charts sendet keine CORS-Freigabe. Format geprüft: `unix_seconds`,
+     `co2eq`, `co2eq_forecast`, `deprecated`; start/end = Ortstage einschließlich, 15-Minuten-Werte. Hebel: PV mit eigener
+     Eigenverbrauchsquote, E-Auto mit € (Energie). Prüfung: `v41-check`, `tests/v43.test.mjs`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

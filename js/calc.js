@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.42.0';
+import { hpSum } from './hp.js?v=0.43.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -621,11 +621,15 @@ export function createCalc(S) {
     out.push({ id: 'heat1', title: 'Raumtemperatur 1 °C niedriger', kwh: elHeat * 0.06, kg: elHeat * 0.06 * f, eur: elHeat * 0.06 * apWp, note: 'etwa 6 % weniger Heizenergie je Grad' });
     const plan = (S.stages || []).filter(x => x.status === 'planned').sort((a, b) => (+b.kwp || 0) - (+a.kwp || 0))[0], cur = stageAt(today);
     if (plan && cur && +plan.kwp > +cur.kwp) { const yld = kwpIn(from, today) > 0 ? sumRange('gen', from, today) / kwpIn(from, today) : 900, k = (+plan.kwp - +cur.kwp) * yld;
-      out.push({ id: 'pv', title: `PV-Ausbau „${plan.name}“ (+${(+plan.kwp - +cur.kwp).toFixed(2)} kWp)`, kwh: k, kg: k * f, eur: k * 0.6 * apAs + k * 0.4 * (+S.amort?.feedin || 0) / 100, note: 'Ertrag je kWp wie in den letzten 365 Tagen; 60 % selbst genutzt angenommen' }); }
+      // v0.43: eigene Eigenverbrauchsquote der letzten 365 Tagen statt pauschal 60 % (zusätzliche Module erreichen eher weniger)
+      const genY = sumRange('gen', from, today), q = genY > 0 ? Math.min(1, sumRange('use', from, today) / genY) : 0.6, fi = (+S.amort?.feedin || 0) / 100;
+      out.push({ id: 'pv', title: `PV-Ausbau „${plan.name}“ (+${(+plan.kwp - +cur.kwp).toFixed(2)} kWp)`, kwh: k, kg: k * f, eur: k * (q * apAs + (1 - q) * fi), q,
+        note: `Ertrag je kWp wie in den letzten 365 Tagen; ${Math.round(q * 100)} % selbst genutzt wie bisher (Obergrenze – zusätzlicher Strom fällt oft dann an, wenn der Speicher schon voll ist), Rest eingespeist zu ${(fi * 100).toFixed(1)} ct` }); }
     const ev = S.cars?.ev || {};
     if (+ev.km) { const kwhY = +ev.km / 100 * (+ev.kwh100 || 18) * (1 + (+ev.loss || 0) / 100), gridShare = (+ev.shHome || 0) / 100 * (1 - (+ev.shPV || 0) / 100) + (1 - (+ev.shHome || 0) / 100);
       const iceKg = +ev.km / 100 * R.l100 * cfg.petrol / 1000, evKg = kwhY * gridShare * f;
-      out.push({ id: 'ev', title: 'E-Auto statt Leon (Benzin)', kwh: null, kg: iceKg - evKg, eur: null, note: `${Math.round(+ev.km)} km im Jahr, Leon ${R.l100.toFixed(1)} l/100 km gegen ${Math.round(kwhY)} kWh Strom (${Math.round(gridShare * 100)} % aus dem Netz)` }); }
+      let evEur = null; try { const cc = carCalc(today); evEur = cc.iceFuelY - cc.evEnergyY; } catch { /* Auto-Vergleich unvollständig */ }
+      out.push({ id: 'ev', title: 'E-Auto statt Leon (Benzin)', kwh: null, kg: iceKg - evKg, eur: evEur, note: `${Math.round(+ev.km)} km im Jahr, Leon ${R.l100.toFixed(1)} l/100 km gegen ${Math.round(kwhY)} kWh Strom (${Math.round(gridShare * 100)} % aus dem Netz); € nur Energie (Benzin gegen Strom), ohne Leasing, Versicherung, Steuer – die stehen auf der Seite „Auto“` }); }
     out.push({ id: 'base', title: 'Allgemeinstrom 10 % weniger (Grundlast, Geräte)', kwh: T.asKwh * 0.1, kg: T.asKwh * 0.1 * f, eur: T.asKwh * 0.1 * apAs, note: 'z. B. Standby, alte Geräte, Trockner' });
     // Verschieben bringt nur, was sonst eingespeist würde (Speicher voll); eingespeiste kWh ersetzen bereits Netzstrom anderer,
     // der Gewinn für die eigene Bilanz ist daher der Eigenverbrauch statt Einspeisung (CO₂ gleich, € = Arbeitspreis − Vergütung)

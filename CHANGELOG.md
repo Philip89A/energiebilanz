@@ -593,3 +593,15 @@
   bleibt als Satz.
 - Hinweis: `scripts/compare.mjs` (Referenz ↔ App) weicht bei `#pv-top` und `#pv-cum-note` jetzt bewusst ab.
 - Tests: 139 Unit-Tests unverändert, neu `scripts/v42-check.mjs` (14 Prüfungen); v13-, v30-, v40-Check grün.
+
+## v0.43 – Netzwerte über Supabase, Hebel genauer
+- **Netz-CO₂ funktioniert jetzt:** Energy-Charts erlaubt keinen Abruf direkt aus dem Browser („Failed to fetch“). Neue
+  Supabase **Edge Function `grid-co2`** (Quelltext `supabase/functions/grid-co2/index.ts`) holt die Werte serverseitig und
+  reicht sie an die App weiter – nur für angemeldete Nutzer, feste Zieladresse, höchstens 40 Tage je Abruf, schreibt nichts.
+  Format am 21.10.2026 gegen die echte Schnittstelle geprüft (`unix_seconds`, `co2eq`; Ortstage einschließlich).
+- Fehlermeldungen der Funktion (z. B. „Energy-Charts: HTTP 500“) erscheinen unter „Netzwerte aktualisieren“.
+- **Hebel PV-Ausbau:** Euro mit der eigenen Eigenverbrauchsquote der letzten 365 Tage statt pauschal 60 % (als Obergrenze
+  gekennzeichnet). **Hebel E-Auto:** Euro für die Energie (Benzin gegen Strom) aus dem Auto-Vergleich.
+- Kein Datenbank-Update nötig (die Edge Function ist bereits eingerichtet).
+- Tests: 141 Unit-Tests (neu `tests/v43.test.mjs`), `scripts/v41-check.mjs` auf die Edge Function umgestellt (17 Prüfungen);
+  v14-, v40-, v42-Check grün.

@@ -1,8 +1,8 @@
-// v0.41: CO₂-Intensität des deutschen Stromnetzes von Energy-Charts (Fraunhofer ISE, frei, ohne Schlüssel).
+// v0.41: CO₂-Intensität des deutschen Stromnetzes von Energy-Charts (Fraunhofer ISE, frei, ohne Schlüssel), Endpunkt
+// api.energy-charts.info/co2eq?country=de – seit v0.43 über die Supabase Edge Function „grid-co2“ (supabase/functions).
 // Abruf je höchstens 31 Tage; Auswertung in Ortszeit (Europe/Berlin): Tagesmittel und 24 Stundenmittel.
 // Das Antwortformat wird tolerant gelesen (Zeitachse: unix_seconds/unix_ms/timestamps, Werte: co2eq/co2/data);
 // unbekanntes Format → Fehler mit Hinweis, die App rechnet dann mit dem Jahresfaktor weiter.
-export const GRID_URL = 'https://api.energy-charts.info/co2eq';
 const isoDay = d => d.toISOString().slice(0, 10);
 const addD = (s, n) => isoDay(new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5));
 const FMT = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' });
@@ -32,13 +32,13 @@ export function aggregateGridCo2(pts, from = '0000-01-01', to = '9999-12-31') {
     return { day, g_mean: Math.round(g * 10) / 10, hours: filled.length === 24 ? hrs : null, n: o.n, src: 'energy-charts' };
   }).filter(Boolean).sort((a, b) => a.day.localeCompare(b.day));
 }
-export async function fetchGridCo2(from, to) {
+// v0.43: getRaw(start, end) liefert die Energy-Charts-Antwort (über die Edge Function „grid-co2“); start/end sind
+// Ortstage einschließlich (geprüft: start 18.10. → ab 17.10. 22:00 UTC, end 19.10. → bis 19.10. 23:45 Ortszeit).
+export async function fetchGridCo2(from, to, getRaw) {
   const rows = [];
   for (let a = from; a <= to; a = addD(a, 31)) {
     const b = addD(a, 30) < to ? addD(a, 30) : to;
-    const r = await fetch(`${GRID_URL}?country=de&start=${a}&end=${addD(b, 1)}`);
-    if (!r.ok) throw new Error(`Netzwerte: HTTP ${r.status}`);
-    rows.push(...aggregateGridCo2(parseGridCo2(await r.json()), a, b));
+    rows.push(...aggregateGridCo2(parseGridCo2(await getRaw(a, b)), a, b));
   }
   return rows;
 }
