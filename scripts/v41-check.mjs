@@ -1,4 +1,4 @@
-// v0.41-Test: Netz-CO₂ je Stunde (Energy-Charts simuliert): Abruf, Speichern, Profil, Bilanz mit Netzwerten; Fehlerfälle und Gast.
+// v0.41/v0.43-Test: Netz-CO₂ je Stunde (Edge Function grid-co2 simuliert): Abruf, Speichern, Profil, Bilanz mit Netzwerten; Fehlerfälle und Gast.
 // Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v41-check.mjs
 import { chromium } from 'playwright';
 import { readFileSync } from 'node:fs';
@@ -52,8 +52,9 @@ async function open(page) {
     return route.fulfill({ status: 200, contentType: 'application/json', headers: H, body: JSON.stringify({ daily: { time,
       temperature_2m_mean: time.map(d => 10 + 10 * sea(d) + ((doy(d) * 7) % 5 - 2)), shortwave_radiation_sum: time.map(d => 3.6 * (2.5 + 2.2 * sea(d))), sunshine_duration: time.map(d => 3600 * (5 + 4 * sea(d))) } }) });
   });
-  await ctx.route(/energy-charts\.info/, route => { gcCalls.push(route.request().url()); if (gcMode === 'bad') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"foo":1}' });
-    const u = new URL(route.request().url()), a = Date.parse(u.searchParams.get('start') + 'T00:00:00Z') - 2 * 36e5, z = Date.parse(u.searchParams.get('end') + 'T00:00:00Z'), ts = [], v = [];
+  await ctx.route(/functions\/v1\/grid-co2/, route => { gcCalls.push(route.request().url()); if (gcMode === 'err') return route.fulfill({ status: 502, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"error":"Energy-Charts: HTTP 500"}' });
+    if (gcMode === 'bad') return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: '{"foo":1}' });
+    const u = new URL(route.request().url()), a = Date.parse(u.searchParams.get('start') + 'T00:00:00Z') - 2 * 36e5, z = Date.parse(u.searchParams.get('end') + 'T00:00:00Z') + 864e5, ts = [], v = [];
     for (let t = a; t < z; t += 9e5) { const h = (new Date(t).getUTCHours() + 1) % 24; ts.push(t / 1000); v.push(h >= 11 && h <= 14 ? 180 : h >= 17 && h <= 20 ? 480 : 340); }
     return route.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ unix_seconds: ts, co2eq: v }) }); });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
@@ -66,7 +67,7 @@ DB.settings[0].data = { ...DB.settings[0].data, wx: { lat: 1.2, lon: 6.7, name: 
 DB.grid_co2 = [];
 {
   const { p, ctx } = await open('co2'); await p.waitForTimeout(4000);
-  check(gcCalls.length >= 10 && gcCalls.every(u => /country=de/.test(u)), 'Abruf in Monatsstücken: ' + gcCalls.length);
+  check(gcCalls.length >= 10 && gcCalls.every(u => /start=\d{4}-\d{2}-\d{2}&end=/.test(u)), 'Abruf in Monatsstücken: ' + gcCalls.length);
   check(DB.grid_co2.length > 300, 'Netzwerte gespeichert: ' + DB.grid_co2.length + ' Tage');
   const r0 = DB.grid_co2.find(r => r.day === '2026-07-01'); check(r0 && r0.hours && r0.hours[12] === 180 && r0.hours[18] === 480, 'Stundenwerte in Ortszeit');
   await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(600);
@@ -93,6 +94,13 @@ DB.grid_co2 = [];
   check(DB.grid_co2.length === 0 && (await p.$$('#co-kpis .kpi')).length === 4, 'Seite rechnet weiter');
   check(p.errs.length === 0, 'keine Seitenfehler ' + p.errs.join('; '));
   await ctx.close();
+}
+{ // Fehler der Edge Function: Meldung der Funktion
+  DB.grid_co2 = []; gcMode = 'err'; gcCalls = [];
+  const { p, ctx } = await open('co2'); await p.waitForTimeout(2500);
+  const m = await p.$eval('#co-grid-msg', e => e.innerText); console.log(m);
+  check(/Energy-Charts: HTTP 500/.test(m) && DB.grid_co2.length === 0, 'Fehler der Funktion wird angezeigt');
+  await ctx.close(); gcMode = 'ok';
 }
 { // Tabelle fehlt: kein Abruf, Hinweis auf SQL
   gcMissing = true; gcMode = 'ok'; gcCalls = [];

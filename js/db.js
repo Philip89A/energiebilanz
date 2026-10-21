@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.42.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.42.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.43.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.43.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -207,6 +207,15 @@ export async function savePrograms(deviceId, month, rows) {
   const { error } = await client.from('device_programs').delete().eq('user_id', user_id).eq('device_id', deviceId).eq('month', month);
   check(error, 'Löschen device_programs');
   if (rows.length) await upsertRows('device_programs', rows, 'user_id,device_id,month,program,temp,rpm,extra');
+}
+// v0.43: Netzwerte über die Edge Function „grid-co2“ (Energy-Charts erlaubt keinen Abruf direkt aus dem Browser)
+export async function fetchGridCo2Raw(start, end) {
+  const { data } = await client.auth.getSession(), tok = data?.session?.access_token;
+  if (!tok) throw new Error('nicht angemeldet');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/grid-co2?start=${start}&end=${end}`, { headers: { Authorization: `Bearer ${tok}`, apikey: SUPABASE_KEY } });
+  let j = null; try { j = await r.json(); } catch { /* leer */ }
+  if (!r.ok) throw new Error(j?.error ? `${j.error}` : r.status === 404 ? 'Edge Function „grid-co2“ fehlt in Supabase' : `HTTP ${r.status}`);
+  return j;
 }
 export async function saveGridCo2(rows, onProgress) {
   await upsertRows('grid_co2', rows, 'user_id,day', onProgress);
