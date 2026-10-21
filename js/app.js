@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveClimate, savePrograms, saveGridCo2 } from './db.js?v=0.41.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.41.0';
-import { stateFromDb } from './calc.js?v=0.41.0';
-import { setModel, startViews, setStore, syncWeather, syncGridCo2 } from './views.js?v=0.41.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.41.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveClimate, savePrograms, saveGridCo2 } from './db.js?v=0.42.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.42.0';
+import { stateFromDb } from './calc.js?v=0.42.0';
+import { setModel, startViews, setStore, syncWeather, syncGridCo2 } from './views.js?v=0.42.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.42.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));

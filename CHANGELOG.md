@@ -583,3 +583,13 @@
 - Unbekanntes Antwortformat oder Fehler: Hinweis, die Seite rechnet mit dem Jahresfaktor weiter.
 - Hinweis: Das Format der Schnittstelle ist gegen eine simulierte Antwort getestet (aus der Entwicklungsumgebung nicht erreichbar).
 - Tests: 139 Unit-Tests (neu `tests/v41.test.mjs`), neu `scripts/v41-check.mjs` (16 Prüfungen); v14- und v40-Check grün.
+
+## v0.42 – PV: Kalender und Kumuliert nach Zeitraum
+- **Tageserträge im Kalender:** je Jahr ein Block, die Jahre untereinander (neuestes oben); Zeilen = Monate, Spalten =
+  Tage 1–31 – passt ohne seitliches Scrollen aufs Handy. Nur Tage des gewählten Zeitraums, Farbstufen relativ zum besten Tag
+  im Zeitraum; Tage ohne Daten umrandet. Darunter Ø, beste und schwächste Tage im Zeitraum.
+- **Erzeugung kumuliert:** beginnt am Anfang des gewählten Zeitraums bei 0 (Erzeugung, selbst genutzt, eingespeist); mit
+  Vergleichszeitraum dessen Erzeugung gestrichelt, Tag für Tag ausgerichtet, Unterschied im Hinweis. Gesamt seit Beginn
+  bleibt als Satz.
+- Hinweis: `scripts/compare.mjs` (Referenz ↔ App) weicht bei `#pv-top` und `#pv-cum-note` jetzt bewusst ab.
+- Tests: 139 Unit-Tests unverändert, neu `scripts/v42-check.mjs` (14 Prüfungen); v13-, v30-, v40-Check grün.

@@ -177,3 +177,11 @@ ol.rel-top{margin:8px 0 0 18px;padding:0;line-height:1.5}ol.rel-top li{margin:4p
 /* v0.40: CO₂ – lange Erklärtexte in Tabellen umbrechen */
 #co-lev td.l,#co-cmp td.l{white-space:normal;min-width:180px}
 #co-lev td.l .note,#co-cmp td.note{font-size:12px}
+
+/* v0.42: PV-Kalender je Jahr, Zeilen = Monate, Spalten = Tage */
+.cal-year{margin-top:12px}.cal-year h3{margin:0 0 4px;font-size:14px}
+.cal-row{display:grid;grid-template-columns:34px repeat(31,minmax(0,14px));gap:2px;align-items:center;margin-bottom:2px}
+.cal-row span{font-size:11px;color:var(--muted)}
+.cal-row i{display:block;aspect-ratio:1;border-radius:2px}.cal-row i.e{box-shadow:inset 0 0 0 1px var(--line)}.cal-row i.x{visibility:hidden}
+.cal-head b{font-size:10px;font-weight:400;color:var(--muted);text-align:center;overflow:visible;white-space:nowrap}
+#pv-heat{overflow:hidden}

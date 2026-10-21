@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.41.0">
-<link rel="stylesheet" href="css/style.css?v=0.41.0">
+<meta name="app-version" content="0.42.0">
+<link rel="stylesheet" href="css/style.css?v=0.42.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -123,7 +123,7 @@
   <h1>PV-Anlage</h1>
   <p class="lead">Vier Stränge (PV1–PV4). Netzbezug und Einspeisung misst Anker erst seit dem <span data-sm></span>, Autarkiewerte davor sind ausgeblendet.</p>
   <div class="grid g4" id="pv-kpis"></div>
-  <div class="panel" style="margin-top:16px"><h2>Tageserträge im Kalender</h2><p class="note">Jedes Kästchen ist ein Tag, je kräftiger, desto mehr Erzeugung. Spalten sind Wochen, Zeilen Montag bis Sonntag.</p><div class="heat-wrap" id="pv-heat"></div><p class="note" id="pv-top"></p></div>
+  <div class="panel" style="margin-top:16px"><h2>Tageserträge im Kalender</h2><p class="note">Jedes Kästchen ist ein Tag im gewählten Zeitraum, je kräftiger, desto mehr Erzeugung. Je Jahr ein Block, Zeilen sind Monate, Spalten die Tage 1–31.</p><div id="pv-heat"></div><p class="note" id="pv-top"></p></div>
   <div class="panel" style="margin-top:16px"><h2>Erzeugung kumuliert</h2><p class="note" id="pv-cum-note"></p><div class="chart tall"><canvas id="pv-cum"></canvas></div>
     <div class="form" style="margin-top:12px;max-width:520px"><label class="f">Erzeugung vor Beginn des Exports in kWh<input type="number" step="0.1" id="pv-offset"></label></div></div>
   <div class="grid g2" style="margin-top:16px">
@@ -518,8 +518,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.41.0"></script>
-<script src="vendor/chart.umd.js?v=0.41.0"></script>
-<script type="module" src="js/app.js?v=0.41.0"></script>
+<script src="vendor/supabase.js?v=0.42.0"></script>
+<script src="vendor/chart.umd.js?v=0.42.0"></script>
+<script type="module" src="js/app.js?v=0.42.0"></script>
 </body>
 </html>
