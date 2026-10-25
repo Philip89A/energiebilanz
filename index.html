@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.43.0">
-<link rel="stylesheet" href="css/style.css?v=0.43.0">
+<meta name="app-version" content="0.44.0">
+<link rel="stylesheet" href="css/style.css?v=0.44.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -270,6 +270,9 @@
   <div class="panel" style="margin-top:16px" id="co-x"></div>
   <div class="panel" style="margin-top:16px"><h2>Verlauf je Monat</h2><p class="note">Balken nach oben: Ausstoß (Strommix). Nach unten: durch eigenen Solarstrom vermieden und eingespeist. Linie: Vergleich „ohne Technik“.</p><div class="chart"><canvas id="co-chart"></canvas></div></div>
   <div class="panel" style="margin-top:16px"><h2>Vergleich mit einem Haushalt ohne PV, Wärmepumpe und E-Auto</h2><div class="tbl-wrap"><table id="co-cmp"></table></div><div id="co-cmp-note"></div></div>
+  <div class="panel" style="margin-top:16px" id="co-dev-panel"><h2>CO₂ je Gerät</h2>
+    <p class="note">Geräte mit Messsteckdose oder Monatswerten. Gezählt wird nur der Teil, der an dem Tag aus dem Netz kam: Netzanteil des Tages = Netzbezug Allgemeinstrom ÷ Hausverbrauch (Netzbezug + selbst genutzter Solarstrom). Netzstrom × Netzwert des Tages (sonst Strommix des Jahres). Kosten: Netzstrom × Arbeitspreis, Solarstrom × Einspeisevergütung (die ohne das Gerät eingespeist worden wäre).</p>
+    <div class="tbl-wrap"><table id="co-dev"></table></div><div id="co-dev-note"></div></div>
   <div class="grid g2" style="margin-top:16px">
     <div class="panel"><h2>Graue Emissionen der Anlage</h2><div id="co-grey"></div></div>
     <div class="panel"><h2>Hebel: was bringt wie viel?</h2><div class="tbl-wrap"><table id="co-lev"></table></div><p class="note">Hochgerechnet aus den letzten 365 Tagen, Strommix des aktuellen Jahres, aktuelle Arbeitspreise.</p></div>
@@ -518,8 +521,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.43.0"></script>
-<script src="vendor/chart.umd.js?v=0.43.0"></script>
-<script type="module" src="js/app.js?v=0.43.0"></script>
+<script src="vendor/supabase.js?v=0.44.0"></script>
+<script src="vendor/chart.umd.js?v=0.44.0"></script>
+<script type="module" src="js/app.js?v=0.44.0"></script>
 </body>
 </html>

@@ -150,6 +150,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      GET start/end ≤ 40 Tage, feste Zieladresse) – Energy-Charts sendet keine CORS-Freigabe. Format geprüft: `unix_seconds`,
      `co2eq`, `co2eq_forecast`, `deprecated`; start/end = Ortstage einschließlich, 15-Minuten-Werte. Hebel: PV mit eigener
      Eigenverbrauchsquote, E-Auto mit € (Energie). Prüfung: `v41-check`, `tests/v43.test.mjs`.
+   - ✅ v0.44: CO₂ je Gerät (`co2Devices`): Geräte-kWh × Netzanteil des Tages (AS-Netzbezug ÷ Hausverbrauch) × Netzwert
+     des Tages; € = Netzstrom × Arbeitspreis + Solaranteil × Einspeisevergütung. Bewusst Tagesbasis (kein stündlicher
+     Netzbezug). Prüfung: `v44-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

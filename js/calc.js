@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.43.0';
+import { hpSum } from './hp.js?v=0.44.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -636,6 +636,21 @@ export function createCalc(S) {
     const sh = Math.min(365, T.feed);
     out.push({ id: 'shift', title: 'Verbrauch in die Sonnenstunden legen', kwh: sh, kg: 0, eur: sh * (apAs - (+S.amort?.feedin || 0) / 100), note: `nur die ${Math.round(T.feed)} kWh, die im letzten Jahr eingespeist wurden, lassen sich so selbst nutzen. Fürs Klima neutral (eingespeister Strom ersetzt ohnehin Netzstrom), spart aber Geld` });
     return out.sort((a, b) => b.kg - a.kg);
+  }
+
+  // v0.44: CO₂ je Gerät auf Tagesbasis. Netzanteil des Tages = Allgemeinstrom-Netzbezug ÷ Hausverbrauch (Netzbezug +
+  // selbst genutzter Solarstrom); Geräte-kWh × Netzanteil = Netzstrom des Geräts, × Netzwert des Tages (sonst Strommix).
+  // Ohne Anker-Daten für den Tag: Netzanteil 1. € = Netzstrom × Arbeitspreis + Solaranteil × Einspeisevergütung (entgangen).
+  function co2Devices(from, to) {
+    const cfg = co2Cfg(), G = cfg.hourly === false ? {} : (S.gridCo2 || {}), as = groupSeries('as').daily, hh = hhDay(), fi = (+S.amort?.feedin || 0) / 100;
+    return (S.devices || []).map(dv => {
+      const rows = DEV[dv.id] || {}; let kwh = 0, grid = 0, kg = 0, eur = 0, n = 0, est = 0;
+      for (const [d, r] of Object.entries(rows)) { if (d < from || d > to || !(r.kwh > 0)) { if (d >= from && d <= to) n++; continue; } n++;
+        const share = hh[d] > 0 && as[d] != null ? Math.min(1, Math.max(0, as[d] / hh[d])) : (est++, 1);
+        const g = r.kwh * share, f = (G[d] ? G[d].g : mixAt(d, cfg)) / 1000, t = tariffAt('as', d) || currentTariff('as'), ap = t ? t.ap / 100 : 0;
+        kwh += r.kwh; grid += g; kg += g * f; eur += g * ap + (r.kwh - g) * fi; }
+      return { id: dv.id, name: dv.name, n, kwh, grid, share: kwh > 0 ? grid / kwh : null, kg, eur, est, perKwh: kwh > 0 ? kg / kwh * 1000 : null };
+    }).filter(x => x.n).sort((a, b) => b.kg - a.kg);
   }
 
   /* Boni: Einzelposten je Tarif (boniItems), optional mit Mengenbedingung
@@ -1352,7 +1367,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

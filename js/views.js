@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.43.0';
-import { parseNum } from './queue.js?v=0.43.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.43.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.43.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.43.0';
-import { explainAll } from './explain.js?v=0.43.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.43.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.44.0';
+import { parseNum } from './queue.js?v=0.44.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.44.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.44.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.44.0';
+import { explainAll } from './explain.js?v=0.44.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.44.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -746,6 +746,14 @@ function renderCo2(){
     ${r("Auto",T.carKg,T.cfCarKg,T.evKm>0?`${nf(T.evKm)} km elektrisch statt Benzin`:`${nf(T.fuelL)} l Benzin getankt; E-Auto ab ${S.cars?.ev?.start?dde(S.cars.ev.start):"Dezember"}`)}
     ${r("<b>Summe</b>",T.actual,T.cf,"")}</tbody>`;
   $("co-cmp-note").innerHTML=`<p class="note">Zusätzlich ersetzt eingespeister Solarstrom ${t_(T.feedKg)} CO₂ im Netz (${nf(T.feed)} kWh). Laden des E-Autos zu Hause steckt im Allgemeinstrom.</p>`;
+  // v0.44: CO₂ je Gerät
+  const DVs=C.co2Devices(P.from,P.to);
+  $("co-dev-panel").hidden=!DVs.length;
+  if(DVs.length){ const sum=DVs.reduce((a,x)=>({kwh:a.kwh+x.kwh,grid:a.grid+x.grid,kg:a.kg+x.kg,eur:a.eur+x.eur}),{kwh:0,grid:0,kg:0,eur:0});
+    $("co-dev").innerHTML=`<thead><tr><th class="l">Gerät</th><th>kWh</th><th>davon Netz</th><th>kg CO₂</th><th>g je kWh</th><th>€</th><th>Tage</th></tr></thead><tbody>${
+      DVs.map(x=>`<tr><td class="l">${esc(x.name)}${x.est?` <span class="pill">${nf(x.est)} Tage ohne Anker</span>`:""}</td><td>${nf(x.kwh,1)}</td><td>${x.share!=null?pct(x.share):"–"}</td><td>${nf(x.kg,1)}</td><td>${x.perKwh!=null?nf(x.perKwh):"–"}</td><td>${eur(x.eur,2)}</td><td>${nf(x.n)}</td></tr>`).join("")}
+      <tr><td class="l"><b>Summe</b></td><td><b>${nf(sum.kwh,1)}</b></td><td>${sum.kwh?pct(sum.grid/sum.kwh):"–"}</td><td><b>${nf(sum.kg,1)}</b></td><td>${sum.kwh?nf(sum.kg/sum.kwh*1000):"–"}</td><td><b>${eur(sum.eur,2)}</b></td><td></td></tr></tbody>`;
+    const top=DVs[0]; $("co-dev-note").innerHTML=`<p class="note">Die gemessenen Geräte verursachen ${t_(sum.kg)} – ${T.asKg>0?pct(sum.kg/T.asKg):"–"} des Allgemeinstroms. Am meisten: ${esc(top.name)} (${nf(top.kg,1)} kg). Ein niedriger Wert „g je kWh“ heißt: das Gerät läuft oft, wenn Solarstrom da ist. Tageswerte – ob ein Gerät genau in sonnigen Stunden lief, sehen die Daten nicht.</p>`; }
   // Graue Emissionen
   const G=C.co2Grey(A.dates[A.n-1]);
   $("co-grey").innerHTML=`<div class="grid g2">${kpi(t_(G.grey),"Herstellung der Anlage",`${nf(G.kwp,2)} kWp × ${nf(cfg.pvKgKwp)} kg + ${nf(G.cap,1)} kWh Speicher × ${nf(cfg.battKgKwh)} kg`)}${kpi(G.years!=null?`${nf(G.years,1)} Jahre`:"–","CO₂-Rückzahlzeit",`PV spart ${t_(G.perYear)} im Jahr (selbst genutzt und eingespeist)`)}</div>

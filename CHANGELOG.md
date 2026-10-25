@@ -605,3 +605,12 @@
 - Kein Datenbank-Update nötig (die Edge Function ist bereits eingerichtet).
 - Tests: 141 Unit-Tests (neu `tests/v43.test.mjs`), `scripts/v41-check.mjs` auf die Edge Function umgestellt (17 Prüfungen);
   v14-, v40-, v42-Check grün.
+
+## v0.44 – CO₂ je Gerät
+- **CO₂-Seite, neuer Abschnitt „CO₂ je Gerät“:** je Gerät mit Messsteckdose oder Monatswerten kWh, Netzanteil, kg CO₂,
+  g je kWh, € und Tage im Zeitraum, dazu eine Summe und der Anteil am Allgemeinstrom.
+- Gezählt wird nur der Netzstrom: Netzanteil des Tages = Netzbezug Allgemeinstrom ÷ Hausverbrauch (Netzbezug + selbst
+  genutzter Solarstrom), mal Netzwert des Tages (Energy-Charts, sonst Strommix des Jahres). Kosten: Netzstrom × Arbeitspreis
+  plus Solaranteil × Einspeisevergütung.
+- Bewusst auf Tagesbasis: Für eine Bewertung je Stunde fehlt der stündliche Netzbezug (Anker liefert nur Tageswerte).
+- Tests: 143 Unit-Tests (neu `tests/v44.test.mjs`), neu `scripts/v44-check.mjs` (8 Prüfungen); v40-, v41-Check grün.
