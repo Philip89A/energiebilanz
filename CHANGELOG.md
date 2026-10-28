@@ -614,3 +614,12 @@
   plus Solaranteil × Einspeisevergütung.
 - Bewusst auf Tagesbasis: Für eine Bewertung je Stunde fehlt der stündliche Netzbezug (Anker liefert nur Tageswerte).
 - Tests: 143 Unit-Tests (neu `tests/v44.test.mjs`), neu `scripts/v44-check.mjs` (8 Prüfungen); v40-, v41-Check grün.
+
+## v0.45 – Geräte: Rest des Allgemeinstroms
+- **Grafik „Geräte“:** über den gestapelten Gerätebalken ein heller Block „Rest Allgemeinstrom (nicht gemessen)“ – jeder
+  Balken ist so hoch wie der gesamte Allgemeinstrom (Netzbezug + selbst genutzter Solarstrom, ohne Wärmepumpe).
+- **Tabelle unten:** Allgemeinstrom gesamt, davon gemessene Geräte, davon nicht gemessen – je kWh im Zeitraum, kWh pro Tag,
+  Anteil und Kosten (Arbeitspreis). Gerechnet nur über Tage mit Haushaltswert.
+- Hinweis mit der Abdeckung („x % des Allgemeinstroms sind erfasst, y kWh am Tag offen“).
+- Kein Datenbank-Update nötig.
+- Tests: 145 Unit-Tests (neu `tests/v45.test.mjs`), neu `scripts/v45-check.mjs` (8 Prüfungen); v32-, v44-Check grün.
