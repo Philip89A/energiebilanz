@@ -156,6 +156,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.45: Geräte – Rest Allgemeinstrom (Haushalt = AS-Netzbezug + selbst genutzter Solarstrom, ohne WP) als heller Block
      über den Gerätebalken (`deviceSeries.rest`), Tabelle unten: gesamt / gemessene Geräte / Rest mit kWh, kWh/Tag, Anteil, €
      (`deviceStats.hhKwh/devKwhOnHh/restKwh/coverShare`). Prüfung: `v45-check`.
+   - ✅ v0.46: Ablesezeit (`meter_readings.read_at`, `docs/UPDATE_V46.sql` mit Nachtrag aus `updated_at` am selben Tag):
+     Uhrzeit in Erfassen und Schnellerfassung (vorbelegt „jetzt“), Anzeige in der Ablesungen-Liste; `groupSeries` verteilt
+     stundengenau (`readFrac`, Ortszeit Europe/Berlin; ohne Uhrzeit oder anderer Tag = 00:00 wie bisher). Ohne Spalte
+     (`S.readAtOk`) wird die Uhrzeit ausgeblendet und nicht gesendet. Prüfung: `v46-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

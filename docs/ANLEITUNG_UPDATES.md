@@ -104,3 +104,10 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 2. Pull Request mergen, App neu laden (v0.41.0).
 3. **CO₂** öffnen: Die Netzwerte werden beim Start automatisch geladen (beim ersten Mal ab Beginn der Anker-Daten, etwa
    20 Abrufe). Klappt der Abruf nicht, steht unter „Faktoren und Quellen“ der Grund; die Seite rechnet dann mit dem Jahresfaktor.
+
+# Update v0.46 (Ablesezeit)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V46.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V46.sql) → **Run**.
+   Kontrolle: Zahl der Ablesungen „mit_uhrzeit“ und „ohne“.
+2. Pull Request mergen, App neu laden (v0.46.0).
+3. **Erfassen → Zählerstand** und Schnellerfassung haben jetzt ein Feld „Uhrzeit“ (vorbelegt mit jetzt).

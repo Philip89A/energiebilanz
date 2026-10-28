@@ -623,3 +623,14 @@
 - Hinweis mit der Abdeckung („x % des Allgemeinstroms sind erfasst, y kWh am Tag offen“).
 - Kein Datenbank-Update nötig.
 - Tests: 145 Unit-Tests (neu `tests/v45.test.mjs`), neu `scripts/v45-check.mjs` (8 Prüfungen); v32-, v44-Check grün.
+
+## v0.46 – Ablesezeit bei Zählerständen
+- **Neues Feld `read_at`** (`docs/UPDATE_V46.sql`): Datum und Uhrzeit der Ablesung. Bisherige Werte, die am selben Tag
+  eingetragen wurden, bekommen die Uhrzeit ihrer letzten Änderung; ältere bleiben leer (= 00:00 wie bisher).
+- **Erfassen und Schnellerfassung:** Feld „Uhrzeit“, vorbelegt mit der aktuellen Zeit, änderbar. Die Ablesungen-Liste
+  zeigt die Uhrzeit.
+- **Rechnung stundengenau:** Zwischen zwei Ablesungen zählt jeder Tag mit seinem Anteil (Ablesung um 21 Uhr → 21/24 des
+  Tages davor). Gilt für Wasser, Allgemeinstrom, Wärmepumpe und Einspeisung. Ohne Uhrzeit rechnet alles wie bisher.
+- Ohne SQL-Update bleibt die Uhrzeit ausgeblendet und wird nicht gesendet.
+- Tests: 149 Unit-Tests (neu `tests/v46.test.mjs`), neu `scripts/v46-check.mjs` (10 Prüfungen); offline-, v13-, v16-, v25-,
+  v35-Check grün (v35: Wartezeit nach dem Wechsel auf Handy-Breite verlängert).
