@@ -153,6 +153,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.44: CO₂ je Gerät (`co2Devices`): Geräte-kWh × Netzanteil des Tages (AS-Netzbezug ÷ Hausverbrauch) × Netzwert
      des Tages; € = Netzstrom × Arbeitspreis + Solaranteil × Einspeisevergütung. Bewusst Tagesbasis (kein stündlicher
      Netzbezug). Prüfung: `v44-check`.
+   - ✅ v0.45: Geräte – Rest Allgemeinstrom (Haushalt = AS-Netzbezug + selbst genutzter Solarstrom, ohne WP) als heller Block
+     über den Gerätebalken (`deviceSeries.rest`), Tabelle unten: gesamt / gemessene Geräte / Rest mit kWh, kWh/Tag, Anteil, €
+     (`deviceStats.hhKwh/devKwhOnHh/restKwh/coverShare`). Prüfung: `v45-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

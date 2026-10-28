@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.44.0';
+import { hpSum } from './hp.js?v=0.45.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -1024,7 +1024,11 @@ export function createCalc(S) {
     // Haushalt: Ø je Tag über die Tage mit Werten im Zeitraum; Rest = Haushalt − gemessene Geräte (Ø je Tag)
     let hs = 0, hn = 0; for (const [d, v] of Object.entries(hh)) if (d >= from && d <= to) { hs += v; hn++; }
     const hhPerDay = hn ? hs / hn : null, devPerDay = list.reduce((s, x) => s + (x.perDay || 0), 0);
-    return { list, days, hhPerDay, devPerDay, restPerDay: hhPerDay != null ? hhPerDay - devPerDay : null, restShare: hhPerDay ? 1 - devPerDay / hhPerDay : null };
+    // v0.45: Summen nur über Tage mit Haushaltswert; gemessene Geräte an genau diesen Tagen
+    let devOnHh = 0; for (const dv of S.devices || []) for (const [d, r] of Object.entries(DEV[dv.id] || {})) if (d >= from && d <= to && hh[d] != null) devOnHh += r.kwh || 0;
+    const t = currentTariff('as'), ap = t ? t.ap / 100 : 0;
+    return { list, days, hhPerDay, devPerDay, restPerDay: hhPerDay != null ? hhPerDay - devPerDay : null, restShare: hhPerDay ? 1 - devPerDay / hhPerDay : null,
+      hhKwh: hn ? hs : null, hhDays: hn, devKwhOnHh: devOnHh, restKwh: hn ? Math.max(0, hs - devOnHh) : null, coverShare: hs > 0 ? Math.min(1, devOnHh / hs) : null, ap };
   }
   // Auffällig: letzte 28 Tage mit Werten mindestens 15 % über denselben Tagen des Vorjahres (je mind. 24 Tage)
   function deviceAlerts() {
@@ -1041,7 +1045,12 @@ export function createCalc(S) {
     const val = {}, temp = {};
     for (const dv of S.devices || []) { const v = val[dv.id] = {}; for (const [d, r] of Object.entries(DEV[dv.id] || {})) if (d >= from && d <= to) { const k = bucketOf(d, g); v[k] = (v[k] || 0) + (r.kwh || 0); } }
     for (let d = from; d <= to; d = addDays(d, 1)) { const w = W[d]; if (!w || w.t == null) continue; const k = bucketOf(d, g); (temp[k] = temp[k] || { s: 0, n: 0 }); temp[k].s += w.t; temp[k].n++; }
-    return { g, ks, val, temp: Object.fromEntries(Object.entries(temp).map(([k, x]) => [k, x.s / x.n])) };
+    // v0.45: Rest Allgemeinstrom je Zeitraum-Stück = Haushalt − gemessene Geräte (nur Tage mit Haushaltswert)
+    const hh = hhDay(), hk = {}, dk = {};
+    for (const [d, v] of Object.entries(hh)) { if (d < from || d > to) continue; const k = bucketOf(d, g); hk[k] = (hk[k] || 0) + v;
+      for (const dv of S.devices || []) { const r = (DEV[dv.id] || {})[d]; if (r) dk[k] = (dk[k] || 0) + (r.kwh || 0); } }
+    const rest = Object.fromEntries(Object.keys(hk).map(k => [k, Math.max(0, hk[k] - (dk[k] || 0))]));
+    return { g, ks, val, rest, hh: hk, temp: Object.fromEntries(Object.entries(temp).map(([k, x]) => [k, x.s / x.n])) };
   }
   // v0.33: Raumklima je Raum und Tag (Govee). Tage mit weniger als 48 Werten (12 h) zählen nicht. Nacht = 0–6 Uhr,
   // Tag = 10–18 Uhr (Stundenmittel). Anteile „zu trocken“ (< 40 %) und „feucht“ (≥ 60 %) über die Stunden mit Werten.

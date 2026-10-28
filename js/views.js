@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.44.0';
-import { parseNum } from './queue.js?v=0.44.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.44.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.44.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.44.0';
-import { explainAll } from './explain.js?v=0.44.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.44.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.45.0';
+import { parseNum } from './queue.js?v=0.45.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.45.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.45.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.45.0';
+import { explainAll } from './explain.js?v=0.45.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.45.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -358,16 +358,18 @@ function renderDevices(){
       <td>${x.prev ? `${nf(x.prev.perDay, 2)} (${x.change >= 0 ? "+" : "−"}${pct(Math.abs(x.change))})` : "–"}</td>
       <td>${x.water != null ? nf(x.water) + " l" : "–"}</td><td>${x.runs ? nf(x.runs) : "–"}</td><td>${nf(x.n)}</td></tr>`;
     $("dv-tbl").innerHTML = `<thead><tr><th class="l">Gerät</th><th>kWh</th><th>kWh/Tag</th><th>Anteil</th><th>Kosten</th><th>Vorjahr kWh/Tag</th><th>Wasser</th><th>Programme</th><th>Tage</th></tr></thead><tbody>${st.list.map(row).join("")}</tbody>
-      ${st.hhPerDay != null ? `<tfoot><tr><td class="l">Allgemeinstrom gesamt</td><td></td><td>${nf(st.hhPerDay, 2)}</td><td>100 %</td><td colspan="5"></td></tr>
-      <tr><td class="l">davon nicht gemessen</td><td></td><td>${nf(st.restPerDay, 2)}</td><td>${pct(st.restShare, 1)}</td><td colspan="5"></td></tr></tfoot>` : ""}`;
+      ${st.hhKwh != null ? `<tfoot><tr><td class="l"><b>Allgemeinstrom gesamt</b> <span class="note">(Netz + eigener Solarstrom, ohne Wärmepumpe)</span></td><td><b>${kwh(st.hhKwh, 1)}</b></td><td>${nf(st.hhKwh / st.hhDays, 2)}</td><td>100 %</td><td>${eur(st.hhKwh * st.ap)}</td><td colspan="4" class="l note">${nf(st.hhDays)} Tage mit Haushaltswert</td></tr>
+      <tr><td class="l">davon gemessene Geräte</td><td>${kwh(st.devKwhOnHh, 1)}</td><td>${nf(st.devKwhOnHh / st.hhDays, 2)}</td><td>${pct(st.coverShare, 1)}</td><td>${eur(st.devKwhOnHh * st.ap)}</td><td colspan="4"></td></tr>
+      <tr><td class="l">davon nicht gemessen (Rest)</td><td>${kwh(st.restKwh, 1)}</td><td>${nf(st.restKwh / st.hhDays, 2)}</td><td>${pct(1 - st.coverShare, 1)}</td><td>${eur(st.restKwh * st.ap)}</td><td colspan="4"></td></tr></tfoot>` : ""}`;
     const ser = C.deviceSeries(P.from, P.to), lab = ser.ks.map(k => ser.g === "day" ? dde(k).slice(0, 6) : monthLabel(k)), hasT = Object.keys(ser.temp).length > 0;
     chart("dv-chart", { type: "bar", data: { labels: lab, datasets: [
       ...devs.map((d, i) => ({ label: d.name, data: ser.ks.map(k => ser.val[d.id]?.[k] ?? null), backgroundColor: dvColor(i), stack: "s", yAxisID: "y", order: 1 })).filter(ds => ds.data.some(v => v != null)),
+      ...(Object.keys(ser.rest).length ? [{ label: "Rest Allgemeinstrom (nicht gemessen)", data: ser.ks.map(k => ser.rest[k] ?? null), backgroundColor: `color-mix(in srgb, ${css("--grid")} 22%, transparent)`, borderColor: css("--grid"), borderWidth: { top: 1, left: 0, right: 0, bottom: 0 }, stack: "s", yAxisID: "y", order: 1 }] : []),
       ...(hasT ? [{ type: "line", label: "Außentemperatur Ø", data: ser.ks.map(k => ser.temp[k] ?? null), borderColor: css("--muted"), backgroundColor: css("--muted"), borderDash: [4, 3], pointRadius: 0, borderWidth: 1.5, yAxisID: "y1", order: 0 }] : [])] },
       options: { plugins: { tooltip: { callbacks: { label: c => c.dataset.yAxisID === "y1" ? `${c.dataset.label}: ${deg(c.parsed.y)}` : `${c.dataset.label}: ${nf(c.parsed.y, 2)} kWh` } } },
         scales: { x: { stacked: true, ticks: { maxTicksLimit: 14 } }, y: { stacked: true, title: { display: true, text: ser.g === "day" ? "kWh pro Tag" : "kWh pro Monat" } },
           ...(hasT ? { y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "°C" } } } : {}) } } });
-    $("dv-note").innerHTML = `<p class="note">Zeitraum ${dde(P.from)} – ${dde(P.to)}. Kosten zum Arbeitspreis des Allgemeinstroms (ohne Abzug für Solarstrom). Vorjahr nur, wenn für mindestens 80 % der Tage Werte vorliegen. Die gestrichelte Linie zeigt die Außentemperatur, hilfreich beim Gefrierschrank im Keller.</p>`;
+    $("dv-note").innerHTML = `${st.coverShare != null ? `<p class="note"><b>${pct(st.coverShare)}</b> des Allgemeinstroms sind durch Messsteckdosen bzw. Monatswerte erfasst, ${kwh(st.restKwh / st.hhDays, 1)} am Tag sind noch offen (Kochen, Licht, Router, Unterhaltung, Laden …). Der helle Block in der Grafik ist dieser Rest; jeder Balken ist so hoch wie der gesamte Allgemeinstrom. Geräte mit Monatswerten sind gleichmäßig verteilt – an einzelnen Tagen schwankt der Rest deshalb.</p>` : ""}<p class="note">Zeitraum ${dde(P.from)} – ${dde(P.to)}. Kosten zum Arbeitspreis des Allgemeinstroms (ohne Abzug für Solarstrom). Vorjahr nur, wenn für mindestens 80 % der Tage Werte vorliegen. Die gestrichelte Linie zeigt die Außentemperatur, hilfreich beim Gefrierschrank im Keller.</p>`;
   } else { $("dv-tbl").innerHTML = ""; $("dv-note").innerHTML = ""; chart("dv-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
   // Geräteliste und Monatswerte (Bearbeiten)
   const roomOpt = sel => `<option value="">–</option>${(S.rooms || []).map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}`;
