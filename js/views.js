@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.45.0';
-import { parseNum } from './queue.js?v=0.45.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.45.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.45.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.45.0';
-import { explainAll } from './explain.js?v=0.45.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.45.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.46.0';
+import { parseNum } from './queue.js?v=0.46.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.46.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.46.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.46.0';
+import { explainAll } from './explain.js?v=0.46.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.46.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1055,8 +1055,8 @@ function renderMeters(){
   renderMeterExtras();
   const RP = periodSel();   // v0.16: Ablesungen im Zeitraum, einschließlich des Stands am Tag nach dem Ende
   const rs = S.readings.map((r,i)=>({...r,i})).filter(r=>(S.ui.meterFilter||"all")==="all"||r.m===S.ui.meterFilter).filter(r=>RP.all||(r.d>=RP.P.from&&r.d<=addDaysIso(RP.P.to,1))).sort((a,b)=>b.d.localeCompare(a.d)||a.m.localeCompare(b.m));
-  $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th class="l">Zähler</th><th>Stand</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
-    rs.map(r=>`<tr><td>${dde(r.d)}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,meterUnit(r.m)==="m³"?3:1)} ${meterUnit(r.m)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
+  $("rd-tbl").innerHTML = `<thead><tr><th>Datum</th><th>Uhrzeit</th><th class="l">Zähler</th><th>Stand</th><th class="l">Quelle</th><th></th></tr></thead><tbody>${
+    rs.map(r=>`<tr><td>${dde(r.d)}</td><td>${readHM(r)||"–"}</td><td class="l">${esc(S.meters.find(m=>m.id===r.m)?.name||r.m)}</td><td>${nf(r.v,meterUnit(r.m)==="m³"?3:1)} ${meterUnit(r.m)}</td><td class="l">${esc(r.src||"Eingabe")}</td><td><button class="x" data-del-rd="${r.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`;
   // Abgleich
   const is = IMPORT_START();
   const ivs = as.intervals.map(iv=>{
@@ -1542,7 +1542,7 @@ export { route, rerender };
 
 /* ---------- Bearbeiten (Referenz: Ereignisse-Block), Schreiben nach Supabase ---------- */
 function wireEditing(){
-  const today=iso(new Date()); ["rd-d","fu-d","ch-d","cl-d"].forEach(i=>$(i).value=today);
+  const today=iso(new Date()); ["rd-d","fu-d","ch-d","cl-d"].forEach(i=>$(i).value=today); $("rd-t").value=nowHM(); if(!S.readAtOk) $("rd-t").closest("label").hidden=true;
   document.addEventListener("click",e=>{
     const t=e.target.closest("#main button"); if(!t) return;
     const del=(key,kind,arr)=>{ const i=+t.dataset[key]; if(confirm("Eintrag löschen?")){ const [x]=arr.splice(i,1); remove(kind,x); rerender(); } };
@@ -1603,8 +1603,9 @@ function wireEditing(){
   });
   $("rd-add").addEventListener("click",()=>{ const m=$("rd-m").value, d=$("rd-d").value, v=parseFloat($("rd-v").value);
     if(!d||!isFinite(v)){ alert("Datum und Stand angeben."); return; }
-    let r=S.readings.find(r=>r.m===m&&r.d===d); if(r) r.v=v; else { r={m,d,v,src:"Eingabe"}; S.readings.push(r); }
-    $("rd-v").value=""; write("reading",r); rerender(); });
+    const t=readAtIso(d,$("rd-t").value);
+    let r=S.readings.find(r=>r.m===m&&r.d===d); if(r){ r.v=v; if(t) r.t=t; } else { r={m,d,v,src:"Eingabe",...(t?{t}:{})}; S.readings.push(r); }
+    $("rd-v").value=""; $("rd-t").value=nowHM(); write("reading",r); refreshCalc(); rerender(); });
   $("fu-add").addEventListener("click",()=>{ const x={d:$("fu-d").value,km:+$("fu-km").value,l:+$("fu-l").value,e:+$("fu-e").value,s:$("fu-s").value,full:$("fu-full").checked};
     if(!x.d||!x.km||!x.l||!x.e){ alert("Datum, Kilometerstand, Liter und Betrag angeben."); return; }
     S.fuel.push(x); ["fu-km","fu-l","fu-e"].forEach(i=>$(i).value=""); write("fuel",x); rerender(); });
@@ -1660,6 +1661,10 @@ function quickSub(kind) {
   if (kind === "payment") { const q = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d))[0]; return q ? `Zuletzt ${dde(q.d)} · ${KIND_LABEL[q.kind]} ${eur(q.amount, 2)}` : "Abschlag, Erstattung, Bonus"; }
   const l = [...S.carlog].sort((a, b) => b.d.localeCompare(a.d))[0]; return l ? `Zuletzt ${dde(l.d)} · ${esc(l.cat)}` : "Noch kein Eintrag";
 }
+// v0.46: Ablesezeit – „HH:MM“ jetzt, ISO-Zeitpunkt aus Datum + Uhrzeit (Ortszeit), Anzeige HH:MM
+const nowHM = () => { const d = new Date(); return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`; };
+const readAtIso = (d, hm) => (S.readAtOk && d && /^\d{2}:\d{2}$/.test(hm || "")) ? new Date(`${d}T${hm}:00`).toISOString() : null;
+const readHM = r => { if (!r.t) return ""; const x = new Date(r.t); return iso(new Date(x.getTime() - x.getTimezoneOffset() * 6e4)) === r.d ? `${String(x.getHours()).padStart(2, "0")}:${String(x.getMinutes()).padStart(2, "0")}` : ""; };
 function renderQuick() {
   if (!$("q-grid").children.length) {
     $("q-grid").innerHTML = Object.entries(Q_KINDS).map(([k, q]) => `<button type="button" class="qbtn" data-q="${k}"><span class="qt">${q.btn}</span><span class="qs" data-qs="${k}"></span></button>`).join("");
@@ -1676,7 +1681,7 @@ function openQuick(kind) {
   if (kind === "reading") {
     const m = lsGet("eb_q_meter", "wp");
     body = fld("Zähler", `<select id="q-m">${S.meters.map(x => `<option value="${x.id}" ${x.id === m ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>`, "wide")
-      + fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld(`Stand in <span id="q-unit">${meterUnit(m)}</span>`, num("q-v", meterUnit(m) === "m³" ? "z. B. 123,456" : "z. B. 12530", "decimal"));
+      + fld("Datum", `<input type="date" id="q-d" value="${today}">`) + (S.readAtOk ? fld("Uhrzeit", `<input type="time" id="q-t" value="${nowHM()}">`) : "") + fld(`Stand in <span id="q-unit">${meterUnit(m)}</span>`, num("q-v", meterUnit(m) === "m³" ? "z. B. 123,456" : "z. B. 12530", "decimal"));
   } else if (kind === "fuel") {
     const lastS = ([...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0] || {}).s || "Super E10";
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("Kilometerstand", num("q-km", "", "numeric"))
@@ -1738,8 +1743,9 @@ async function saveQuick(kind) {
     const r = lastReading(m, d);
     if (r && v < r.v && !confirm(`Der Stand ist kleiner als der vorherige (${nf(r.v)} ${meterUnit(m)} am ${dde(r.d)}). Zählertausch oder Tippfehler? Trotzdem speichern?`)) return;
     lsSet("eb_q_meter", m);
+    const t = readAtIso(d, $("q-t")?.value);
     obj = S.readings.find(x => x.m === m && x.d === d);
-    if (obj) obj.v = v; else { obj = { m, d, v, src: "Eingabe" }; S.readings.push(obj); }
+    if (obj) { obj.v = v; if (t) obj.t = t; } else { obj = { m, d, v, src: "Eingabe", ...(t ? { t } : {}) }; S.readings.push(obj); }
     label = `${esc(S.meters.find(x => x.id === m)?.name || m)}: ${nf(v, meterUnit(m) === "m³" ? 3 : 0)} ${meterUnit(m)}`;
   } else if (kind === "fuel") {
     const km = parseNum($("q-km").value), l = parseNum($("q-l").value), e = parseNum($("q-e").value);

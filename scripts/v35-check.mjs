@@ -76,7 +76,7 @@ check(/30 Waschgänge, 40 l je Waschgang/.test(w), '40 l je Waschgang');
 check(/160 l\/Tag, 53 l pro Person/.test(w), 'übriger Verbrauch 160 l/Tag, 53 l pro Person');
 check(await p.$eval('#wt-kpis', e => e.className.includes('g3')), 'Raster 3 Spalten');
 check(/nur für die Tage mit Gerätewerten/.test(await p.$eval('#wt-note', e => e.innerText)), 'Hinweis zur Verteilung');
-await p.setViewportSize({ width: 390, height: 800 }); await p.waitForTimeout(200);
+await p.setViewportSize({ width: 390, height: 800 }); await p.waitForTimeout(1000);
 check(await p.evaluate(() => document.documentElement.scrollWidth <= 390), 'Handy: kein waagrechtes Scrollen');
 check(p.errs.length === 0, 'keine Seitenfehler ' + p.errs.join('; '));
 await ctx.close(); await b.close();

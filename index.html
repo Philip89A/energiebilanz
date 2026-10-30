@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.45.0">
-<link rel="stylesheet" href="css/style.css?v=0.45.0">
+<meta name="app-version" content="0.46.0">
+<link rel="stylesheet" href="css/style.css?v=0.46.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -220,6 +220,7 @@
     <div class="form edit-only" style="margin-top:10px">
       <label class="f">Zähler<select id="rd-m"></select></label>
       <label class="f">Datum<input type="date" id="rd-d"></label>
+      <label class="f">Uhrzeit<input type="time" id="rd-t"></label>
       <label class="f">Stand (kWh, Wasser in m³)<input type="number" step="any" id="rd-v"></label>
       <button id="rd-add">Stand speichern</button>
     </div>
@@ -521,8 +522,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.45.0"></script>
-<script src="vendor/chart.umd.js?v=0.45.0"></script>
-<script type="module" src="js/app.js?v=0.45.0"></script>
+<script src="vendor/supabase.js?v=0.46.0"></script>
+<script src="vendor/chart.umd.js?v=0.46.0"></script>
+<script type="module" src="js/app.js?v=0.46.0"></script>
 </body>
 </html>

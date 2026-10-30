@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.45.0';
+import { hpSum } from './hp.js?v=0.46.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -54,7 +54,9 @@ export function stateFromDb(db) {
   return {
     anker: { dates: rows.map(r => r.day), c },
     meters: (db.meters || []).map(m => ({ id: m.id, name: m.name, group: m.grp, order: +m.sort || 0 })),
-    readings: (db.meter_readings || []).map(r => ({ m: r.meter_id, d: r.day, v: +r.value, src: r.source })),
+    readings: (db.meter_readings || []).map(r => ({ m: r.meter_id, d: r.day, v: +r.value, src: r.source, t: r.read_at || null })),
+    // v0.46: Spalte read_at vorhanden? (ohne SQL-Update V46 fehlt sie in den Zeilen)
+    readAtOk: !(db.meter_readings || []).length || 'read_at' in db.meter_readings[0],
     events: (db.events || []).map(e => ({ id: e.id, d: e.day, group: e.grp, type: e.type, text: e.note })),
     tariffs: (db.tariffs || []).map(t => ({ id: t.id, group: t.grp, name: t.name, from: t.valid_from, to: t.valid_to || '',
       ap: +t.ap_ct, gp: +t.gp_eur_year, boni: +t.boni_eur || 0, boniNote: t.boni_note || '', est: t.estimate_note || '',
@@ -96,7 +98,7 @@ export function stateFromDb(db) {
 
 // Referenzform -> Supabase-Zeile (Umkehrung von stateFromDb), je Datensatzart. user_id setzt db.js.
 export const toDb = {
-  reading: r => ({ meter_id: r.m, day: r.d, value: +r.v, source: r.src || null }),
+  reading: r => ({ meter_id: r.m, day: r.d, value: +r.v, source: r.src || null, ...(r.t ? { read_at: r.t } : {}) }),
   meter: m => ({ id: m.id, name: m.name, grp: m.group, sort: +m.order || 0 }),
   tariff: t => ({ id: t.id, grp: t.group, name: t.name, valid_from: t.from, valid_to: t.to || null, ap_ct: +t.ap,
     gp_eur_year: +t.gp, boni_eur: +t.boni || 0, boni_note: t.boniNote || null, estimate_note: t.est || null,
@@ -166,6 +168,13 @@ export function createCalc(S) {
     const rest = m - known.reduce((a, x) => a + _hpDay[x], 0), n = dim - known.length;
     return n > 0 ? Math.max(0, rest) / n : null;
   }
+  // v0.46: Ablesezeit als Anteil des Tages (Ortszeit Europe/Berlin); nur wenn die Uhrzeit zum Ablesetag gehört, sonst 0 (= 00:00)
+  const _BER = new Intl.DateTimeFormat('de-DE', { timeZone: 'Europe/Berlin', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
+  function readFrac(r) {
+    if (!r.t) return 0; const ms = Date.parse(r.t); if (!isFinite(ms)) return 0;
+    const p = Object.fromEntries(_BER.formatToParts(new Date(ms)).map(x => [x.type, x.value]));
+    return `${p.year}-${p.month}-${p.day}` === r.d ? (+p.hour + +p.minute / 60) / 24 : 0;
+  }
   function groupSeries(group) {
     if (_gcache.has(group)) return _gcache.get(group);
     const meters = S.meters.filter(m => m.group === group).sort((a, b) => a.order - b.order);
@@ -174,26 +183,29 @@ export function createCalc(S) {
       const rs = S.readings.filter(r => r.m === m.id).sort((a, b) => a.d.localeCompare(b.d));
       if (!rs.length) return;
       if (k > 0 && prevEnd != null) offset = prevEnd - rs[0].v;
-      rs.forEach(r => pts.push({ d: r.d, cum: r.v + offset, m: m.id }));
+      rs.forEach(r => pts.push({ d: r.d, f: readFrac(r), cum: r.v + offset, m: m.id }));
       prevEnd = rs[rs.length - 1].v + offset;
     });
     pts.sort((a, b) => a.d.localeCompare(b.d));
     const ded = []; pts.forEach(p => { if (ded.length && ded[ded.length - 1].d === p.d) ded[ded.length - 1] = p; else ded.push(p); });
     const intervals = [], daily = {};
     for (let i = 0; i < ded.length - 1; i++) {
-      const a = ded[i], b = ded[i + 1], n = diffDays(a.d, b.d); if (n <= 0) continue;
-      const kw = b.cum - a.cum, rate = kw / n; intervals.push({ from: a.d, to: b.d, days: n, kwh: kw, rate });
-      const days = [...Array(n).keys()].map(j => addDays(a.d, j));
+      // v0.46: stundengenau – Intervall von a.d + Ablesezeit bis b.d + Ablesezeit; jeder Tag zählt mit seinem Anteil (ov)
+      const a = ded[i], b = ded[i + 1], n0 = diffDays(a.d, b.d), x0 = a.f || 0, x1 = n0 + (b.f || 0), n = x1 - x0; if (n <= 0) continue;
+      const kw = b.cum - a.cum, rate = kw / n; intervals.push({ from: a.d, to: b.d, days: n, kwh: kw, rate, fa: x0, fb: b.f || 0 });
+      const days = [], ov = {};
+      for (let j = 0; j < Math.ceil(x1); j++) { const lo = Math.max(j, x0), hi = Math.min(j + 1, x1); if (hi - lo > 1e-9) { const d = addDays(a.d, j); days.push(d); ov[d] = hi - lo; } }
+      const put = (d, v) => { daily[d] = (daily[d] || 0) + v; };
       let shaped = false;
       if (group === 'as') {
         // Allgemeinstrom: Verteilung nach dem Anker-Netzbezug (ab Smart Meter), Rest gleichmäßig auf Tage ohne Messung
         const is = IMPORT_START(), meas = days.filter(d => d >= is && A.idx[d] !== undefined), pre = days.filter(d => !(d >= is && A.idx[d] !== undefined));
         if (meas.length) {
-          const sImp = meas.reduce((s, d) => s + A.c.imp[A.idx[d]], 0), rem = kw - sImp;
+          const sImp = meas.reduce((s, d) => s + A.c.imp[A.idx[d]] * ov[d], 0), rem = kw - sImp, sPre = pre.reduce((s, d) => s + ov[d], 0);
           if (sImp > 0 && (rem >= 0 || !pre.length) && (pre.length || Math.abs(rem) / kw < 0.5)) {
             const f = pre.length ? 1 : kw / sImp;
-            meas.forEach(d => daily[d] = A.c.imp[A.idx[d]] * f);
-            pre.forEach(d => daily[d] = rem / pre.length);
+            meas.forEach(d => put(d, A.c.imp[A.idx[d]] * ov[d] * f));
+            pre.forEach(d => put(d, rem * ov[d] / sPre));
             shaped = true; intervals[intervals.length - 1].shaped = true;
           }
         }
@@ -201,14 +213,14 @@ export function createCalc(S) {
       if (!shaped && group === 'wp') {
         // Wärmepumpe (v0.12): Verteilung nach dem Geräteprofil aus der Wärmepumpen-App – Tageswert, sonst
         // Monatswert ÷ Tage des Monats. Nur wenn jeder Tag des Intervalls einen Wert hat und die Summe > 0 ist.
-        const w = days.map(hpWeight);
+        const w = days.map(d => { const x = hpWeight(d); return x == null ? null : x * ov[d]; });
         const sw = w.reduce((a, x) => a + (x ?? 0), 0);
         if (w.every(x => x != null) && sw > 0) {
-          days.forEach((d, j) => daily[d] = kw * w[j] / sw);
+          days.forEach((d, j) => put(d, kw * w[j] / sw));
           shaped = true; intervals[intervals.length - 1].shaped = 'hp';
         }
       }
-      if (!shaped) days.forEach(d => daily[d] = rate);
+      if (!shaped) days.forEach(d => put(d, rate * ov[d]));
     }
     const res = { pts: ded, intervals, daily, first: ded[0]?.d, last: ded[ded.length - 1]?.d };
     _gcache.set(group, res); return res;
