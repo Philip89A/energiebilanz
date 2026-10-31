@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.46.0';
-import { parseNum } from './queue.js?v=0.46.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.46.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.46.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.46.0';
-import { explainAll } from './explain.js?v=0.46.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.46.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.47.0';
+import { parseNum } from './queue.js?v=0.47.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.47.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.47.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.47.0';
+import { explainAll } from './explain.js?v=0.47.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.47.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -706,6 +706,16 @@ function renderOvCo2(){
   const {P}=currentPeriods(), R=C.co2Range(P.from,P.to), T=R.T;
   $("ov-co2").innerHTML = T.days ? `CO₂ im Zeitraum: <b>${t_(T.actual)}</b> (Strommix), ${t_(T.saved)} weniger als ein Haushalt ohne PV, Wärmepumpe und E-Auto. <a href="#co2">Zur CO₂-Bilanz</a>` : "";
 }
+// v0.47: was der Speicher fürs Klima bringt – Abend-/Nachtstunden gegen Mittagsstunden
+function co2BattNote(T){
+  if(!(T.pvSelf>0)) return "";
+  const g=(kg,kwh)=>kwh>0?nf(kg/kwh*1000):"–", sh=T.pvSelf>0?T.pvBatt/T.pvSelf:0, extra=T.pvBattKg-T.pvBattDayKg;
+  const hourly=T.netDays>0;
+  return `<div class="rel-x" id="co-batt"><h3>Was bringt der Speicher?</h3>
+    <div class="rel-row"><b>Ergebnis</b><span>${nf(T.pvBatt)} kWh Solarstrom kamen aus dem Speicher – ${pct(sh)} des selbst genutzten Solarstroms. Sie ersetzen Netzstrom von im Mittel <b>${g(T.pvBattKg,T.pvBatt)} g/kWh</b> und vermeiden <b>${t_(T.pvBattKg)}</b> CO₂. Direkt genutzter Solarstrom ersetzt ${g(T.pvDirectKg,T.pvDirect)} g/kWh (${t_(T.pvDirectKg)}).</span></div>
+    <div class="rel-row"><b>Was es ausmacht</b><span>${hourly?`Weil der Speicher abends und nachts liefert, wenn das Netz schmutziger ist, zählt seine Kilowattstunde ${extra>=0?"mehr":"weniger"} als im Tagesmittel: ${extra>=0?"+":"−"}${t_(Math.abs(extra))} gegenüber einer Rechnung mit dem Tagesmittel.`:"Für den Zeitraum fehlen Netzwerte je Stunde; Speicher und Direktverbrauch werden deshalb mit demselben Tagesfaktor bewertet."}</span></div>
+    <details><summary>Wie wird gerechnet?</summary><p class="note">Aus dem Speicher = „Speicher zu Haus“ laut Anker (höchstens der selbst genutzte Solarstrom), der Rest gilt als direkt genutzt. Verluste des Speichers sind enthalten, weil nur die entladene Menge zählt. Anker liefert nur Tageswerte: Direktverbrauch wird nach einer Sonnenkurve (6–20 Uhr, Schwerpunkt mittags) gewichtet, der Speicher gleichmäßig über 17–7 Uhr. Eingespeister Strom zählt mit den Mittagsstunden. Ohne Netzwerte je Stunde gilt der Tagesfaktor.</p></details></div>`;
+}
 function renderCo2(){
   const RS=periodSel(); let P=RS.P; if(RS.all) P={from:A.dates[0],to:A.dates[A.n-1]};
   const R=C.co2Range(P.from,P.to), T=R.T, cfg=R.cfg, Cp=RS.Cp?C.co2Range(RS.Cp.from,RS.Cp.to).T:null, L=RS.Cp?RS.Cp.label:"";
@@ -721,7 +731,7 @@ function renderCo2(){
     +kpi(t_(T.saved),"Weniger als ohne Technik",`statt ${t_(T.cf)}: ${pct(T.cf>0?T.saved/T.cf:0)} weniger`+vs(T.saved,Cp&&Cp.saved))
     +kpi(t_(pp(T.actual)),"pro Person und Jahr",`${nf(cfg.persons)} Personen; ohne Technik ${t_(pp(T.cf))}; eingespeist zusätzlich ${t_(T.feedKg)} vermieden`);
   // Was heißt das?
-  const big=[["die Wärmepumpe statt einer Durchschnittsheizung",T.cfHeatKg-T.wpKg],["der selbst genutzte Solarstrom",T.pvSelfKg],["das E-Auto",T.cfCarKg-T.carKg]].sort((a,b)=>b[1]-a[1]);
+  const big=[["die Wärmepumpe statt einer Durchschnittsheizung",T.cfHeatKg-T.wpKg],["der direkt genutzte Solarstrom",T.pvDirectKg],["der Solarstrom aus dem Speicher",T.pvBattKg],["das E-Auto",T.cfCarKg-T.carKg]].sort((a,b)=>b[1]-a[1]);
   const share=k=>T.actual>0?k/T.actual:0, dom=[["die Wärmepumpe",T.wpKg],["der Allgemeinstrom",T.asKg],["das Auto",T.carKg]].sort((a,b)=>b[1]-a[1])[0];
   const row=(k,v)=>v?`<div class="rel-row"><b>${k}</b><span>${v}</span></div>`:"";
   $("co-x").innerHTML=`<div class="rel-x" style="margin-top:0"><h3>Was heißt das?</h3>
@@ -729,14 +739,15 @@ function renderCo2(){
     ${row("Was es ausmacht",`Ohne PV, mit einer Durchschnittsheizung und nur mit dem Benziner wären es ${t_(T.cf)} gewesen – ${t_(T.saved)} oder ${pct(T.cf>0?T.saved/T.cf:0)} weniger. Am meisten bringt ${big[0][0]} (${t_(big[0][1])}). Dazu ersetzt der eingespeiste Solarstrom ${t_(T.feedKg)} im Netz.`)}
     ${row("Wie sicher",`Die Größenordnung stimmt; die Einzelwerte hängen an Faktoren mit Spannbreite (Strommix je Jahr, Durchschnittsheizung, graue Emissionen). Bilanz laut Vertrag: ${t_(T.contract)}.`)}
     ${row("Was tun",T.carKg>T.wpKg?"Größter Posten ist das Auto – mit dem E-Auto ab Dezember sinkt er deutlich, vor allem bei Laden mit Solarstrom.":"Größter Posten ist die Wärmepumpe im Winter: Raumtemperatur und Warmwasser-Bereitschaft sind die wirksamsten Stellschrauben (siehe Hebel).")}
-    <details><summary>Wie wird gerechnet?</summary><p class="note">Ausstoß = Netzbezug laut Zähler × Strommix des Jahres (Allgemeinstrom und Wärmepumpe) + getankte Liter × 2,37 kg. „Ohne Technik“ = Haushaltsstrom komplett aus dem Netz (Netzbezug + selbst genutzter Solarstrom), die von der Wärmepumpe erzeugte Wärme mit der Durchschnittsheizung (${nf(cfg.heatRef)} g/kWh Wärme), Fahrten des E-Autos mit dem Leon (${nf(R.l100,1)} l/100 km). Eingespeister Strom ersetzt Netzstrom anderer und wird als zusätzliche Gutschrift gezeigt, nicht verrechnet.</p></details></div>`;
+    <details><summary>Wie wird gerechnet?</summary><p class="note">Ausstoß = Netzbezug laut Zähler × Strommix des Jahres (Allgemeinstrom und Wärmepumpe) + getankte Liter × 2,37 kg. „Ohne Technik“ = Haushaltsstrom komplett aus dem Netz (Netzbezug + selbst genutzter Solarstrom; direkt genutzter mit den Netzwerten der Mittagsstunden, Strom aus dem Speicher mit denen von Abend und Nacht), die von der Wärmepumpe erzeugte Wärme mit der Durchschnittsheizung (${nf(cfg.heatRef)} g/kWh Wärme), Fahrten des E-Autos mit dem Leon (${nf(R.l100,1)} l/100 km). Eingespeister Strom ersetzt Netzstrom anderer und wird als zusätzliche Gutschrift gezeigt, nicht verrechnet.</p></details></div>`;
   // Monatsgrafik
   const ms=R.months;
   chart("co-chart",{type:"bar",data:{labels:ms.map(m=>monthLabel(m.k)),datasets:[
     {label:"Wärmepumpe",data:ms.map(m=>m.wpKg),backgroundColor:css("--heat"),stack:"a"},
     {label:"Allgemeinstrom",data:ms.map(m=>m.asKg),backgroundColor:css("--grid"),stack:"a"},
     {label:"Auto (Benzin)",data:ms.map(m=>m.carKg),backgroundColor:css("--warn"),stack:"a"},
-    {label:"Solarstrom selbst genutzt",data:ms.map(m=>-m.pvSelfKg),backgroundColor:css("--sun"),stack:"a"},
+    {label:"Solarstrom direkt genutzt",data:ms.map(m=>-m.pvDirectKg),backgroundColor:css("--sun"),stack:"a"},
+    {label:"Solarstrom aus dem Speicher",data:ms.map(m=>-m.pvBattKg),backgroundColor:css("--batt"),stack:"a"},
     {label:"Eingespeist",data:ms.map(m=>-m.feedKg),backgroundColor:css("--feed"),stack:"a"},
     {type:"line",label:"ohne Technik",data:ms.map(m=>m.cf),borderColor:css("--ink"),borderDash:[5,4],pointRadius:2,borderWidth:1.5}]},
     options:{plugins:{ebTotals:false,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${t_(Math.abs(c.parsed.y))}`}}},scales:{x:{stacked:true},y:{stacked:true,title:{display:true,text:"kg CO₂"}}}}});
@@ -744,10 +755,10 @@ function renderCo2(){
   const r=(l,a,b,n)=>`<tr><td class="l">${l}</td><td>${t_(a)}</td><td>${t_(b)}</td><td style="font-weight:600;color:${b-a>=0?"var(--ok)":"var(--warn)"}">${b-a>=0?"−":"+"}${t_(Math.abs(b-a))}</td><td class="l note">${n}</td></tr>`;
   $("co-cmp").innerHTML=`<thead><tr><th class="l">Bereich</th><th>heute</th><th>ohne Technik</th><th>Unterschied</th><th class="l">Annahme</th></tr></thead><tbody>
     ${r("Heizen und Warmwasser",T.wpKg,T.cfHeatKg,`${nf(T.heat)} kWh Wärme, Wärmepumpe gegen Durchschnittsheizung (≈ ¾ Gas/Öl)`)}
-    ${r("Haushaltsstrom",T.asKg,T.cfElecKg,`${nf(T.pvSelf)} kWh selbst genutzter Solarstrom ersetzen Netzstrom`)}
+    ${r("Haushaltsstrom",T.asKg,T.cfElecKg,`${nf(T.pvSelf)} kWh selbst genutzter Solarstrom ersetzen Netzstrom (${nf(T.pvDirect)} kWh direkt, ${nf(T.pvBatt)} kWh aus dem Speicher)`)}
     ${r("Auto",T.carKg,T.cfCarKg,T.evKm>0?`${nf(T.evKm)} km elektrisch statt Benzin`:`${nf(T.fuelL)} l Benzin getankt; E-Auto ab ${S.cars?.ev?.start?dde(S.cars.ev.start):"Dezember"}`)}
     ${r("<b>Summe</b>",T.actual,T.cf,"")}</tbody>`;
-  $("co-cmp-note").innerHTML=`<p class="note">Zusätzlich ersetzt eingespeister Solarstrom ${t_(T.feedKg)} CO₂ im Netz (${nf(T.feed)} kWh). Laden des E-Autos zu Hause steckt im Allgemeinstrom.</p>`;
+  $("co-cmp-note").innerHTML=`<p class="note">Zusätzlich ersetzt eingespeister Solarstrom ${t_(T.feedKg)} CO₂ im Netz (${nf(T.feed)} kWh). Laden des E-Autos zu Hause steckt im Allgemeinstrom.</p>`+co2BattNote(T);
   // v0.44: CO₂ je Gerät
   const DVs=C.co2Devices(P.from,P.to);
   $("co-dev-panel").hidden=!DVs.length;

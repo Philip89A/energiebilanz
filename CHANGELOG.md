@@ -634,3 +634,17 @@
 - Ohne SQL-Update bleibt die Uhrzeit ausgeblendet und wird nicht gesendet.
 - Tests: 149 Unit-Tests (neu `tests/v46.test.mjs`), neu `scripts/v46-check.mjs` (10 Prüfungen); offline-, v13-, v16-, v25-,
   v35-Check grün (v35: Wartezeit nach dem Wechsel auf Handy-Breite verlängert).
+
+## v0.47 – CO₂: Speicher getrennt
+- **CO₂-Seite, neuer Block „Was bringt der Speicher?“:** selbst genutzter Solarstrom getrennt in „direkt genutzt“ und
+  „aus dem Speicher“ (Anker „Speicher zu Haus“, höchstens der selbst genutzte Solarstrom), je mit kWh, kg CO₂ und g/kWh,
+  dazu der Mehrwert gegenüber einer Rechnung mit dem Tagesmittel.
+- **Bewertung nach Stunden:** Strom aus dem Speicher mit den Netzwerten von 17–7 Uhr, Direktverbrauch und Einspeisung nach
+  einer Sonnenkurve 6–20 Uhr (Schwerpunkt mittags). Grund: Der Speicher liefert abends und nachts, wenn das Netz
+  schmutziger ist – mit dem Tagesmittel war seine Wirkung unterschätzt. Ohne Netzwerte je Stunde gilt wie bisher der
+  Tagesfaktor. Anker liefert nur Tageswerte, die Stundenfenster sind deshalb eine Annahme.
+- Monatsgrafik mit zwei Solar-Balken (direkt / Speicher), Vergleichstabelle nennt beide Mengen; „ohne Technik“ rechnet
+  mit denselben Faktoren (Netzbezug + Solarstrom).
+- Kein Datenbank-Update nötig.
+- Tests: 152 Unit-Tests (neu `tests/v47.test.mjs`), neu `scripts/v47-check.mjs` (10 Prüfungen, eigenständig mit
+  synthetischen Daten).

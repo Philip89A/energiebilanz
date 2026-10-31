@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.46.0">
-<link rel="stylesheet" href="css/style.css?v=0.46.0">
+<meta name="app-version" content="0.47.0">
+<link rel="stylesheet" href="css/style.css?v=0.47.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -269,7 +269,7 @@
   <p class="lead">Wie viel CO₂ verursacht der Haushalt (Strom, Heizung, Auto), wie viel sparen PV, Wärmepumpe und künftig das E-Auto gegenüber einem Haushalt ohne diese Technik – und wo liegen die nächsten Hebel? Hauptwert ist der <b>Strommix</b> (physikalisch, Umweltbundesamt), daneben die Bilanz <b>laut Vertrag</b> (Ökostrom).</p>
   <div id="co-flags"></div><div class="grid g4" id="co-kpis"></div>
   <div class="panel" style="margin-top:16px" id="co-x"></div>
-  <div class="panel" style="margin-top:16px"><h2>Verlauf je Monat</h2><p class="note">Balken nach oben: Ausstoß (Strommix). Nach unten: durch eigenen Solarstrom vermieden und eingespeist. Linie: Vergleich „ohne Technik“.</p><div class="chart"><canvas id="co-chart"></canvas></div></div>
+  <div class="panel" style="margin-top:16px"><h2>Verlauf je Monat</h2><p class="note">Balken nach oben: Ausstoß (Strommix). Nach unten: durch eigenen Solarstrom vermieden (direkt und aus dem Speicher) und eingespeist. Linie: Vergleich „ohne Technik“.</p><div class="chart"><canvas id="co-chart"></canvas></div></div>
   <div class="panel" style="margin-top:16px"><h2>Vergleich mit einem Haushalt ohne PV, Wärmepumpe und E-Auto</h2><div class="tbl-wrap"><table id="co-cmp"></table></div><div id="co-cmp-note"></div></div>
   <div class="panel" style="margin-top:16px" id="co-dev-panel"><h2>CO₂ je Gerät</h2>
     <p class="note">Geräte mit Messsteckdose oder Monatswerten. Gezählt wird nur der Teil, der an dem Tag aus dem Netz kam: Netzanteil des Tages = Netzbezug Allgemeinstrom ÷ Hausverbrauch (Netzbezug + selbst genutzter Solarstrom). Netzstrom × Netzwert des Tages (sonst Strommix des Jahres). Kosten: Netzstrom × Arbeitspreis, Solarstrom × Einspeisevergütung (die ohne das Gerät eingespeist worden wäre).</p>
@@ -522,8 +522,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.46.0"></script>
-<script src="vendor/chart.umd.js?v=0.46.0"></script>
-<script type="module" src="js/app.js?v=0.46.0"></script>
+<script src="vendor/supabase.js?v=0.47.0"></script>
+<script src="vendor/chart.umd.js?v=0.47.0"></script>
+<script type="module" src="js/app.js?v=0.47.0"></script>
 </body>
 </html>
