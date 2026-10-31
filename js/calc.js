@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.46.0';
+import { hpSum } from './hp.js?v=0.47.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -591,25 +591,33 @@ export function createCalc(S) {
     return { days, nd, mean: nd ? sum / nd : null, hours, best: ok.slice(0, 3).map(x => x[0]).sort((a, b) => a - b), worst: ok.slice(-3).map(x => x[0]).sort((a, b) => a - b), lo, hi,
       spread: ok.length ? ok[ok.length - 1][1] - ok[0][1] : null };
   }
+  // v0.47: Solarstrom direkt (Mittag) und aus dem Speicher (Abend/Nacht) mit den Netzwerten ihrer Stunden bewerten.
+  // Ohne stündliche Anker-Werte: Direktverbrauch nach einer Sonnenkurve 6–20 Uhr, Speicher gleichmäßig 17–7 Uhr.
+  const PV_HOURS = Array.from({ length: 24 }, (_, h) => (h >= 6 && h < 20 ? Math.sin(Math.PI * (h + 0.5 - 6) / 14) : 0));
+  const BATT_HOURS = Array.from({ length: 24 }, (_, h) => (h >= 17 || h < 7 ? 1 : 0));
+  const hourFactor = (hours, wts, fb) => { let s = 0, w = 0; if (hours) for (let h = 0; h < 24; h++) { const g = hours[h]; if (g != null && wts[h] > 0) { s += wts[h] * g; w += wts[h]; } } return w > 0 ? s / w / 1000 : fb; };
   function co2Range(from, to) {
     const cfg = co2Cfg(), as = groupSeries('as').daily, wp = groupSeries('wp').daily;
     const hd = Object.fromEntries(hpDays(from, to).map(r => [r.d, r]));
     const hpAll = hpDays('0000-01-01', '9999-12-31'), copAvg = (() => { const s = hpAll.reduce((a, r) => { a.h += r.heat || 0; a.e += (r.el || 0) - (r.elCool || 0); return a; }, { h: 0, e: 0 }); return s.e > 20 ? s.h / s.e : cfg.copFallback; })();
     const ev = S.cars?.ev || {}, ice = S.cars?.ice || {}, fs = fuelStats(), l100 = (ice.useLog && fs.l100) ? fs.l100 : (+ice.l100 || fs.l100 || 6.5);
     const evKmDay = +ev.km ? +ev.km / 365 : 0, fuelBy = {}; for (const f of S.fuel || []) fuelBy[f.d] = (fuelBy[f.d] || 0) + (+f.l || 0);
-    const months = {}, T = { netDays: 0, asY: 0, wpY: 0, asKg: 0, wpKg: 0, carKg: 0, asC: 0, wpC: 0, pvSelfKg: 0, feedKg: 0, cfElecKg: 0, cfHeatKg: 0, cfCarKg: 0, heat: 0, heatEst: 0, asKwh: 0, wpKwh: 0, pvSelf: 0, feed: 0, fuelL: 0, evKm: 0, days: 0 };
+    const months = {}, T = { netDays: 0, asY: 0, wpY: 0, asKg: 0, wpKg: 0, carKg: 0, asC: 0, wpC: 0, pvSelfKg: 0, feedKg: 0, pvDirect: 0, pvBatt: 0, pvDirectKg: 0, pvBattKg: 0, pvDirectDayKg: 0, pvBattDayKg: 0, cfElecKg: 0, cfHeatKg: 0, cfCarKg: 0, heat: 0, heatEst: 0, asKwh: 0, wpKwh: 0, pvSelf: 0, feed: 0, fuelL: 0, evKm: 0, days: 0 };
     const add = (o, k, v) => { o[k] = (o[k] || 0) + v; };
     const G = cfg.hourly === false ? {} : (S.gridCo2 || {}), hh = hpHourByDay();
     for (let d = from; d <= to; d = addDays(d, 1)) {
       const fy = mixAt(d, cfg) / 1000, gd = G[d], f = gd ? gd.g / 1000 : fy, m = months[d.slice(0, 7)] = months[d.slice(0, 7)] || { k: d.slice(0, 7) }, i = A.idx[d];
       const a = as[d], w = wp[d], self = i !== undefined ? +A.c.use[i] || 0 : 0, fd = i !== undefined ? +A.c.feed[i] || 0 : 0;
+      const b2h = i !== undefined ? +(A.c.b2h?.[i] ?? A.c.bdis?.[i]) || 0 : 0, batt = Math.min(self, Math.max(0, b2h)), direct = self - batt;
+      const fSun = gd ? hourFactor(gd.hours, PV_HOURS, f) : f, fBatt = gd ? hourFactor(gd.hours, BATT_HOURS, f) : f;
       const any = a != null || w != null || i !== undefined; if (!any && !fuelBy[d]) continue; T.days++;
       const h = hd[d] ? hd[d].heat : (w != null ? w * copAvg : 0); if (!hd[d] && w != null) T.heatEst += h;
       const fuelL = fuelBy[d] || 0, evKm = ev.start && d >= ev.start ? evKmDay : 0;
       // Wärmepumpe: Stundenwerte des Netzes mit den Stunden-kWh der Wärmepumpe gewichten (Heizen nachts/morgens zählt mit dem Nachtwert)
       let fw = f; if (gd && gd.hours && hh[d]) { let e = 0, g = 0; for (const [h, k] of hh[d]) { const gv = gd.hours[h]; if (gv != null && k > 0) { e += k; g += k * gv; } } if (e > 0.5) fw = g / e / 1000; }
       const parts = { netDays: gd ? 1 : 0, asY: (a || 0) * fy, wpY: (w || 0) * fy, asKg: (a || 0) * f, wpKg: (w || 0) * fw, carKg: fuelL * cfg.petrol / 1000, asC: (a || 0) * (+cfg.contract.as || 0) / 1000, wpC: (w || 0) * (+cfg.contract.wp || 0) / 1000,
-        pvSelfKg: self * f, feedKg: fd * f, cfElecKg: ((a || 0) + self) * f, cfHeatKg: h * cfg.heatRef / 1000, cfCarKg: fuelL * cfg.petrol / 1000 + evKm * l100 / 100 * cfg.petrol / 1000,
+        pvSelfKg: direct * fSun + batt * fBatt, feedKg: fd * fSun, cfElecKg: (a || 0) * f + direct * fSun + batt * fBatt,
+        pvDirect: direct, pvBatt: batt, pvDirectKg: direct * fSun, pvBattKg: batt * fBatt, pvDirectDayKg: direct * f, pvBattDayKg: batt * f, cfHeatKg: h * cfg.heatRef / 1000, cfCarKg: fuelL * cfg.petrol / 1000 + evKm * l100 / 100 * cfg.petrol / 1000,
         heat: h, asKwh: a || 0, wpKwh: w || 0, pvSelf: self, feed: fd, fuelL, evKm };
       for (const [k, v] of Object.entries(parts)) { add(m, k, v); add(T, k, v); }
     }
