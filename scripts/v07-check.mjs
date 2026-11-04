@@ -41,7 +41,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -80,7 +80,7 @@ await p.locator('#pay-tbl button[data-del-pay]').first().click(); await p.waitFo
 ok(DB.payments.length === nSug, 'Zahlung gelöscht');
 
 // 4 Tarifrechner
-await p.goto('http://localhost:8000/#tarif'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#tarif'); await p.waitForTimeout(400);
 ok((await txt(p, '#tr-base')).includes('kWh') && (await txt(p, '#tr-offers')).includes('aktuell'), 'Tarifrechner: Basis und aktuelle Tarife');
 await p.click('#tr-add'); await p.waitForTimeout(200);
 const ap = p.locator('#tr-offers input[data-k="ap"]').first(); await ap.fill('25'); await ap.dispatchEvent('change'); await p.waitForTimeout(200);
@@ -90,20 +90,20 @@ ok(DB.settings[0].data.tarif?.m1Eur === 120 && DB.settings[0].data.tarif.offers.
 ok((await txt(p, '#tr-wallbox')).includes('günstigste'), 'Wallbox-Varianten mit günstigster');
 
 // 5 Überblick: Zähler-Linie und volle Breite; Kosten & Ersparnisse: Break-even und Gesamtbilanz
-await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#overview'); await p.waitForTimeout(400);
 const mg = await p.evaluate(() => { const c = window.__ebCharts['ov-month']; const d = c.data.datasets.find(x => x.label === 'Netzbezug laut Zähler'); return d ? d.data.filter(v => v != null).length : -1; });
 ok(mg > 12, `Zähler-Linie mit ${mg} Monatswerten (auch vor dem Smart Meter)`);
 ok(await p.evaluate(() => document.getElementById('ov-month-panel').style.gridColumn === '1 / -1'), 'Grafik volle Breite ohne Vergleich');
 const beOv = ((await txt(p, '#ov-kpis')).match(/([A-ZÄÖÜ][a-zäöü]{2} \d{2}) ?Break-even/) || [])[1];
-await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#amort'); await p.waitForTimeout(400);
 const beAm = ((await txt(p, '#am-kpis')).match(/([A-ZÄÖÜ][a-zäöü]{2} \d{2}) ?Break-even/) || [])[1];
-await p.goto('http://localhost:8000/#fin'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#fin'); await p.waitForTimeout(400);
 const beFin = ((await txt(p, '#fin-inv')).match(/([A-ZÄÖÜ][a-zäöü]{2} \d{2}) ?Break-even/) || [])[1];
 ok(beOv && beOv === beAm && beFin === beAm, `Break-even überall gleich (${beOv} / ${beFin} / ${beAm})`);
 ok((await txt(p, '#bal-tbl')).includes('Gesamt'), 'Kosten & Ersparnisse: Gesamtbilanz');
 
 // 6 Zahlung unter „Erfassen“ mit Betrag aus dem Abschlagsplan
-await p.goto('http://localhost:8000/#quick'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#quick'); await p.waitForTimeout(300);
 await p.click('[data-q=payment]'); await p.selectOption('#q-pg', 'wp'); await p.waitForTimeout(100);
 const wpPlan = DB.installments.filter(x => x.grp === 'wp').sort((a, b) => b.valid_from.localeCompare(a.valid_from))[0].amount;
 const before = DB.payments.length; await p.click('#q-save'); await p.waitForTimeout(300);

@@ -53,7 +53,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -81,12 +81,12 @@ ok(await p.isHidden('#ab-add'), 'Gast: Bearbeiten-Knöpfe ausgeblendet');
 ok(await enabled(p, '#pay-add') === false, 'Gast: „Zahlung speichern“ gesperrt');
 ok(await enabled(p, '#pb-mode') === true, 'Gast: Zeitraum wählbar');
 await p.selectOption('#pb-mode', 'r12'); await p.waitForTimeout(300);
-for (const page of ['overview', 'pv', 'meter', 'hp', 'tarif', 'ausbau', 'amort', 'car', 'log', 'data', 'quick']) { await p.goto('http://localhost:8000/#' + page); await p.waitForTimeout(250); }
+for (const page of ['overview', 'pv', 'meter', 'hp', 'tarif', 'ausbau', 'amort', 'car', 'log', 'data', 'quick']) { await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForTimeout(250); }
 ok(await enabled(p, '#q-grid button') === false, 'Gast: Erfassen gesperrt');
-await p.goto('http://localhost:8000/#data'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#data'); await p.waitForTimeout(300);
 ok(await enabled(p, '#hp-file') === false && await enabled(p, '#csv-file') === false, 'Gast: Importe gesperrt');
 ok(await enabled(p, '#wx-sync') === false, 'Gast: Wetter aktualisieren gesperrt');
-await p.goto('http://localhost:8000/#ausbau'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#ausbau'); await p.waitForTimeout(300);
 ok(await enabled(p, '[data-wb="pvAddWp"]') === false, 'Gast: Ausbau-Parameter gesperrt');
 await p.waitForTimeout(1200);
 ok(posts.length === 0, `Gast: keine Schreibanfragen an Supabase (${posts.join(',') || 'keine'})`);

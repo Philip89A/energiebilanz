@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.47.0">
-<link rel="stylesheet" href="css/style.css?v=0.47.0">
+<meta name="app-version" content="0.48.0">
+<link rel="stylesheet" href="css/style.css?v=0.48.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -54,13 +54,13 @@
 </section>
 
 <div id="app-shell" hidden>
-<div class="mobile-nav" id="mnav"></div>
+<header class="topbar">
+  <div class="brand">Energiebilanz <span class="brand-sub" id="brand-sub"></span></div>
+  <nav class="tnav" id="snav" aria-label="Bereiche"></nav>
+  <details class="mnav" id="mnav-d"><summary id="mnav-cur">☰ Menü</summary><nav id="mnav" aria-label="Bereiche"></nav></details>
+  <span class="save-state" id="save-state"></span>
+</header>
 <div class="app">
-<nav class="side" id="snav" aria-label="Bereiche">
-  <div class="brand">Energiebilanz</div>
-  <div class="brand-sub" id="brand-sub"></div>
-  <div class="save-state" id="save-state"></div>
-</nav>
 <main id="main">
 <p class="loading" id="loading">Lade Daten …</p>
 <p class="flag" id="offline-banner" hidden></p>
@@ -522,8 +522,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.47.0"></script>
-<script src="vendor/chart.umd.js?v=0.47.0"></script>
-<script type="module" src="js/app.js?v=0.47.0"></script>
+<script src="vendor/supabase.js?v=0.48.0"></script>
+<script src="vendor/chart.umd.js?v=0.48.0"></script>
+<script type="module" src="js/app.js?v=0.48.0"></script>
 </body>
 </html>

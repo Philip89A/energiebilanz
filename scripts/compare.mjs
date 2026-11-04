@@ -81,12 +81,12 @@ async function runApp(v, page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(session.user) }));
   const p = await ctx.newPage(); const errs = []; p.on('pageerror', e => errs.push(e.message)); p.on('console', x => { if (x.type() === 'error') errs.push(x.text()); });
-  await p.goto('http://localhost:8000/#' + page);
+  await p.goto('http://localhost:8000/?unfold#' + page);
   await p.waitForSelector('#loading[hidden]', { state: 'attached' });
   await p.waitForTimeout(150);
   const r = await grab(p);
   // v0.32: der Wärmepumpen-Teil der Referenzseite „Zähler“ steht in der App auf der eigenen Seite „Wärmepumpe“
-  if (page === 'meter') { await p.goto('http://localhost:8000/#hp'); await p.waitForTimeout(150); const h = await grab(p);
+  if (page === 'meter') { await p.goto('http://localhost:8000/?unfold#hp'); await p.waitForTimeout(150); const h = await grab(p);
     for (const [k, x] of Object.entries(h.t)) if (!(k in r.t)) r.t[k] = x;
     for (const [k, x] of Object.entries(h.c)) if (!(k in r.c)) r.c[k] = x; }
   await ctx.close(); return { ...r, errs };

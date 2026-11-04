@@ -38,7 +38,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const ok = (c, msg) => { if (!c) failures++; console.log((c ? 'OK   ' : 'FEHL ') + msg); };
@@ -53,7 +53,7 @@ await p.locator('#rd-tbl tr', { hasText: '30.09.2026' }).locator('button').click
 ok(!DB.meter_readings.some(r => r.day === '2026-09-30'), 'Zählerstand gelöscht');
 
 // 2 Tarif ändern -> Kosten ändern sich
-await p.goto('http://localhost:8000/#cost'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#cost'); await p.waitForTimeout(300);
 const before = await txt(p, '#ct-kpis');
 const inp = p.locator('#tf-tbl input[data-k="ap"]').first(); const tid = await inp.getAttribute('data-tf');
 await inp.fill('35'); await inp.dispatchEvent('change'); await p.waitForTimeout(300);
@@ -69,7 +69,7 @@ await p.click(`#ab-edit button[data-del-ab="${newAb.id}"]`); await p.waitForTime
 ok(DB.installments.length === nAb, 'Abschlag gelöscht');
 
 // 4 Tanken, Laden, Fahrzeugbuch
-await p.goto('http://localhost:8000/#log'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#log'); await p.waitForTimeout(300);
 for (const [km, l, e] of [[50000, 40, 70], [50600, 38, 68.4]]) { await p.fill('#fu-km', String(km)); await p.fill('#fu-l', String(l)); await p.fill('#fu-e', String(e)); await p.click('#fu-add'); await p.waitForTimeout(200); }
 ok(DB.fuel_log.length === 2 && DB.fuel_log[1].liters === 38 && DB.fuel_log[0].full_tank === true, 'Tankvorgänge gespeichert');
 ok((await txt(p, '#lg-kpis')).includes('6,33 l'), 'Verbrauch aus Volltank-Intervall (38 l / 600 km)');
@@ -81,7 +81,7 @@ await p.click('#fu-tbl button[data-del-fu]'); await p.waitForTimeout(200);
 ok(DB.fuel_log.length === 1, 'Tankvorgang gelöscht');
 
 // 5 Investition anlegen/ändern/löschen, Amortisations-Regler
-await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#amort'); await p.waitForTimeout(300);
 const nInv = DB.investments.length; await p.click('#am-add'); await p.waitForTimeout(200);
 const newInv = DB.investments[DB.investments.length - 1]; ok(DB.investments.length === nInv + 1 && newInv.name === 'Neue Position', 'Investition angelegt');
 const ci = p.locator('#am-inv input[data-k="cost"]').last(); await ci.fill('100'); await ci.dispatchEvent('change'); await p.waitForTimeout(200);
@@ -95,18 +95,18 @@ ok(DB.settings[0].data.amort.priceInc === 6, 'Regler Preissteigerung gespeichert
 ok(be1 !== await txt(p, '#am-kpis'), 'Break-even neu berechnet');
 
 // 6 Batterie-Parameter, Auto-Parameter, Ereignis
-await p.goto('http://localhost:8000/#batt'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#batt'); await p.waitForTimeout(300);
 const bi = p.locator('#bt-params input').nth(1); await bi.fill('20'); await bi.dispatchEvent('input'); await p.waitForTimeout(1200);
 ok(DB.settings[0].data.battery.reserve === 20, 'Batterie-Reserve gespeichert');
-await p.goto('http://localhost:8000/#car'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#car'); await p.waitForTimeout(300);
 const ce = p.locator('#car-ice input[type=number]').first(); await ce.fill('399'); await ce.dispatchEvent('input'); await p.waitForTimeout(1200);
 ok(DB.settings[0].data.cars.ice.rate === 399, 'Leasingrate gespeichert');
-await p.goto('http://localhost:8000/#data'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#data'); await p.waitForTimeout(300);
 const ev = p.locator('#ev-tbl input[type=text]').first(); await ev.fill('Test-Notiz'); await ev.dispatchEvent('change'); await p.waitForTimeout(300);
 ok(DB.events.some(e => e.note === 'Test-Notiz'), 'Ereignis gespeichert');
 
 // 7 Fehlerfall: Speichern scheitert -> Hinweis und Neuladen aus der Datenbank
-await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#meter'); await p.waitForTimeout(300);
 failNext = true; await p.fill('#rd-d', '2026-10-01'); await p.fill('#rd-v', '12600'); await p.click('#rd-add'); await p.waitForTimeout(800);
 ok((await txt(p, '#main')).includes('Speichern fehlgeschlagen') && !(await txt(p, '#rd-tbl')).includes('01.10.2026'), 'Fehler angezeigt, Stand aus DB neu geladen');
 ok(p.errs.length === 0, 'keine JS-Fehler: ' + p.errs.join(' | '));
@@ -115,7 +115,7 @@ await ctx.close();
 // 8 Neu öffnen: Änderungen sind dauerhaft
 ({ p, ctx } = await open('amort'));
 ok((await p.locator('#am-sl output').first().textContent()).includes('6'), 'nach Neuladen: Regler-Wert aus Supabase');
-await p.goto('http://localhost:8000/#log'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#log'); await p.waitForTimeout(300);
 ok((await txt(p, '#ch-tbl')).includes('42,5'), 'nach Neuladen: Ladevorgang da');
 await b.close();
 if (failures) { console.log(failures + ' Prüfungen fehlgeschlagen'); process.exit(1); }

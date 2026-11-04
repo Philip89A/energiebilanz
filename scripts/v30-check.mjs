@@ -53,7 +53,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -88,7 +88,7 @@ ok(st()[2]?.status === 'live' || (await p.inputValue('[data-st="2"][data-k="from
 await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-09'); await p.waitForTimeout(400);
 ok((await txt(p, '#pv-kpis')).includes('bei 1,80 kWp'), 'September: 1,8 kWp (Flex erst ab heute)');
 // Batterie-Seite: Kapazität je Stufe
-await p.goto('http://localhost:8000/#batt'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#batt'); await p.waitForTimeout(400);
 ok((await txt(p, '#bt-params')).includes('je Anlagenstufe'), 'Batterie-Seite verweist auf die Stufen');
 // v0.31.1: Kachel zeigt die Kapazität der Stufe am Zeitraumende, Ø nur als Hinweis
 ok((await txt(p, '#bt-kpis')).includes('12,6 kWh brutto') && !(await txt(p, '#bt-kpis')).includes('Ø im Zeitraum'), 'September: 12,6 kWh brutto ohne Ø-Hinweis');

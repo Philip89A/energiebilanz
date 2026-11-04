@@ -54,7 +54,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const XLSX = new Function(readFileSync(base + 'vendor/xlsx.core.min.js', 'utf8') + ';return XLSX;')();
@@ -74,13 +74,13 @@ const file = (name, buffer, mimeType = 'text/csv') => ({ name, mimeType, buffer 
   check(await p.isVisible('#hp-panel') && await p.isVisible('#wx-wp-panel') && await p.isVisible('#mt-wp'), 'Seite Wärmepumpe: Gerätewerte, Wetterbereinigung, alt gegen neu');
   check(await p.isVisible('#period-bar'), 'Zeitraumleiste auf „Wärmepumpe“');
   check((await txt(p, '#mt-wp')).includes('Tausch am'), 'Vergleich alt/neu auf der neuen Seite');
-  const nav = await txt(p, '#snav');
+  const nav = await p.$eval('#snav', e => e.textContent);
   check(nav.includes('Zähler & Verbrauch') && nav.includes('Wärmepumpe'), 'Menü: beide Seiten');
-  await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(400);
+  await p.goto('http://localhost:8000/?unfold#meter'); await p.waitForTimeout(400);
   check(!(await p.isVisible('#hp-panel')) && await p.isVisible('#dv-panel') && await p.isVisible('#mt-rate'), 'Zähler & Verbrauch ohne Wärmepumpen-Teil, mit Geräten');
   check((await txt(p, '#dv-flags')).includes('Noch keine Geräte'), 'ohne Geräte: Hinweis');
   // Import
-  await p.goto('http://localhost:8000/#data'); await p.waitForTimeout(300);
+  await p.goto('http://localhost:8000/?unfold#data'); await p.waitForTimeout(300);
   await p.setInputFiles('#dv-file', [file('Power Monitor Day Data - Gefrierschrank - 20260401.csv', Buffer.from(tapo)), file('Energieverbrauch_.xls', xls, 'application/vnd.ms-excel')]);
   await p.waitForSelector('#dvi-save', { timeout: 8000 });
   let t = await txt(p, '#dv-result');
@@ -97,7 +97,7 @@ const file = (name, buffer, mimeType = 'text/csv') => ({ name, mimeType, buffer 
   check(lr.length === 31 + 31 + 28 + 19 && lr.find(r => r.day === '2025-12-01')?.src === 'month' && !lr.some(r => r.day === '2026-03-20'), `Lüftung: Monate verteilt, Exporttag weg (${lr.length})`);
   check((await txt(p, '#dv-result')).includes('Tageswerte gespeichert'), 'Meldung gespeichert');
   // Anzeige
-  await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(300);
+  await p.goto('http://localhost:8000/?unfold#meter'); await p.waitForTimeout(300);
   await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-01'); await p.waitForTimeout(500);
   t = await txt(p, '#dv-tbl');
   check(t.includes('Gefrierschrank') && t.includes('18,6 kWh') && t.includes('0,60'), 'Januar: Gefrierschrank 18,6 kWh, 0,60 kWh/Tag');

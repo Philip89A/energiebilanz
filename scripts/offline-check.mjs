@@ -36,7 +36,7 @@ const txt = async s => (await p.textContent(s)).replace(/\s+/g, ' ');
 const ready = () => p.waitForSelector('#loading[hidden]', { state: 'attached' });
 
 // 1 Start als installierte App (#quick), Manifest und Service Worker
-await p.goto('http://localhost:8000/#quick'); await ready();
+await p.goto('http://localhost:8000/?unfold#quick'); await ready();
 ok(await p.isVisible('#p-quick') && (await p.locator('.qbtn').count()) === 5, 'Seite „Erfassen“ mit 5 Knöpfen');
 const man = await p.evaluate(async () => (await fetch(document.querySelector('link[rel=manifest]').href)).json());
 ok(man.start_url === './#quick' && man.icons.length === 3 && man.display === 'standalone', 'Manifest gültig');
@@ -64,7 +64,7 @@ await p.reload(); await ready(); await p.waitForTimeout(300);
 ok(await p.isVisible('#p-quick'), 'App startet offline');
 ok((await txt('[data-qs=fuel]')).includes('61.000 km'), 'wartender Tankvorgang nach Neustart sichtbar');
 ok((await txt('#pending-banner')).includes('1 Eintrag wartet'), 'Warteschlange überlebt Neustart');
-await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#overview'); await p.waitForTimeout(300);
 ok((await txt('#ov-kpis')).includes('kWh'), 'Überblick offline aus lokalem Stand');
 
 // 5 Wieder online: automatisch senden
@@ -73,7 +73,7 @@ ok(DB.fuel_log.length === 1 && DB.fuel_log[0].liters === 40.2 && DB.fuel_log[0].
 ok(await p.isHidden('#pending-banner') && await p.isHidden('#offline-banner'), 'Hinweise verschwinden');
 
 // 6 Serverfehler beim Nachsenden: verwerfen und melden
-await ctx.setOffline(true); await p.goto('http://localhost:8000/#quick'); await p.waitForTimeout(300);
+await ctx.setOffline(true); await p.goto('http://localhost:8000/?unfold#quick'); await p.waitForTimeout(300);
 await p.click('[data-q=charge]'); await p.fill('#q-k', '30'); await p.click('#q-save'); await p.waitForTimeout(200);
 failNext = true; await ctx.setOffline(false); await p.waitForTimeout(1500);
 ok(DB.charge_log.length === 0 && (await txt('#main')).includes('verworfen'), 'Serverfehler: Eintrag verworfen und gemeldet');
