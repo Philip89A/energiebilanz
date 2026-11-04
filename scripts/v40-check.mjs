@@ -53,14 +53,14 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (!ok) failures++; };
 DB.settings[0].data = { ...DB.settings[0].data, wx: { lat: 1.2, lon: 6.7, name: 'Teststadt', heatLimit: 15, room: 20 } };
 {
   const { p, ctx } = await open('co2'); await p.waitForTimeout(1500);
-  check((await p.$eval('#snav', e => e.innerText)).includes('CO₂'), 'Seite im Menü');
+  check((await p.$eval('#snav', e => e.textContent)).includes('CO₂'), 'Seite im Menü');
   check(await p.isVisible('#period-bar'), 'mit Zeitraumleiste');
   await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(600);
   const k = await p.$$eval('#co-kpis .kpi', ks => ks.map(k => k.innerText.replace(/\s+/g, ' '))); console.log(k.join('\n'));
@@ -77,9 +77,9 @@ DB.settings[0].data = { ...DB.settings[0].data, wx: { lat: 1.2, lon: 6.7, name: 
   await p.fill('[data-co="y2025"]', '300'); await p.dispatchEvent('[data-co="y2025"]', 'change'); await p.waitForTimeout(1200);
   check(DB.settings[0].data.co2?.mix?.['2025'] === 300, 'Faktor gespeichert');
   await (await p.$('#p-co2')).screenshot({ path: '/tmp/claude-0/-home-user-mm-tracker/ce052db4-0e2d-5d9a-8dd9-49418779e3ec/scratchpad/co40.png' });
-  await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(800);
+  await p.goto('http://localhost:8000/?unfold#overview'); await p.waitForTimeout(800);
   check(/CO₂ im Zeitraum/.test(await p.$eval('#ov-co2', e => e.innerText)), 'Hinweis im Überblick');
-  await p.goto('http://localhost:8000/#co2'); await p.waitForTimeout(500);
+  await p.goto('http://localhost:8000/?unfold#co2'); await p.waitForTimeout(500);
   await p.setViewportSize({ width: 390, height: 800 }); await p.waitForTimeout(1000);
   check(await p.evaluate(() => document.documentElement.scrollWidth <= 390), 'Handy: kein waagrechtes Scrollen');
   check(p.errs.length === 0, 'keine Seitenfehler ' + p.errs.join('; '));

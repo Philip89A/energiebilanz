@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.47.0';
-import { parseNum } from './queue.js?v=0.47.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.47.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.47.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.47.0';
-import { explainAll } from './explain.js?v=0.47.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.47.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.48.0';
+import { parseNum } from './queue.js?v=0.48.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.48.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.48.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.48.0';
+import { explainAll } from './explain.js?v=0.48.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.48.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1447,15 +1447,53 @@ function renderLog(){
 
 const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-co2","--ok"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
+// v0.48: Navigation oben in Gruppen (Aufklappmenüs), am Handy ein Menüknopf; "|Text" = Zwischenüberschrift
+const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-ausbau"]],
+  ["Auswertung",["p-co2","p-rel"]],["Auto",["p-log","p-car"]],["⚙",["p-data"]]];
+// v0.48: je Seite ab diesem Block (Index der direkten Kinder) eingeklappt unter „Mehr anzeigen“; fehlt = nichts einklappen
+const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":4,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":4,"p-data":6};
+const pageTitle=id=>document.getElementById(id).dataset.title, pageColor=id=>(PAGES.find(p=>p[0]===id)||[])[1]||"--muted";
+const navLink=(id,cls="")=>`<a href="#${id.slice(2)}" data-p="${id}"${cls?` class="${cls}"`:""}><span class="dot" style="background:var(${pageColor(id)})"></span>${pageTitle(id)}</a>`;
 function buildNav(){
   const sn=$("snav"), mn=$("mnav");
-  PAGES.forEach(([id,c])=>{ const t=document.getElementById(id).dataset.title;
-    sn.insertAdjacentHTML("beforeend",`<a href="#${id.slice(2)}" data-p="${id}"><span class="dot" style="background:var(${c})"></span>${t}</a>`);
-    mn.insertAdjacentHTML("beforeend",`<a href="#${id.slice(2)}" data-p="${id}">${t}</a>`); });
+  for(const [g,x] of NAV){
+    if(!Array.isArray(x)){ sn.insertAdjacentHTML("beforeend",navLink(x,"tl")); mn.insertAdjacentHTML("beforeend",navLink(x)); continue; }
+    const gear=g==="⚙", items=x.map(i=>i.startsWith("|")?`<div class="dd-sub">${i.slice(1)}</div>`:navLink(i)).join("");
+    sn.insertAdjacentHTML("beforeend",`<details class="dd${gear?" dd-gear":""}" data-pages="${x.filter(i=>!i.startsWith("|")).join(" ")}"><summary${gear?' aria-label="Weitere"':""}>${g}</summary><div class="dd-menu"${gear?' id="snav-gear"':""}>${items}</div></details>`);
+    mn.insertAdjacentHTML("beforeend",`<div class="mg"${gear?' id="mnav-gear"':""}><div class="grp">${gear?"Weitere":g}</div>${items}</div>`);
+  }
+  // Menüs schließen: nach Auswahl, Klick daneben, Escape; immer nur ein Menü offen
+  const closeAll=(except)=>document.querySelectorAll("details.dd[open],details.mnav[open]").forEach(d=>{ if(d!==except) d.open=false; });
+  document.addEventListener("click",e=>{ const d=e.target.closest("details.dd,details.mnav"); if(e.target.closest("a[data-p]")) closeAll(); else closeAll(d); });
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeAll(); });
+  buildMore();
+}
+// v0.48: Details je Seite einklappen; offen/zu je Seite im Gerät merken; ?unfold öffnet alles (Prüfskripte)
+const UNFOLD=/[?&]unfold\b/.test(location.search);
+function buildMore(){
+  for(const [id,from] of Object.entries(MORE_FROM)){
+    const sec=document.getElementById(id); if(!sec) continue;
+    const kids=[...sec.children].slice(from); if(!kids.length) continue;
+    const d=document.createElement("details"); d.className="more"; d.dataset.more=id;
+    let open=UNFOLD; try{ if(!open) open=localStorage.getItem("eb_more_"+id)==="1"; }catch(e){ /* egal */ }
+    d.open=open; d.innerHTML=`<summary><span class="more-t"></span><span class="more-l"></span></summary>`;
+    kids[0].before(d); kids.forEach(k=>d.appendChild(k));
+    d.addEventListener("toggle",()=>{ try{ localStorage.setItem("eb_more_"+id,d.open?"1":"0"); }catch(e){ /* egal */ } updMore(d);
+      // im zugeklappten Teil gezeichnete Grafiken haben 0 Breite gemessen → beim Öffnen neu vermessen
+      if(d.open) requestAnimationFrame(()=>Object.values(charts).forEach(c=>{ if(c?.canvas && d.contains(c.canvas)) c.resize(); })); });
+  }
+}
+function updMore(d){
+  const vis=[...d.children].filter(k=>k.tagName!=="SUMMARY"&&!k.hidden), titles=vis.map(k=>k.querySelector("h2")?.textContent.trim()).filter(Boolean);
+  d.hidden=!vis.length;
+  d.querySelector(".more-t").textContent=d.open?"Weniger anzeigen":`Mehr anzeigen (${vis.length} ${vis.length===1?"Abschnitt":"Abschnitte"})`;
+  d.querySelector(".more-l").textContent=d.open?"":titles.join(" · ");
 }
 function show(id){
   current=id; PAGES.forEach(([p])=>document.getElementById(p).hidden=p!==id);
   document.querySelectorAll("[data-p]").forEach(a=>{ if(a.dataset.p===id) a.setAttribute("aria-current","page"); else a.removeAttribute("aria-current"); });
+  document.querySelectorAll("details.dd").forEach(d=>d.classList.toggle("on",d.dataset.pages.split(" ").includes(id)));
+  const mc=$("mnav-cur"); if(mc) mc.textContent="☰ "+pageTitle(id);
   rerender(!rendered[id]); rendered[id]=true; window.scrollTo(0,0);
 }
 function rerender(first=false){
@@ -1515,6 +1553,7 @@ const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-
 const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
+  document.querySelectorAll("details.more").forEach(updMore);
   if(!document.body.classList.contains("ro")) return;
   document.querySelectorAll("#main input, #main select, #main button").forEach(el=>{
     if(VIEW_INPUTS.has(el.id) && !GUEST_DENY.has(el.id)) return;

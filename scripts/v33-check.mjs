@@ -54,7 +54,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHL ') + msg); if (!ok) failures++; };
@@ -68,7 +68,7 @@ const file = (name, s) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(s) 
 {
   const { p, ctx } = await open('hp');
   check((await txt(p, '#rk-flags')).includes('Noch keine Raumklima-Daten'), 'ohne Daten: Hinweis');
-  await p.goto('http://localhost:8000/#data'); await p.waitForTimeout(300);
+  await p.goto('http://localhost:8000/?unfold#data'); await p.waitForTimeout(300);
   await p.setInputFiles('#rk-file', [file('Schlafzimmer_export_202602202300.csv', schlaf), file('Bu_ro_export_202602202300.csv', buero)]);
   await p.waitForSelector('#rki-save');
   check(await p.$eval('[data-rkn="0"]', e => e.value) === 'Schlafzimmer', 'Raum aus dem Dateinamen');
@@ -77,7 +77,7 @@ const file = (name, s) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(s) 
   const rows = DB.room_climate || [];
   check(rows.length === 40 && rows.every(r => r.n === 96 && Array.isArray(r.hours) && r.hours.length === 24), `40 Tage gespeichert (${rows.length})`);
   check((await txt(p, '#rk-result')).includes('40 Tage gespeichert'), 'Meldung');
-  await p.goto('http://localhost:8000/#hp'); await p.waitForTimeout(300);
+  await p.goto('http://localhost:8000/?unfold#hp'); await p.waitForTimeout(300);
   await p.selectOption('#pb-mode', 'month'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-02'); await p.waitForTimeout(500);
   const t = await txt(p, '#rk-tbl');
   check(t.includes('Schlafzimmer') && t.includes('Büro') && /66 %\s+54 %/.test(t), 'Tabelle: Schlafzimmer nachts 66 %, tagsüber 54 %');

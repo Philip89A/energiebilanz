@@ -53,7 +53,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -109,13 +109,13 @@ let alerted = ''; p.removeAllListeners('dialog'); p.on('dialog', d => { alerted 
 await p.click('[data-of-del="0"]'); await p.waitForTimeout(200);
 ok(alerted.includes('Buchungen zurücknehmen') && (await p.$$('[data-of-del]')).length === 1, 'Angebot mit Buchung nicht löschbar');
 // Ausbau-Seite: Handwerker aus Angeboten, Hardware aus Investitionen
-await p.goto('http://localhost:8000/#ausbau'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#ausbau'); await p.waitForTimeout(400);
 ok(!(await txt(p, '#wb-cost-src')).includes('Handwerker aus'), 'Ausbau: zunächst eigene Werte');
 await p.selectOption('[data-wb="craftSrc"]', 'offer'); await p.waitForTimeout(300);
 ok((await txt(p, '#wb-cost-src')).includes('Kein Angebot für die Ausbau-Rechnung'), 'Hinweis: kein Angebot markiert');
-await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#amort'); await p.waitForTimeout(300);
 await p.check('[data-of="0"][data-k="ausbau"]'); await p.waitForTimeout(300);
-await p.goto('http://localhost:8000/#ausbau'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#ausbau'); await p.waitForTimeout(400);
 t = await txt(p, '#wb-cost-src');
 ok(t.includes('Handwerker aus Angebot T-1: PV/Speicher 500,50 €, Wallbox 280,00 €'), 'Ausbau: Handwerker aus dem Angebot: ' + t);
 ok(await p.isHidden('[data-wb="craftPv"]') && await p.isVisible('[data-wb="hwTotal"]'), 'Eigene Handwerker-Felder ausgeblendet');
@@ -127,7 +127,7 @@ ok(t.includes('Hardware aus 0 Investitionen ab 01.11.2026: 0,00 €'), 'Buchunge
 ok(await p.isHidden('[data-wb="hwTotal"]'), 'Eigene Hardware-Felder ausgeblendet');
 ok((await txt(p, '#wb-kpis')).includes('Investition 781 €'), 'Paket-Investition = Angebot (Hardware 0): ' + (await txt(p, '#wb-kpis')).slice(0, 90));
 // Zurücknehmen
-await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#amort'); await p.waitForTimeout(300);
 await p.click('[data-of-unbook="0"][data-due="montage"]'); await p.waitForTimeout(500);
 ok(invN() === n0, 'Zurücknehmen löscht die Investitionen');
 ok((await txt(p, '#am-kpis')).includes('offen aus Angeboten 780,50'), 'wieder offen');

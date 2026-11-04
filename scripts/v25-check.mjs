@@ -53,7 +53,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -91,14 +91,14 @@ ok(!(await txt(p, '#wt-flags')).includes('Auffällig'), 'kein Ausreißer im Zeit
 await p.fill('#pb-to', '2026-08-31'); await p.dispatchEvent('#pb-to', 'change'); await p.waitForTimeout(400);
 ok((await txt(p, '#wt-flags')).includes('Auffällig hoher Verbrauch: 22.08.2026–29.08.2026 664 l/Tag'), 'Ausreißer erkannt: ' + (await txt(p, '#wt-flags')).slice(0, 120));
 // Erfassen: Einheit m³ und Hinweis in Litern
-await p.goto('http://localhost:8000/#quick'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#quick'); await p.waitForTimeout(300);
 const qb = await p.$('[data-q="reading"]'); if (qb) { await qb.click(); await p.waitForTimeout(200); }
 if (await p.$('#q-m')) {
   await p.selectOption('#q-m', 'water'); await p.dispatchEvent('#q-m', 'change'); await p.fill('#q-d', '2026-09-05'); await p.fill('#q-v', '114,1'); await p.dispatchEvent('#q-v', 'input'); await p.waitForTimeout(200);
   ok((await txt(p, '#q-form')).includes('Stand in m³') && (await txt(p, '#q-hint')).includes('2.100 l (300 l/Tag)'), 'Erfassen: m³ und Liter-Hinweis: ' + (await txt(p, '#q-hint')));
 } else ok(false, 'Erfassen-Formular für Zählerstand nicht gefunden');
 // Kosten & Ersparnisse: Zeile Wasser
-await p.goto('http://localhost:8000/#fin'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#fin'); await p.waitForTimeout(400);
 ok((await txt(p, '#fin-tbl')).includes('Wasser (in den Nebenkosten)'), 'Kosten-Seite mit Zeile Wasser');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();

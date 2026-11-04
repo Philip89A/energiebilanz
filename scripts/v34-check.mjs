@@ -54,7 +54,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHL ') + msg); if (!ok) failures++; };
@@ -67,7 +67,7 @@ DB.room_climate = days.flatMap((day, i) => [{ user_id: uid, room: 'Keller', day,
 DB.settings[0].data = { ...DB.settings[0].data, devices: [{ id: 'gf', name: 'Gefrierschrank', from: '' }, { id: 'lu', name: 'Lüftung', from: '' }], rooms: [{ id: 'Keller', name: 'Vorratskeller' }, { id: 'Schlafzimmer', name: 'Schlafzimmer' }] };
 {
   const { p, ctx } = await open('rel');
-  check(await p.isVisible('#period-bar') && (await txt(p, '#snav')).includes('Zusammenhänge'), 'Seite mit Zeitraumleiste und im Menü');
+  check(await p.isVisible('#period-bar') && (await p.$eval('#snav', e => e.textContent)).includes('Zusammenhänge'), 'Seite mit Zeitraumleiste und im Menü');
   await p.selectOption('#pb-mode', 'quarter'); await p.waitForTimeout(200); await p.selectOption('#pb-key', '2026-Q1'); await p.waitForTimeout(500);
   check((await p.$$('#rel-cards > .panel')).length === 8, '8 Karten');
   const fz = await txt(p, '#rel-freezer');
@@ -78,7 +78,7 @@ DB.settings[0].data = { ...DB.settings[0].data, devices: [{ id: 'gf', name: 'Gef
   check(await p.evaluate(() => window.__ebCharts['rel-c-base'].data.labels.length) === 7, 'Grundlast je Wochentag');
   check(await p.evaluate(() => window.__ebCharts['rel-c-pv'].data.datasets.length) >= 2, 'PV-Karte mit Gruppen');
   // Gerät-Raum-Zuordnung in der Geräteliste
-  await p.goto('http://localhost:8000/#meter'); await p.waitForTimeout(400);
+  await p.goto('http://localhost:8000/?unfold#meter'); await p.waitForTimeout(400);
   await p.selectOption('[data-dv="0"][data-k="room"]', 'Keller'); await p.waitForTimeout(1200);
   check(DB.settings[0].data.devices[0].room === 'Keller', 'Standort gespeichert');
   check(!p.errs.length, 'keine Skriptfehler ' + p.errs.join(' | '));

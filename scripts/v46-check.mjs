@@ -53,7 +53,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (!ok) failures++; };
@@ -72,7 +72,7 @@ DB.meter_readings.forEach(r => { r.read_at = null; });
   const row = await p.$eval('#rd-tbl tbody tr', r => r.innerText.replace(/\s+/g, ' ')); console.log(row);
   check(/27\.10\.2026 21:30/.test(row), 'Liste zeigt Uhrzeit');
   // Schnellerfassung
-  await p.goto('http://localhost:8000/#quick'); await p.waitForTimeout(500);
+  await p.goto('http://localhost:8000/?unfold#quick'); await p.waitForTimeout(500);
   await p.click('[data-q=reading]'); await p.waitForTimeout(200);
   check(await p.isVisible('#q-t'), 'Schnellerfassung: Uhrzeit-Feld');
   await p.selectOption('#q-m', 'wp'); await p.fill('#q-d', '2026-10-28'); await p.fill('#q-t', '07:05'); await p.fill('#q-v', String(last.value + 120).replace('.', ','));

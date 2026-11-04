@@ -37,7 +37,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -56,7 +56,7 @@ ok((await txt(p, '#wb-flags')).includes('Noch keine Kosten'), 'Hinweis, solange 
 await set(p, 'hwTotal', 2000); await set(p, 'hwWallbox', 400); await set(p, 'craftPv', 500); await set(p, 'craftWallbox', 1000);
 ok(!(await txt(p, '#wb-flags')).includes('Noch keine Kosten'), 'Hinweis verschwindet mit Kosten');
 ok(!p.errs.length, 'Seite ohne Fehler: ' + p.errs.join(' | '));
-ok((await txt(p, '#snav')).includes('Ausbau (Weg B)'), 'Navigation enthält „Ausbau (Weg B)“');
+ok((await p.$eval('#snav', e => e.textContent)).includes('Ausbau (Weg B)'), 'Navigation enthält „Ausbau (Weg B)“');
 const k = await txt(p, '#wb-kpis');
 ok(/Paket amortisiert nach/.test(k) && /[\d,]+ Jahre/.test(k), 'Kennzahl Paket-Amortisation in Jahren');
 let rows = await cells(p), t0 = await total(p);

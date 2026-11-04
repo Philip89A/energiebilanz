@@ -54,7 +54,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHL ') + msg); if (!ok) failures++; };
@@ -88,7 +88,7 @@ const file = (name, text) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(
   await p.setInputFiles('#csv-file', [file('a.csv', oldCsv), file('b.csv', oldCsv)]);
   await p.waitForSelector('#csv-apply');
   check((await p.textContent('#csv-result')).includes('doppelt gewählt'), 'doppelte Datei gemeldet');
-  await p.goto('http://localhost:8000/#batt'); await p.waitForTimeout(400);
+  await p.goto('http://localhost:8000/?unfold#batt'); await p.waitForTimeout(400);
   check((await p.textContent('#bt-kpis')).includes('Wert des Speichers'), 'Batterie-Seite rendert');
   check(!p.errs.length, 'keine Skriptfehler ' + p.errs.join(' | '));
   await ctx.close();

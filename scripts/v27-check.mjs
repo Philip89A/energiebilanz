@@ -55,7 +55,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -95,7 +95,7 @@ ok(t.includes('Vorhersage') && t.includes('typisch'), 'Monatszeile: Vorhersage u
 ok((await txt(p, '#pvf-method')).includes('Ertragsfaktor'), 'Methode erklärt');
 // Zweites Öffnen am selben Tag: keine neue Abfrage
 const n0 = meteoCalls.filter(c => c.includes('/v1/forecast')).length;
-await p.goto('http://localhost:8000/#overview'); await p.waitForTimeout(200); await p.goto('http://localhost:8000/#pv'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#overview'); await p.waitForTimeout(200); await p.goto('http://localhost:8000/?unfold#pv'); await p.waitForTimeout(400);
 ok(meteoCalls.filter(c => c.includes('/v1/forecast')).length === n0, 'gleicher Tag: Vorhersage nicht erneut geholt');
 ok(!p.errs.length, 'ohne Fehler: ' + p.errs.join(' | '));
 await ctx.close();

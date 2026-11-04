@@ -52,7 +52,7 @@ async function open(page) {
   });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
   const p = await ctx.newPage(); p.errs = []; p.on('pageerror', e => p.errs.push(e.message)); p.on('dialog', d => d.accept());
-  await p.goto('http://localhost:8000/#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
+  await p.goto('http://localhost:8000/?unfold#' + page); await p.waitForSelector('#loading[hidden]', { state: 'attached' }); await p.waitForTimeout(200);
   return { p, ctx };
 }
 
@@ -76,25 +76,25 @@ ok((await txt(p, '#lg-car-kpis')).includes('im Zeitraum'), 'Fahrzeug-Kennzahlen 
 await p.selectOption('#pb-cmp', 'prev'); await p.waitForTimeout(400);
 ok((await txt(p, '#lg-kpis')).includes('Vorperiode'), 'Vergleich mit Vorperiode angezeigt');
 // Tarifrechner: Monat → hochgerechnet mit Hinweis
-await p.goto('http://localhost:8000/#tarif'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#tarif'); await p.waitForTimeout(400);
 const tb = await txt(p, '#tr-base');
 ok(tb.includes('aufs Jahr hochgerechnet') && tb.includes('verzerren'), 'Tarifrechner: Hochrechnung mit Hinweis');
 // Ausbau: Monat → Hinweis, gerechnet mit 365 Tagen
-await p.goto('http://localhost:8000/#ausbau'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#ausbau'); await p.waitForTimeout(400);
 ok((await txt(p, '#wb-flags')).includes('ganzes Jahr'), 'Ausbau: Hinweis auf ganzes Jahr');
 // Stromkosten: Zahlungsbuch gefiltert
-await p.goto('http://localhost:8000/#cost'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#cost'); await p.waitForTimeout(400);
 const pay = await txt(p, '#pay-tbl');
 ok(pay.includes('im Monat') && !pay.includes('alt'), 'Zahlungsbuch zeigt nur den Zeitraum');
 // Gesamter Zeitraum: alles wie vorher
 await p.selectOption('#pb-mode', 'all'); await p.waitForTimeout(400);
 const pay2 = await txt(p, '#pay-tbl');
 ok(pay2.includes('im Monat') && pay2.includes('alt'), 'Gesamter Zeitraum: Zahlungsbuch vollständig');
-await p.goto('http://localhost:8000/#tarif'); await p.waitForTimeout(400);
+await p.goto('http://localhost:8000/?unfold#tarif'); await p.waitForTimeout(400);
 ok((await txt(p, '#tr-base')).includes('365 Tage'), 'Gesamter Zeitraum: Tarifrechner mit 365 Tagen');
-await p.goto('http://localhost:8000/#amort'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#amort'); await p.waitForTimeout(300);
 ok(await p.isHidden('#period-bar'), 'Amortisation ohne Zeitraumleiste');
-await p.goto('http://localhost:8000/#car'); await p.waitForTimeout(300);
+await p.goto('http://localhost:8000/?unfold#car'); await p.waitForTimeout(300);
 ok(await p.isHidden('#period-bar'), 'Auto-Vergleich ohne Zeitraumleiste');
 ok(!p.errs.length, 'ohne Fehler ' + p.errs.join(' | '));
 await ctx.close();

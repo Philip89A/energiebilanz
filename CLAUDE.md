@@ -163,6 +163,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.47: CO₂ – Solarstrom direkt / aus dem Speicher (`co2Range` T.pvDirect/pvBatt/…Kg, `b2h` ≤ `use`): Speicher mit
      Netzwerten 17–7 Uhr (`BATT_HOURS`), Direktverbrauch und Einspeisung nach Sonnenkurve 6–20 Uhr (`PV_HOURS`), ohne
      Stundenwerte Tagesfaktor; Block „Was bringt der Speicher?“ (`co2BattNote`). Prüfung: `v47-check` (synthetische Daten).
+   - ✅ v0.48: Navigation oben (`NAV` in views.js: direkte Links + Gruppen als `<details class="dd">`, ⚙ mit Daten/Abmelden,
+     Handy `details.mnav` mit Liste); Details je Seite eingeklappt (`MORE_FROM`: ab diesem Kind-Index in `details.more`,
+     Zustand `eb_more_<seite>` im localStorage, `?unfold` öffnet alles – Prüfskripte nutzen das). Prüfung: `v48-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

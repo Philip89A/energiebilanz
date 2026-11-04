@@ -648,3 +648,19 @@
 - Kein Datenbank-Update nötig.
 - Tests: 152 Unit-Tests (neu `tests/v47.test.mjs`), neu `scripts/v47-check.mjs` (10 Prüfungen, eigenständig mit
   synthetischen Daten).
+
+## v0.48 – Navigation oben, Details eingeklappt
+- **Navigation:** Statt 16 Einträgen links eine Leiste oben mit 6 Punkten: Erfassen, Überblick und die Aufklappmenüs
+  Energie (PV-Anlage, Batterie, Wärmepumpe, Zähler & Verbrauch), Geld (Kosten & Ersparnisse, Stromkosten, Amortisation,
+  darunter „Planung“: Tarifrechner, Ausbau), Auswertung (CO₂, Zusammenhänge), Auto (Tanken & Laden, Auto-Vergleich) und ⚙
+  (Daten, Abmelden). Die aktive Gruppe ist markiert; Menüs schließen nach der Auswahl, beim Klick daneben und mit Escape.
+  Die Seiten gewinnen dadurch die Breite der früheren Seitenleiste.
+- **Handy:** ein Knopf „☰ Seitenname“ oben rechts öffnet die Liste aller Seiten nach Gruppen (statt der waagrecht
+  scrollenden Leiste).
+- **Details eingeklappt:** Je Seite bleiben Kennzahlen und Hauptgrafik oben; Tabellen, Rückblicke und weitere Abschnitte
+  stehen unter „Mehr anzeigen (n Abschnitte)“ mit den Titeln. Offen/zu merkt sich die App je Seite und Gerät.
+  Nicht eingeklappt: Erfassen, Zusammenhänge, Tarifrechner, Amortisation, Auto-Vergleich.
+- Grafiken im eingeklappten Teil werden beim Aufklappen neu vermessen.
+- Prüfskripte öffnen die App mit `?unfold` (alle Details offen); Menü-Prüfungen lesen den vollständigen Text.
+- Kein Datenbank-Update nötig.
+- Tests: 152 Unit-Tests, neu `scripts/v48-check.mjs` (25 Prüfungen); v47-Check grün.
