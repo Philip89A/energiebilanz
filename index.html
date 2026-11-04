@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.48.0">
-<link rel="stylesheet" href="css/style.css?v=0.48.0">
+<meta name="app-version" content="0.49.0">
+<link rel="stylesheet" href="css/style.css?v=0.49.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -476,8 +476,10 @@
     <div class="form" style="margin-top:10px"><label class="f">Dateien<input type="file" id="dv-file" multiple accept=".csv,.xls,.xlsx,text/csv"></label></div>
     <div id="dv-result" style="margin-top:10px"></div>
   </div>
-  <div class="panel" style="margin-top:16px" id="rk-import"><h2>Raumklima: Govee-Export importieren</h2>
-    <p class="note">Govee-App → Thermometer → Daten exportieren (CSV, alle 15 min). Der Raum wird am Dateinamen erkannt („Schlafzimmer_export_…“), mehrere Dateien auf einmal sind möglich. Gespeichert werden Tageswerte mit Stundenmitteln; vorhandene Tage werden überschrieben. Die Thermometer speichern nur etwa 20 Tage selbst: die App regelmäßig öffnen, sonst entstehen Lücken.</p>
+  <div class="panel" style="margin-top:16px" id="rk-import"><h2>Raumklima: Govee- oder Tapo-Export importieren</h2>
+    <p class="note"><b>Govee:</b> App → Thermometer → Daten exportieren (CSV, alle 15 min); der Raum wird am Dateinamen erkannt („Schlafzimmer_export_…“). Die Thermometer speichern nur etwa 20 Tage selbst: die App regelmäßig öffnen, sonst entstehen Lücken.
+      <b>Tapo:</b> App → Sensor → Verlauf → Exportieren (CSV); das Format wird erkannt, Werte mit Markierung „Abnormal“ (z. B. direkt nach dem Einschalten) fallen weg. Der Raum wird beim ersten Mal gewählt.
+      Mehrere Dateien auf einmal sind möglich. Gespeichert werden Tageswerte mit Stundenmitteln; ein vorhandener Tag wird nur durch einen mit mindestens gleich vielen Messwerten ersetzt (ein kürzerer Export überschreibt keinen vollständigen Tag). Tage unter 12 Stunden zählen in den Auswertungen nicht.</p>
     <div class="form" style="margin-top:10px"><label class="f">Dateien<input type="file" id="rk-file" multiple accept=".csv,text/csv"></label></div>
     <div id="rk-result" style="margin-top:10px"></div>
   </div>
@@ -522,8 +524,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.48.0"></script>
-<script src="vendor/chart.umd.js?v=0.48.0"></script>
-<script type="module" src="js/app.js?v=0.48.0"></script>
+<script src="vendor/supabase.js?v=0.49.0"></script>
+<script src="vendor/chart.umd.js?v=0.49.0"></script>
+<script type="module" src="js/app.js?v=0.49.0"></script>
 </body>
 </html>
