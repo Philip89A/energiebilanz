@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.48.0';
-import { parseNum } from './queue.js?v=0.48.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.48.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseGoveeCsv, goveeRoomName } from './import.js?v=0.48.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.48.0';
-import { explainAll } from './explain.js?v=0.48.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.48.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.49.0';
+import { parseNum } from './queue.js?v=0.49.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.49.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.49.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.49.0';
+import { explainAll } from './explain.js?v=0.49.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.49.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -606,7 +606,7 @@ let rkImports = null, rkMsg = "";
 function renderClimImport() {
   const rooms = S.rooms || [], opt = sel => `${rooms.map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}<option value="new"${sel === "new" ? " selected" : ""}>Neuer Raum …</option>`;
   let h = S.climateError ? flag("Tabelle fehlt noch in Supabase: bitte <b>docs/UPDATE_V33.sql</b> im SQL Editor ausführen.") : "";
-  if (rkImports) h += `<div class="tbl-wrap"><table><thead><tr><th class="l">Datei</th><th class="l">Raum</th><th>Tage</th><th>von – bis</th><th>vollständig</th></tr></thead><tbody>${rkImports.map((x, i) => `<tr><td class="l">${esc(x.name)}</td>
+  if (rkImports) h += `<div class="tbl-wrap"><table><thead><tr><th class="l">Datei</th><th class="l">Raum</th><th>Tage</th><th>von – bis</th><th>vollständig</th></tr></thead><tbody>${rkImports.map((x, i) => `<tr><td class="l">${esc(x.name)}${x.source ? ` <span class="pill">${x.source === "tapo" ? "Tapo" : "Govee"}</span>` : ""}${x.skipped ? `<br><span class="note">${nf(x.skipped)} markierte Werte übersprungen</span>` : ""}</td>
       <td class="l"><select data-rki="${i}">${opt(x.room)}</select>${x.room === "new" ? ` <input type="text" data-rkn="${i}" value="${esc(x.newName || "")}" placeholder="Raumname">` : ""}</td><td>${nf(x.rows.length)}</td>
       <td>${x.rows.length ? `${dde(x.from)} – ${dde(x.to)}` : "–"}</td><td>${nf(x.rows.filter(r => r.n >= 90).length)}${x.errors.length ? `<br><span class="error">${esc(x.errors[0])}</span>` : ""}</td></tr>`).join("")}</tbody></table></div>
     <div class="row"><button type="button" id="rki-save">Übernehmen</button><button type="button" class="ghost" id="rki-cancel">Abbrechen</button></div>`;
@@ -619,7 +619,7 @@ function wireClimate() {
   $("rk-rooms").addEventListener("change", e => { const el = e.target; if (el.dataset.rk === undefined) return; S.rooms[+el.dataset.rk][el.dataset.k] = el.value.trim(); persist(); rerender(); });
   $("rk-file").addEventListener("change", async e => {
     const files = [...e.target.files]; e.target.value = ""; if (!files.length) return;
-    rkImports = await Promise.all(files.map(async f => ({ name: f.name, ...parseGoveeCsv(await f.text()), guess: goveeRoomName(f.name) })));
+    rkImports = await Promise.all(files.map(async f => ({ name: f.name, ...parseClimateCsv(await f.text()), guess: goveeRoomName(f.name) })));
     for (const x of rkImports) { const m = x.guess && (S.rooms || []).find(r => r.name.toLowerCase() === x.guess.toLowerCase() || r.id.toLowerCase() === x.guess.toLowerCase()); x.room = m ? m.id : "new"; x.newName = x.guess || ""; }
     rkMsg = ""; renderClimImport();
   });
@@ -634,18 +634,20 @@ function wireClimate() {
     if (rkImports.some(x => x.room === "new" && !x.newName)) { rkMsg = "Bitte jeder Datei einen Raumnamen geben."; renderClimImport(); return; }
     e.target.disabled = true; rkMsg = "Speichert …"; renderClimImport();
     try {
-      let n = 0, changed = false;
+      let n = 0, kept = 0, changed = false;
       for (const x of rkImports) {
         if (x.room === "new") { const ex = (S.rooms || []).find(r => r.name.toLowerCase() === x.newName.toLowerCase());
           if (ex) x.room = ex.id; else { (S.rooms = S.rooms || []).push({ id: x.newName, name: x.newName, note: "" }); x.room = x.newName; changed = true; } }
-        const rows = x.rows.map(r => ({ ...r, room: x.room }));
+        // v0.49: vorhandenen Tag nur durch einen mit mindestens gleich vielen Messwerten ersetzen
+        const have = new Map((S.climate || []).filter(c => c.room === x.room).map(c => [c.d, +c.n || 0]));
+        const rows = x.rows.map(r => ({ ...r, room: x.room })).filter(r => { const k = have.get(r.day); if (k != null && k > r.n) { kept++; return false; } return true; });
         if (rows.length) { await store.saveClimate(rows);
           const key = r => r.room + "|" + r.d, map = new Map((S.climate || []).map(r => [key(r), r]));
           for (const r of rows) map.set(r.room + "|" + r.day, { room: r.room, d: r.day, n: r.n, t: r.t, rh: r.rh, lo: r.rh_min, hi: r.rh_max, dry: r.h_dry, wet: r.h_wet, hours: r.hours });
           S.climate = [...map.values()]; n += rows.length; }
       }
       if (changed) persist();
-      rkMsg = `${nf(n)} Tage gespeichert.`; rkImports = null; refreshCalc(); rerender();
+      rkMsg = `${nf(n)} Tage gespeichert.` + (kept ? ` ${nf(kept)} vorhandene Tage mit mehr Messwerten behalten.` : ""); rkImports = null; refreshCalc(); rerender();
     } catch (err) { rkMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderClimImport(); }
   });
 }

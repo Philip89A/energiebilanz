@@ -664,3 +664,14 @@
 - Prüfskripte öffnen die App mit `?unfold` (alle Details offen); Menü-Prüfungen lesen den vollständigen Text.
 - Kein Datenbank-Update nötig.
 - Tests: 152 Unit-Tests, neu `scripts/v48-check.mjs` (25 Prüfungen); v47-Check grün.
+
+## v0.49 – Raumklima: Tapo-Sensor
+- **Import erkennt den Tapo-Export** (Temperatur-/Feuchtesensor) neben Govee: erste Zeile mit Zeitraum, Datum
+  `2026/11/04 16:15:00`, Spalten Temperatur, Abnormal, Luftfeuchtigkeit, Abnormal (auch englische Spaltennamen).
+  Werte mit Markierung in „Abnormal“ (z. B. der Startwert direkt nach dem Einschalten) fallen weg; die Vorschau zeigt
+  Format und Anzahl übersprungener Werte. Der Raum wird beim ersten Import gewählt bzw. neu angelegt.
+- **Kein Überschreiben vollständiger Tage:** Ein vorhandener Tag wird nur durch einen mit mindestens gleich vielen
+  Messwerten ersetzt. Grund: Tapo exportiert frei gewählte Zeiträume, ein kürzerer Export hätte einen vollständigen Tag
+  sonst mit wenigen Werten überschrieben. Gilt auch für Govee.
+- `parseClimateCsv` ersetzt `parseGoveeCsv` (alter Name bleibt als Verweis). Kein Datenbank-Update nötig.
+- Tests: 156 Unit-Tests (neu `tests/v49.test.mjs`), neu `scripts/v49-check.mjs` (8 Prüfungen); v48-Check grün.

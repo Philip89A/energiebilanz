@@ -413,20 +413,29 @@ export function goveeRoomName(fileName) {
   return m ? m[1].replace(/_/g, ' ').trim() : null;
 }
 
-// Govee-Export: „Zeitstempel …,Temperatur_Celsius …,Relative Luftfeuchtigkeit“, alle 15 min. Je Tag: Mittelwerte,
-// Min/Max der Feuchte (Einzelwerte), Stunden unter 40 % bzw. ab 60 % (nach Stundenmittel) und 24 Stundenmittel [Temperatur, Feuchte].
-// Die Kalibrierung („kalibriert -0.9 C“) ist in den Werten schon enthalten.
-export function parseGoveeCsv(text) {
-  const lines = String(text).replace(/^﻿/, '').split(/\r?\n/).filter(l => l.trim());
-  const errors = [];
-  if (!lines.length || !/zeitstempel/i.test(lines[0]) || !/luftfeucht/i.test(lines[0])) return { rows: [], errors: ['Kopfzeile nicht erkannt. Ist das ein Govee-Export (Zeitstempel, Temperatur, Luftfeuchtigkeit)?'] };
-  const byDay = new Map();
+// Raumklima-CSV, Format wird erkannt (v0.49):
+// - Govee: „Zeitstempel …,Temperatur_Celsius …,Relative Luftfeuchtigkeit“, Datum 2026-10-16 23:45. Die Kalibrierung
+//   („kalibriert -0.9 C“) ist in den Werten schon enthalten.
+// - Tapo (Temperatur-/Feuchtesensor): erste Zeile „2026/11/04 00:00:00 - 2026/11/05 00:00:00,Temperatur(℃),Abnormal,
+//   Luftfeuchtigkeit(%),Abnormal“, Datum 2026/11/04 16:15:00. Werte mit Markierung in „Abnormal“ (z. B. „*“) fallen weg.
+// Je Tag: Mittelwerte, Min/Max der Feuchte (Einzelwerte), Stunden unter 40 % bzw. ab 60 % (nach Stundenmittel) und
+// 24 Stundenmittel [Temperatur, Feuchte].
+export function parseClimateCsv(text) {
+  const lines = String(text).replace(/^\uFEFF/, '').split(/\r?\n/).filter(l => l.trim());
+  const errors = [], head = lines[0] || '';
+  const tapo = /abnormal/i.test(head) && /temp/i.test(head) && /(feucht|humid)/i.test(head);
+  const govee = !tapo && /zeitstempel/i.test(head) && /luftfeucht/i.test(head);
+  if (!tapo && !govee) return { rows: [], errors: ['Kopfzeile nicht erkannt. Ist das ein Govee- oder Tapo-Export (Zeit, Temperatur, Luftfeuchtigkeit)?'] };
+  const cols = head.split(',').map(x => x.trim()), it = tapo ? cols.findIndex(c => /temp/i.test(c)) : 1, ih = tapo ? cols.findIndex(c => /(feucht|humid)/i.test(c)) : 2;
+  const byDay = new Map(); let skipped = 0;
   for (const line of lines.slice(1)) {
-    const [ts, a, b] = line.split(',').map(x => x.trim());
-    const m = /^(\d{4}-\d{2}-\d{2})[ T](\d{2}):\d{2}/.exec(ts || ''), t = Number(a), h = Number(b);
-    if (!m || !isFinite(t) || !isFinite(h) || h < 0 || h > 100) { if (ts) errors.push(`„${line.slice(0, 40)}“ nicht lesbar.`); continue; }
-    let d = byDay.get(m[1]); if (!d) byDay.set(m[1], d = { n: 0, lo: 100, hi: 0, hrs: Array.from({ length: 24 }, () => ({ t: 0, h: 0, n: 0 })) });
-    const x = d.hrs[+m[2]]; x.t += t; x.h += h; x.n++; d.n++; if (h < d.lo) d.lo = h; if (h > d.hi) d.hi = h;
+    const c = line.split(',').map(x => x.trim()), ts = c[0];
+    if (tapo && ((c[it + 1] || '') !== '' || (c[ih + 1] || '') !== '')) { skipped++; continue; }
+    const m = /^(\d{4})[-/](\d{2})[-/](\d{2})[ T](\d{2}):\d{2}/.exec(ts || ''), t = Number(c[it]), h = Number(c[ih]);
+    if (!m || c[it] === '' || c[ih] === '' || !isFinite(t) || !isFinite(h) || h < 0 || h > 100) { if (ts) errors.push(`„${line.slice(0, 40)}“ nicht lesbar.`); continue; }
+    const day = `${m[1]}-${m[2]}-${m[3]}`;
+    let d = byDay.get(day); if (!d) byDay.set(day, d = { n: 0, lo: 100, hi: 0, hrs: Array.from({ length: 24 }, () => ({ t: 0, h: 0, n: 0 })) });
+    const x = d.hrs[+m[4]]; x.t += t; x.h += h; x.n++; d.n++; if (h < d.lo) d.lo = h; if (h > d.hi) d.hi = h;
   }
   const r1 = v => Math.round(v * 10) / 10, rows = [];
   for (const [day, d] of [...byDay].sort((a, b) => a[0].localeCompare(b[0]))) {
@@ -435,5 +444,6 @@ export function parseGoveeCsv(text) {
     rows.push({ day, n: d.n, t: r1(sum.t / d.n), rh: r1(sum.h / d.n), rh_min: d.lo, rh_max: d.hi,
       h_dry: have.filter(x => x[1] < 40).length, h_wet: have.filter(x => x[1] >= 60).length, hours });
   }
-  return { rows, errors: errors.slice(0, 20), from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
+  return { rows, errors: errors.slice(0, 20), from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null, source: tapo ? 'tapo' : 'govee', skipped };
 }
+export const parseGoveeCsv = parseClimateCsv;   // alter Name (v0.33)
