@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.50.0';
-import { parseNum } from './queue.js?v=0.50.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.50.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.50.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.50.0';
-import { explainAll } from './explain.js?v=0.50.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.50.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.51.0';
+import { parseNum } from './queue.js?v=0.51.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.51.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.51.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.51.0';
+import { explainAll } from './explain.js?v=0.51.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.51.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1425,6 +1425,44 @@ function renderCar(first){
 }
 
 /* ---------- Tanken & Laden ---------- */
+// v0.51: Leasing-Kilometer Tavascan
+const LK_FIELDS=[["start","Übernahme","date"],["months","Laufzeit Monate","1"],["kmYear","km pro Jahr laut Vertrag","1"],["kmStart","Kilometerstand bei Übergabe","1"],
+  ["kmFree","Freigrenze ± km (ohne Berechnung)","1"],["ctMore","Mehrkilometer ct/km","0.01"],["ctLess","Minderkilometer ct/km","0.01"]];
+function renderLease(){
+  const ev=S.cars.ev=S.cars.ev||{}, today=iso(new Date()), L=C.leaseKm(today), fl=[];
+  const f=$("lk-form"); if(!f.children.length){ f.innerHTML=LK_FIELDS.map(([k,l,t])=>`<label class="f">${l}<input id="lk-${k}" type="${t==="date"?"date":"number"}"${t!=="date"?` step="${t}" min="0"`:""}></label>`).join("");
+    f.addEventListener("change",e=>{ const k=e.target.id?.slice(3); if(!LK_FIELDS.some(x=>x[0]===k)) return; const v=e.target.value;
+      if(k==="start") ev.start=v||""; else if(v==="") delete ev[k]; else ev[k]=+v; persist(); refreshCalc(); rerender(); }); }
+  for(const [k] of LK_FIELDS){ const el=$("lk-"+k); if(document.activeElement!==el) el.value = k==="kmYear" ? (ev.kmYear ?? ev.km ?? "") : (ev[k] ?? ""); }
+  if(!L){ $("lk-flags").innerHTML=flag("Übernahmedatum und km pro Jahr unter „Vertragsdaten“ eintragen.",true); $("lk-kpis").innerHTML=""; $("lk-note").innerHTML=""; chart("lk-chart",{type:"line",data:{datasets:[]}}); return; }
+  if(!L.started) fl.push(flag(`Übernahme am ${dde(L.start)}${L.daysToStart?` (in ${nf(L.daysToStart)} Tagen)`:""}. Ab dann regelmäßig den Kilometerstand erfassen – am besten einmal im Monat.`,true));
+  else if(!L.last) fl.push(flag("Noch kein Kilometerstand seit der Übernahme. Unter „Erfassen → Kilometerstand“ eintragen.",true));
+  else if(!L.reliable) fl.push(flag(`Erst ${nf(L.used)} Tage seit der Übernahme – Tempo und Prognose werden ab etwa 30 Tagen aussagekräftig.`,true));
+  if(!(L.ctMore>0)) fl.push(flag("Mehr- und Minderkilometer-Satz fehlen noch (Vertragsdaten) – die Prognose zeigt dann auch Euro.",true));
+  $("lk-flags").innerHTML=fl.join("");
+  const km=v=>`${nf(Math.round(v))} km`, sg=v=>(v>=0?"+":"−")+nf(Math.abs(Math.round(v)));
+  if(L.last){
+    const ahead=L.diff>0, endTxt=L.over==null?"–":(L.over>=0?`${km(L.over)} über dem Budget`:`${km(-L.over)} unter dem Budget`);
+    $("lk-kpis").innerHTML=
+       kpi(km(L.last.km),"Gefahren seit Übernahme",`Stand ${dde(L.last.d)} · ${pct(L.share)} der ${km(L.total)} nach ${pct(L.timeShare)} der Laufzeit`)
+      +kpi(`<span style="color:${ahead?"var(--warn)":"var(--ok)"}">${sg(L.diff)} km</span>`,ahead?"über dem Budget bis heute":"unter dem Budget bis heute",`Budget bis ${dde(L.last.d)}: ${km(L.budget)} · ${ahead?"":"Puffer "}${nf(Math.abs(L.diffDays))} Tage ${ahead?"voraus":""}`)
+      +kpi(L.pace!=null?`${nf(Math.round(L.pace/100)*100)} km`:"–","Tempo pro Jahr",`Vertrag ${km(L.kmYear)}${L.reliable?"":" · noch wenig Daten"}`)
+      +kpi(L.proj!=null?km(L.proj):"–","Prognose Rückgabe",`${dde(L.end)}: ${endTxt}${L.eurEnd?` · ${L.eurEnd>0?"Nachzahlung":"Erstattung"} ca. ${eur(Math.abs(L.eurEnd))}`:(L.eurEnd===0&&L.free?" · innerhalb der Freigrenze":"")}`);
+    $("lk-note").innerHTML=`<p class="note">Bis zum Vertragsende bleiben <b>${km(Math.max(0,L.total-L.last.km))}</b> in ${nf(L.restDays)} Tagen – also <b>${km(Math.max(0,L.restPerMonth))} pro Monat</b> (${nf(Math.max(0,L.restPerDay),1)} km/Tag), um genau bei ${km(L.total)} zu landen${L.free?`; mit Freigrenze bis ${km(L.total+L.free)} ohne Kosten`:""}. Prognose = bisheriges Tempo bis zur Rückgabe, ohne Jahreszeiten.</p>`;
+  } else { $("lk-kpis").innerHTML=kpi(km(L.total),"Budget gesamt",`${km(L.kmYear)} × ${nf(L.months)} Monate`)+kpi(dde(L.start),"Übernahme","")+kpi(dde(L.end),"Rückgabe",""); $("lk-note").innerHTML=""; }
+  // Grafik: x = Tage seit Übernahme, Achse in Monaten
+  const T=L.termDays, line=(lab,data,col,dash,extra={})=>({label:lab,data,borderColor:css(col),backgroundColor:css(col),borderDash:dash||[],pointRadius:0,borderWidth:1.8,tension:0,...extra});
+  const ds=[line("Budget laut Vertrag",[{x:0,y:0},{x:T,y:L.total}],"--ink",[6,4])];
+  if(L.free) ds.push(line("Freigrenze (ohne Kosten)",[{x:0,y:L.free},{x:T,y:L.total+L.free}],"--muted",[2,3],{borderWidth:1,pointRadius:0}),
+    line("Freigrenze unten",[{x:0,y:Math.max(0,-L.free)},{x:T,y:L.total-L.free}],"--muted",[2,3],{borderWidth:1,fill:"-1",backgroundColor:`color-mix(in srgb, ${css("--muted")} 12%, transparent)`}));
+  if(L.pts.length) ds.push(line("Gefahren",[{x:0,y:0},...L.pts.map(p=>({x:p.day,y:p.km}))],"--batt",[],{pointRadius:3,borderWidth:2.5}));
+  if(L.proj!=null) ds.push(line("Prognose",[{x:L.used,y:L.last.km},{x:T,y:L.proj}],L.over>L.free?"--warn":"--batt",[4,4],{borderWidth:2}));
+  const lbl=x=>monthLabel(addDaysV(L.start,Math.round(x)).slice(0,7));
+  chart("lk-chart",{type:"line",data:{datasets:ds},options:{parsing:true,plugins:{ebTotals:false,tooltip:{mode:"nearest",intersect:false,callbacks:{title:c=>dde(addDaysV(L.start,Math.round(c[0].parsed.x))),label:c=>`${c.dataset.label}: ${km(c.parsed.y)}`}},
+    legend:{labels:{filter:i=>i.text!=="Freigrenze unten"}}},
+    scales:{x:{type:"linear",min:0,max:T,ticks:{stepSize:T/(L.months/3),callback:v=>lbl(v)}},y:{beginAtZero:true,title:{display:true,text:"km seit Übernahme"}}}}});
+}
+const addDaysV=(d,n)=>iso(new Date(Date.parse(d+"T00:00:00Z")+n*864e5));
 function renderLog(){
   if(!$("cl-cat").options.length) $("cl-cat").innerHTML=CAR_CATS.map(c=>`<option>${c}</option>`).join("");
   renderCarAnalytics();
@@ -1453,7 +1491,7 @@ let current="p-overview"; const rendered={};
 const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-ausbau"]],
   ["Auswertung",["p-co2","p-rel"]],["Auto",["p-log","p-car"]],["⚙",["p-data"]]];
 // v0.48: je Seite ab diesem Block (Index der direkten Kinder) eingeklappt unter „Mehr anzeigen“; fehlt = nichts einklappen
-const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":4,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":4,"p-data":6};
+const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":4,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
 const pageTitle=id=>document.getElementById(id).dataset.title, pageColor=id=>(PAGES.find(p=>p[0]===id)||[])[1]||"--muted";
 const navLink=(id,cls="")=>`<a href="#${id.slice(2)}" data-p="${id}"${cls?` class="${cls}"`:""}><span class="dot" style="background:var(${pageColor(id)})"></span>${pageTitle(id)}</a>`;
 function buildNav(){
@@ -1502,7 +1540,7 @@ function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
     ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":renderLog, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
+       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":()=>{ renderLease(); renderLog(); }, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
@@ -1697,6 +1735,7 @@ const Q_KINDS = {
   reading: { title: "Zählerstand", btn: "Zählerstand" },
   fuel: { title: "Tankvorgang", btn: "Tanken" },
   charge: { title: "Ladevorgang", btn: "Laden" },
+  odo: { title: "Kilometerstand", btn: "Kilometerstand" },
   carlog: { title: "Fahrzeugbuch", btn: "Fahrzeugbuch" },
   payment: { title: "Zahlung", btn: "Zahlung" },
 };
@@ -1711,6 +1750,9 @@ function quickSub(kind) {
     return r ? `${esc(mm?.name || m)}: ${nf(r.v)} kWh am ${dde(r.d)}` : "Noch kein Stand"; }
   if (kind === "fuel") { const f = [...S.fuel].sort((a, b) => b.d.localeCompare(a.d))[0]; return f ? `Zuletzt ${dde(f.d)} · ${nf(f.km)} km` : "Noch kein Tankvorgang"; }
   if (kind === "charge") { const c = [...S.charges].sort((a, b) => b.d.localeCompare(a.d))[0]; return c ? `Zuletzt ${dde(c.d)} · ${nf(c.k, 1)} kWh` : "Noch kein Ladevorgang"; }
+  if (kind === "odo") { const o = lastOdo("tavascan"), L = C.leaseKm(iso(new Date()));
+    if (!o) return "Tavascan: noch kein Stand";
+    return `Tavascan ${nf(o.km)} km am ${dde(o.d)}` + (L && L.last && L.reliable ? ` · ${L.diff >= 0 ? "+" : "−"}${nf(Math.abs(Math.round(L.diff)))} km zum Budget` : ""); }
   if (kind === "payment") { const q = [...(S.payments || [])].sort((a, b) => b.d.localeCompare(a.d))[0]; return q ? `Zuletzt ${dde(q.d)} · ${KIND_LABEL[q.kind]} ${eur(q.amount, 2)}` : "Abschlag, Erstattung, Bonus"; }
   const l = [...S.carlog].sort((a, b) => b.d.localeCompare(a.d))[0]; return l ? `Zuletzt ${dde(l.d)} · ${esc(l.cat)}` : "Noch kein Eintrag";
 }
@@ -1747,6 +1789,10 @@ function openQuick(kind) {
       + fld("Betrag in € (optional)", num("q-e")) + fld("Kilometerstand (optional)", num("q-km", "", "numeric"))
       + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber", "Sonstiges"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`)
       + fld("Kommentar (bei „Sonstiges“ Pflicht)", `<input type="text" id="q-n" maxlength="500" placeholder="z. B. Hotel, Freunde">`, "wide");
+  } else if (kind === "odo") {
+    body = fld("Datum", `<input type="date" id="q-d" value="${today}">`)
+      + fld("Fahrzeug", `<select id="q-car">${Object.entries(CARS).map(([k, v]) => `<option value="${k}" ${k === "tavascan" ? "selected" : ""}>${v}</option>`).join("")}</select>`)
+      + fld("Kilometerstand", num("q-km", "z. B. 1250", "numeric"));
   } else if (kind === "payment") {
     body = quickPaymentFields(today);
   } else {
@@ -1777,6 +1823,12 @@ function quickHint(kind) {
     let s = `Vorheriger Stand: ${nf(r.v)} kWh am ${dde(r.d)}.`;
     if (isFinite(v) && d > r.d) s += ` Verbrauch seitdem ${nf(v - r.v)} kWh (${nf((v - r.v) / diffDays(r.d, d), 1)} kWh/Tag).`;
     return s; }
+  if (kind === "odo") { const car = $("q-car").value, o = lastOdo(car, d), km = parseNum($("q-km").value);
+    let t = o ? `Letzter Stand: ${nf(o.km)} km am ${dde(o.d)}${isFinite(km) && km > o.km ? ` (+${nf(km - o.km)} km, ${nf((km - o.km) / Math.max(1, diffDays(o.d, d)), 1)} km/Tag)` : ""}.` : "Erster Stand für dieses Fahrzeug.";
+    const L = car === "tavascan" ? C.leaseKm(d) : null;
+    if (L && d >= L.start && isFinite(km)) { const used = diffDays(L.start, d), drv = km - L.kmStart, bud = L.total * used / L.termDays;
+      t += ` Leasing: ${nf(Math.round(drv))} km gefahren, Budget bis heute ${nf(Math.round(bud))} km (${drv >= bud ? "+" : "−"}${nf(Math.abs(Math.round(drv - bud)))} km).`; }
+    return t; }
   if (kind === "fuel") { const o = lastOdo("leon", d), l = parseNum($("q-l").value), e = parseNum($("q-e").value), km = parseNum($("q-km").value);
     const parts = []; if (o) parts.push(`Letzter Kilometerstand: ${nf(o.km)} km am ${dde(o.d)}${isFinite(km) && km > o.km ? ` (+${nf(km - o.km)} km)` : ""}.`);
     if (isFinite(l) && isFinite(e) && l > 0) parts.push(`${nf(e / l, 3)} €/l.`); return parts.join(" "); }
@@ -1814,6 +1866,12 @@ async function saveQuick(kind) {
     if (o === "Sonstiges" && !n) return err("Bei „Sonstiges“ bitte im Kommentar angeben, wo geladen wurde.");
     obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o, n }; S.charges.push(obj);
     label = `Ladevorgang ${nf(k, 1)} kWh`;
+  } else if (kind === "odo") {
+    const km = parseNum($("q-km").value), car = $("q-car").value;
+    if (!(km > 0)) return err("Kilometerstand angeben.");
+    const o = lastOdo(car, d); if (o && km < o.km && !confirm(`Kilometerstand ist kleiner als der letzte (${nf(o.km)} km am ${dde(o.d)}). Trotzdem speichern?`)) return;
+    obj = { d, car, cat: "Kilometerstand", km, e: 0, note: "" }; S.carlog.push(obj);
+    label = `Kilometerstand ${CARS[car]} ${nf(km)} km`;
   } else if (kind === "payment") {
     let a = parseNum($("q-pa").value); if (!isFinite(a) && $("q-pk").value === "abschlag") a = parseNum($("q-pa").placeholder);
     if (!(a > 0)) return err("Betrag angeben.");
@@ -1826,7 +1884,7 @@ async function saveQuick(kind) {
     label = `Fahrzeugbuch: ${esc(obj.cat)}`;
   }
   $("q-save").disabled = true;
-  const r = await write(kind, obj);
+  const r = await write(kind === "odo" ? "carlog" : kind, obj);
   $("q-form").hidden = true;
   $("q-msg").innerHTML = r === "error" ? "" : flag(r === "queued" ? `Offline gespeichert: ${label}. Wird gesendet, sobald wieder Netz da ist.` : `Gespeichert: ${label}.`, true);
   renderQuick();

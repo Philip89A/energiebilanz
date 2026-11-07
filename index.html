@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.50.0">
-<link rel="stylesheet" href="css/style.css?v=0.50.0">
+<meta name="app-version" content="0.51.0">
+<link rel="stylesheet" href="css/style.css?v=0.51.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -406,6 +406,12 @@
   <h1>Tanken und Laden</h1>
   <p class="lead">Echter Verbrauch lässt sich nur von Volltankung zu Volltankung rechnen. Deshalb bei jedem Eintrag Kilometerstand und „voll getankt“ angeben.</p>
   <div class="grid g4" id="lg-kpis"></div>
+  <div class="panel" style="margin-top:16px" id="lk-panel"><h2>Leasing-Kilometer Cupra Tavascan</h2>
+    <p class="note">Gefahrene Kilometer gegen das Budget aus dem Leasingvertrag, gleichmäßig verteilt ab Übernahme. Kilometerstände unter „Erfassen → Kilometerstand“, aus Ladevorgängen und dem Fahrzeugbuch.</p>
+    <div id="lk-flags"></div><div class="grid g4" id="lk-kpis"></div>
+    <div class="chart" style="margin-top:12px"><canvas id="lk-chart"></canvas></div><div id="lk-note"></div>
+    <details class="edit-only" id="lk-cfg" style="margin-top:10px"><summary>Vertragsdaten</summary><div class="form" id="lk-form" style="margin-top:10px"></div></details>
+  </div>
   <div class="panel" style="margin-top:16px">
     <div class="form" style="max-width:420px"><label class="f">Fahrzeug<select id="lg-car"><option value="leon">Cupra Leon</option><option value="tavascan">Cupra Tavascan</option></select></label>
     <label class="f">Auflösung<select id="lg-gran"><option value="week">Woche</option><option value="month">Monat</option><option value="quarter">Quartal</option><option value="year">Jahr</option></select></label></div>
@@ -525,8 +531,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.50.0"></script>
-<script src="vendor/chart.umd.js?v=0.50.0"></script>
-<script type="module" src="js/app.js?v=0.50.0"></script>
+<script src="vendor/supabase.js?v=0.51.0"></script>
+<script src="vendor/chart.umd.js?v=0.51.0"></script>
+<script type="module" src="js/app.js?v=0.51.0"></script>
 </body>
 </html>
