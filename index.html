@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.49.0">
-<link rel="stylesheet" href="css/style.css?v=0.49.0">
+<meta name="app-version" content="0.50.0">
+<link rel="stylesheet" href="css/style.css?v=0.50.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -449,7 +449,8 @@
       <label class="f">Kilometerstand<input type="number" id="ch-km"></label>
       <label class="f">kWh<input type="number" step="0.1" id="ch-k"></label>
       <label class="f">Betrag in €<input type="number" step="0.01" id="ch-e"></label>
-      <label class="f">Ort<select id="ch-o"><option>zu Hause</option><option>öffentlich AC</option><option>öffentlich DC</option><option>Arbeitgeber</option></select></label>
+      <label class="f">Ort<select id="ch-o"><option>zu Hause</option><option>öffentlich AC</option><option>öffentlich DC</option><option>Arbeitgeber</option><option>Sonstiges</option></select></label>
+      <label class="f">Kommentar<input type="text" id="ch-n" maxlength="500" placeholder="optional, bei „Sonstiges“ Pflicht"></label>
       <button id="ch-add">Ladevorgang speichern</button>
     </div>
     <div class="tbl-wrap"><table id="ch-tbl"></table></div>
@@ -524,8 +525,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.49.0"></script>
-<script src="vendor/chart.umd.js?v=0.49.0"></script>
-<script type="module" src="js/app.js?v=0.49.0"></script>
+<script src="vendor/supabase.js?v=0.50.0"></script>
+<script src="vendor/chart.umd.js?v=0.50.0"></script>
+<script type="module" src="js/app.js?v=0.50.0"></script>
 </body>
 </html>
