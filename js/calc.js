@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.50.0';
+import { hpSum } from './hp.js?v=0.51.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -801,6 +801,28 @@ export function createCalc(S) {
     const o = []; p.forEach(x => { if (o.length && o[o.length - 1].d === x.d) { o[o.length - 1].km = Math.max(o[o.length - 1].km, x.km); } else o.push(x); });
     return o;
   }
+  // v0.51: Leasing-Kilometer Tavascan – gefahren gegen Budget (km/Jahr ab Übernahme), Prognose zum Vertragsende.
+  // Einstellungen in S.cars.ev: start, months, kmYear (leer = km), kmStart, kmFree (Freigrenze), ctMore/ctLess (ct/km).
+  function addMonths(d, n) { const y = +d.slice(0, 4), m = +d.slice(5, 7) - 1 + n, dd = +d.slice(8, 10); const Y = y + Math.floor(m / 12), M = ((m % 12) + 12) % 12;
+    const last = new Date(Date.UTC(Y, M + 1, 0)).getUTCDate(); return `${Y}-${String(M + 1).padStart(2, '0')}-${String(Math.min(dd, last)).padStart(2, '0')}`; }
+  function leaseKm(today) {
+    const ev = S.cars?.ev || {}, start = ev.start; if (!start) return null;
+    const months = +ev.months || 36, kmYear = +ev.kmYear || +ev.km || 0; if (!kmYear) return null;
+    const end = addMonths(start, months), termDays = diffDays(start, end), total = kmYear * months / 12, perDay = total / termDays;   // Vertrag: km/Jahr × Monate ÷ 12, gleichmäßig über die Tage
+    const kmStart = +ev.kmStart || 0, free = +ev.kmFree || 0, ctMore = +ev.ctMore || 0, ctLess = +ev.ctLess || 0;
+    const pts = odoPoints('tavascan').filter(x => x.d >= start && x.d <= end).map(x => ({ d: x.d, day: diffDays(start, x.d), km: Math.max(0, x.km - kmStart) }));
+    const last = pts[pts.length - 1] || null, out = { start, end, months, kmYear, total, termDays, kmStart, free, ctMore, ctLess, pts, last, today,
+      started: !!today && today >= start, daysToStart: today && today < start ? diffDays(today, start) : 0 };
+    if (!last) return out;
+    const used = last.day, budget = perDay * used, diff = last.km - budget, reliable = used >= 30;
+    const pace = used > 0 ? last.km / used * 365 : null, proj = used >= 14 ? last.km / used * termDays : null;
+    const over = proj != null ? proj - total : null;
+    let eurEnd = null; if (over != null) { if (over > free) eurEnd = (over - free) * ctMore / 100; else if (over < -free) eurEnd = -(-over - free) * ctLess / 100; else eurEnd = 0; }
+    const restDays = termDays - used, restKm = total + free - last.km;
+    return { ...out, used, budget, diff, diffDays: diff / perDay, reliable, pace, proj, over, eurEnd,
+      restDays, restKm, restPerDay: restDays > 0 ? (total - last.km) / restDays : null, restPerMonth: restDays > 0 ? (total - last.km) / restDays * 30.44 : null,
+      share: last.km / total, timeShare: used / termDays };
+  }
   function kmDaily(car) {
     const o = odoPoints(car), out = {};
     for (let i = 0; i < o.length - 1; i++) {
@@ -1396,7 +1418,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, leaseKm, addMonths, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

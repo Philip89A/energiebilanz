@@ -684,3 +684,18 @@
 - **SQL-Update nötig:** `docs/UPDATE_V50.sql` (Prüfregel für den Ort erweitert, Spalte `charge_log.note`). Ohne Kommentar
   sendet die App kein Feld `note`; ein Ladevorgang mit „Sonstiges“ braucht das Update.
 - Tests: neu `tests/v50.test.mjs`, neu `scripts/v50-check.mjs` (10 Prüfungen); v48-, v49-Check grün.
+
+## v0.51 – Leasing-Kilometer Tavascan
+- **Neuer Abschnitt oben auf „Tanken & Laden“:** gefahrene Kilometer seit Übernahme gegen das Budget aus dem
+  Leasingvertrag (km/Jahr × Laufzeit, gleichmäßig über die Tage verteilt). Kennzahlen: gefahren (Anteil am Gesamtbudget
+  gegen Anteil der Laufzeit), Vorsprung/Rückstand in km und Tagen, Tempo pro Jahr, Prognose zur Rückgabe mit Mehr- bzw.
+  Minderkilometern und Euro, Spielraum pro Monat bis zum Vertragsende.
+- **Grafik über die ganze Laufzeit:** Budgetlinie, Freigrenze als Korridor, gefahrene Kilometer je Ablesung, gestrichelte
+  Prognose (orange, wenn sie über der Freigrenze endet).
+- **Vertragsdaten** im Abschnitt änderbar (Übernahme, Laufzeit, km/Jahr, Stand bei Übergabe, Freigrenze, Mehr-/Minder-
+  kilometer ct/km); Übernahme und Laufzeit sind dieselben wie im Auto-Vergleich, km/Jahr ist ohne Eintrag die geplante
+  Fahrleistung von dort. Gespeichert in `settings.data.cars.ev`.
+- **Schnellerfassung „Kilometerstand“** (Datum, Auto, Stand; Tavascan vorgewählt) mit Hinweis gegen das Budget;
+  gespeichert als Fahrzeugbuch-Eintrag „Kilometerstand“. Kilometerstände aus Ladevorgängen und Fahrzeugbuch zählen mit.
+- Kein Datenbank-Update nötig.
+- Tests: neu `tests/v51.test.mjs`, neu `scripts/v51-check.mjs` (17 Prüfungen); v48-, v50-Check grün.

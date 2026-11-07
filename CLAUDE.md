@@ -170,6 +170,10 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      übersprungen); vorhandener Tag nur durch einen mit ≥ gleich vielen Werten ersetzt. Prüfung: `v49-check`.
    - ✅ v0.50: Ladevorgänge Ort „Sonstiges“ + Kommentar (`charge_log.note`, `docs/UPDATE_V50.sql`; `toDb.charge` sendet note
      nur wenn gesetzt; bei „Sonstiges“ Pflicht). Prüfung: `v50-check`.
+   - ✅ v0.51: Leasing-Kilometer Tavascan (`leaseKm(today)` in calc.js: Budget = kmYear × months ÷ 12 gleichmäßig über die
+     Tage, Prognose = Tempo × Laufzeit, Mehr-/Minderkilometer jenseits der Freigrenze; `S.cars.ev` start, months, kmYear,
+     kmStart, kmFree, ctMore, ctLess). Abschnitt `lk-*` auf „Tanken & Laden“, Schnellerfassung „Kilometerstand“ (Fahrzeugbuch).
+     Prüfung: `v51-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
