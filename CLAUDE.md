@@ -168,6 +168,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Zustand `eb_more_<seite>` im localStorage, `?unfold` öffnet alles – Prüfskripte nutzen das). Prüfung: `v48-check`.
    - ✅ v0.49: Raumklima-Import auch für Tapo-Sensoren (`parseClimateCsv`: Format an der Kopfzeile erkannt, „Abnormal“-Werte
      übersprungen); vorhandener Tag nur durch einen mit ≥ gleich vielen Werten ersetzt. Prüfung: `v49-check`.
+   - ✅ v0.50: Ladevorgänge Ort „Sonstiges“ + Kommentar (`charge_log.note`, `docs/UPDATE_V50.sql`; `toDb.charge` sendet note
+     nur wenn gesetzt; bei „Sonstiges“ Pflicht). Prüfung: `v50-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

@@ -675,3 +675,12 @@
   sonst mit wenigen Werten überschrieben. Gilt auch für Govee.
 - `parseClimateCsv` ersetzt `parseGoveeCsv` (alter Name bleibt als Verweis). Kein Datenbank-Update nötig.
 - Tests: 156 Unit-Tests (neu `tests/v49.test.mjs`), neu `scripts/v49-check.mjs` (8 Prüfungen); v48-Check grün.
+
+## v0.50 – Ladevorgänge: Ort „Sonstiges“ und Kommentar
+- **Neuer Ort „Sonstiges“** (z. B. Hotel, Freunde) und ein **Kommentarfeld** (bis 500 Zeichen) für jeden Ladevorgang,
+  in „Tanken & Laden“ und in der Schnellerfassung. Bei „Sonstiges“ ist der Kommentar Pflicht, sonst optional.
+- Die Tabelle der Ladevorgänge zeigt den Kommentar klein unter dem Ort.
+- „Sonstiges“ zählt wie öffentliches Laden nicht als „zu Hause“ (Wallbox-Ersparnis, Allgemeinstrom).
+- **SQL-Update nötig:** `docs/UPDATE_V50.sql` (Prüfregel für den Ort erweitert, Spalte `charge_log.note`). Ohne Kommentar
+  sendet die App kein Feld `note`; ein Ladevorgang mit „Sonstiges“ braucht das Update.
+- Tests: neu `tests/v50.test.mjs`, neu `scripts/v50-check.mjs` (10 Prüfungen); v48-, v49-Check grün.

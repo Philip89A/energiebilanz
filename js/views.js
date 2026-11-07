@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.49.0';
-import { parseNum } from './queue.js?v=0.49.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.49.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.49.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.49.0';
-import { explainAll } from './explain.js?v=0.49.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.49.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.50.0';
+import { parseNum } from './queue.js?v=0.50.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.50.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.50.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.50.0';
+import { explainAll } from './explain.js?v=0.50.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.50.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1442,7 +1442,7 @@ function renderLog(){
     fr.map(x=>{ const iv=ivMap.get(S.fuel[x.i]); return `<tr><td>${dde(x.d)}</td><td>${nf(x.km)}</td><td>${nf(x.l,2)}</td><td>${eur(x.e,2)}</td><td>${nf(x.e/x.l,3)}</td><td class="l">${esc(x.s)}</td><td>${x.full?"ja":"nein"}</td><td>${iv?nf(iv.l100,2):""}</td><td><button class="x" data-del-fu="${x.i}" aria-label="Löschen">×</button></td></tr>`;}).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Tankvorgänge. Der erste Eintrag mit „voll getankt“ ist der Startpunkt für die Verbrauchsrechnung.</td></tr></tbody>`;
   const cr=ch.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
   $("ch-tbl").innerHTML = cr.length? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
-    cr.map(x=>`<tr><td>${dde(x.d)}</td><td>${x.km?nf(x.km):"–"}</td><td>${nf(x.k,1)}</td><td>${eur(x.e,2)}</td><td>${x.k?nf(x.e/x.k,3):"–"}</td><td class="l">${esc(x.o)}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Ladevorgänge erfassen, sobald der Tavascan da ist. Laden zu Hause kommt später aus Wallbox- oder Zählerdaten.</td></tr></tbody>`;
+    cr.map(x=>`<tr><td>${dde(x.d)}</td><td>${x.km?nf(x.km):"–"}</td><td>${nf(x.k,1)}</td><td>${eur(x.e,2)}</td><td>${x.k?nf(x.e/x.k,3):"–"}</td><td class="l">${esc(x.o)}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Ladevorgänge erfassen, sobald der Tavascan da ist. Laden zu Hause kommt später aus Wallbox- oder Zählerdaten.</td></tr></tbody>`;
 }
 
 /* ---------- Daten ---------- */
@@ -1661,9 +1661,10 @@ function wireEditing(){
   $("fu-add").addEventListener("click",()=>{ const x={d:$("fu-d").value,km:+$("fu-km").value,l:+$("fu-l").value,e:+$("fu-e").value,s:$("fu-s").value,full:$("fu-full").checked};
     if(!x.d||!x.km||!x.l||!x.e){ alert("Datum, Kilometerstand, Liter und Betrag angeben."); return; }
     S.fuel.push(x); ["fu-km","fu-l","fu-e"].forEach(i=>$(i).value=""); write("fuel",x); rerender(); });
-  $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value};
+  $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value,n:$("ch-n").value.trim()};
     if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
-    S.charges.push(x); ["ch-km","ch-k","ch-e"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+    if(x.o==="Sonstiges"&&!x.n){ alert("Bei „Sonstiges“ bitte im Kommentar angeben, wo geladen wurde."); return; }
+    S.charges.push(x); ["ch-km","ch-k","ch-e","ch-n"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
   $("st-init").addEventListener("click",()=>{ if((S.stages||[]).length) return; S.stages=[{id:crypto.randomUUID(),name:"Bestand",from:A.dates[0],status:"live",kwp:+S.pv.kwp||null,capGross:+S.battery.capGross||null,maxW:800,note:""}]; persist(); rerender(); });
   $("st-add").addEventListener("click",()=>{ const l=(S.stages||[]).slice(-1)[0]||{}; (S.stages=S.stages||[]).push({id:crypto.randomUUID(),name:"Neue Stufe",from:"",status:"planned",kwp:l.kwp??null,capGross:l.capGross??null,maxW:l.maxW??null,note:""}); persist(); rerender(); });
   $("wt-create").addEventListener("click",()=>{ if(S.meters.some(m=>m.group==="water")) return;
@@ -1744,7 +1745,8 @@ function openQuick(kind) {
     const lastO = ([...S.charges].sort((a, b) => b.d.localeCompare(a.d))[0] || {}).o || "zu Hause";
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("kWh", num("q-k", "z. B. 42,5"))
       + fld("Betrag in € (optional)", num("q-e")) + fld("Kilometerstand (optional)", num("q-km", "", "numeric"))
-      + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`);
+      + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber", "Sonstiges"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`)
+      + fld("Kommentar (bei „Sonstiges“ Pflicht)", `<input type="text" id="q-n" maxlength="500" placeholder="z. B. Hotel, Freunde">`, "wide");
   } else if (kind === "payment") {
     body = quickPaymentFields(today);
   } else {
@@ -1808,7 +1810,9 @@ async function saveQuick(kind) {
   } else if (kind === "charge") {
     const k = parseNum($("q-k").value), e = parseNum($("q-e").value), km = parseNum($("q-km").value);
     if (!(k > 0)) return err("kWh angeben.");
-    obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o: $("q-o").value }; S.charges.push(obj);
+    const o = $("q-o").value, n = ($("q-n")?.value || "").trim();
+    if (o === "Sonstiges" && !n) return err("Bei „Sonstiges“ bitte im Kommentar angeben, wo geladen wurde.");
+    obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o, n }; S.charges.push(obj);
     label = `Ladevorgang ${nf(k, 1)} kWh`;
   } else if (kind === "payment") {
     let a = parseNum($("q-pa").value); if (!isFinite(a) && $("q-pk").value === "abschlag") a = parseNum($("q-pa").placeholder);
@@ -2318,7 +2322,7 @@ function renderLogPeriod(PS) {
     : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Tankvorgänge im Zeitraum.</td></tr></tbody>`;
   const cr = S.charges.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
   $("ch-tbl").innerHTML = cr.length ? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
-    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
+    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Ladevorgänge im Zeitraum.</td></tr></tbody>`;
 }
 function renderCarPeriodKpis(car, kd, items, PS) {

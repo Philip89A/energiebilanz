@@ -136,7 +136,8 @@ create table if not exists charge_log (     -- Ladevorgänge (Cupra Tavascan)
   odometer numeric check (odometer is null or odometer > 0),
   kwh numeric not null check (kwh > 0),
   amount numeric check (amount is null or amount >= 0),
-  location text check (location in ('zu Hause','öffentlich AC','öffentlich DC','Arbeitgeber')),
+  location text check (location in ('zu Hause','öffentlich AC','öffentlich DC','Arbeitgeber','Sonstiges')),
+  note text check (note is null or char_length(note) <= 500),   -- v0.50: Kommentar
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

@@ -111,3 +111,10 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    Kontrolle: Zahl der Ablesungen „mit_uhrzeit“ und „ohne“.
 2. Pull Request mergen, App neu laden (v0.46.0).
 3. **Erfassen → Zählerstand** und Schnellerfassung haben jetzt ein Feld „Uhrzeit“ (vorbelegt mit jetzt).
+
+# Update v0.50 (Ladevorgänge: Sonstiges und Kommentar)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V50.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V50.sql) → **Run**.
+   Kontrolle: Regel mit „Sonstiges“ und Spalte `note | text`.
+2. Pull Request mergen, App neu laden (v0.50.0).
+3. **Tanken & Laden** und **Erfassen → Laden**: Ort „Sonstiges“ und Feld „Kommentar“ (bei „Sonstiges“ Pflicht).
