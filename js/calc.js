@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.53.0';
+import { hpSum } from './hp.js?v=0.54.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -1062,11 +1062,15 @@ export function createCalc(S) {
   }
   function deviceStats(from, to) {
     const hh = hhDay(), days = diffDays(from, to) + 1;
+    let hhSum = 0, hhN = 0; for (const [d, v] of Object.entries(hh)) if (d >= from && d <= to) { hhSum += v; hhN++; }
     const list = (S.devices || []).map(dv => {
       const a = deviceSum(dv.id, from, to), rows = DEV[dv.id] || {};
       let dk = 0, hk = 0; for (const [d, r] of Object.entries(rows)) if (d >= from && d <= to && hh[d] != null) { dk += r.kwh || 0; hk += hh[d]; }
       const p = deviceSum(dv.id, yearBack(from), yearBack(to)), prevOk = a.n && p.n >= 0.8 * a.n;
-      return { ...dv, ...a, share: hk > 0 ? dk / hk : null, prev: prevOk ? p : null, change: prevOk && p.perDay ? a.perDay / p.perDay - 1 : null };
+      // v0.54: Anteil über den ganzen gewählten Zeitraum (Gerät ÷ Allgemeinstrom aller Tage mit Haushaltswert);
+      // der frühere Wert (nur an den Messtagen des Geräts) bleibt als shareMeas
+      return { ...dv, ...a, share: hhSum > 0 ? dk / hhSum : null, shareMeas: hk > 0 ? dk / hk : null, hhN, measN: Object.keys(rows).filter(d => d >= from && d <= to && hh[d] != null).length,
+        prev: prevOk ? p : null, change: prevOk && p.perDay ? a.perDay / p.perDay - 1 : null };
     }).filter(x => x.n);
     // Haushalt: Ø je Tag über die Tage mit Werten im Zeitraum; Rest = Haushalt − gemessene Geräte (Ø je Tag)
     let hs = 0, hn = 0; for (const [d, v] of Object.entries(hh)) if (d >= from && d <= to) { hs += v; hn++; }

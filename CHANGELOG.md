@@ -719,3 +719,12 @@
   Zirkulation danach mit 0,09 kWh/Tag weiter.
 - Kein Datenbank-Update nötig.
 - Tests: neu `tests/v53.test.mjs`, neu `scripts/v53-check.mjs` (6 Prüfungen); v48-, v52-Check grün.
+
+## v0.54 – Geräte: Anteil im gewählten Zeitraum
+- **Spalte „Anteil im Zeitraum“** in der Geräte-Tabelle: kWh des Geräts ÷ Allgemeinstrom aller Tage des gewählten
+  Zeitraums (mit Haushaltswert). Bisher galt der Anteil nur über die eigenen Messtage des Geräts – ein Gerät mit einem
+  einzigen Messtag (Geschirrspüler im November) wirkte dadurch größer als eines mit viel mehr kWh (Waschmaschine).
+- Geräte mit Lücken zeigen „gemessen an n von m Tagen“; ihr Anteil kann zu niedrig sein. Der frühere Wert (Anteil an den
+  Messtagen) steht im Tooltip der Zelle.
+- Kein Datenbank-Update nötig.
+- Tests: neu `tests/v54.test.mjs`, neu `scripts/v54-check.mjs` (5 Prüfungen); v52-, v53-Check grün.
