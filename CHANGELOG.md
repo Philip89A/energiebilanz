@@ -709,3 +709,13 @@
 - Schätzwerte stehen nicht in der Datenbank, sondern werden aus den Einstellungen berechnet – nichts muss nachgetragen werden.
 - Kein Datenbank-Update nötig.
 - Tests: neu `tests/v52.test.mjs`, neu `scripts/v52-check.mjs` (5 Prüfungen); v48-Check grün.
+
+## v0.53 – Geräte: Sperre nach „gemessen bis“
+- **Neues Feld „gemessen bis“** in der Geräteliste (letzter Messtag). Ab diesem Tag nimmt das Gerät keine Werte mehr an:
+  Importe übernehmen nur Tage davor und melden die gesperrten Tage, Monatswerte von Hand und aus den Waschprogrammen werden
+  für betroffene Monate abgelehnt. Gespeicherte Werte nach dem Messende zählen in der Rechnung nicht.
+- Anlass: Die Messsteckdose der Zirkulationspumpe misst seit 08.11. (09:00) die Steckerleiste am PC; ein versehentlich der
+  Zirkulation zugeordneter Export hätte sonst PC-Werte doppelt gezählt. Zusammen mit dem Schätzwert (v0.52) läuft die
+  Zirkulation danach mit 0,09 kWh/Tag weiter.
+- Kein Datenbank-Update nötig.
+- Tests: neu `tests/v53.test.mjs`, neu `scripts/v53-check.mjs` (6 Prüfungen); v48-, v52-Check grün.

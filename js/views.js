@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.52.0';
-import { parseNum } from './queue.js?v=0.52.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.52.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.52.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.52.0';
-import { explainAll } from './explain.js?v=0.52.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.52.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.53.0';
+import { parseNum } from './queue.js?v=0.53.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.53.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.53.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.53.0';
+import { explainAll } from './explain.js?v=0.53.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.53.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -373,9 +373,10 @@ function renderDevices(){
   } else { $("dv-tbl").innerHTML = ""; $("dv-note").innerHTML = ""; chart("dv-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
   // Geräteliste und Monatswerte (Bearbeiten)
   const roomOpt = sel => `<option value="">–</option>${(S.rooms || []).map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}`;
-  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Standort (Raum)</th><th class="l">Notiz</th><th>Schätzung kWh/Tag</th><th>geschätzt ab</th><th>Werte</th><th></th></tr></thead><tbody>${
+  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Standort (Raum)</th><th class="l">Notiz</th><th>gemessen bis</th><th>Schätzung kWh/Tag</th><th>geschätzt ab</th><th>Werte</th><th></th></tr></thead><tbody>${
     devs.map((d, i) => `<tr><td class="l"><input type="text" value="${esc(d.name)}" data-dv="${i}" data-k="name"></td><td><input type="date" value="${d.from || ""}" data-dv="${i}" data-k="from"></td><td class="l"><select data-dv="${i}" data-k="room">${roomOpt(d.room)}</select></td>
       <td class="l"><input type="text" value="${esc(d.note || "")}" data-dv="${i}" data-k="note" style="min-width:220px"></td>
+      <td><input type="date" value="${d.to || ""}" data-dv="${i}" data-k="to" title="Letzter Messtag: ab diesem Tag nimmt das Gerät keine Import- oder Monatswerte mehr an (z. B. Messsteckdose umgesteckt)"></td>
       <td><input type="number" step="0.01" min="0" style="width:90px" value="${d.est ?? ""}" data-dv="${i}" data-k="est" title="Für Tage ohne Messung ab „geschätzt ab“ (z. B. nach dem Umstecken der Messsteckdose)"></td><td><input type="date" value="${d.estFrom || ""}" data-dv="${i}" data-k="estFrom"></td>
       <td>${nf((S.deviceDays || []).filter(r => r.dev === d.id).length)}</td>
       <td><button class="x" data-dv-del="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : "";
@@ -471,12 +472,20 @@ function wirePrograms() {
         if (hasDay) extra = " Monatssumme nicht übernommen: für diesen Monat gibt es Tageswerte einer Messsteckdose.";
         else { const k = rows.reduce((a, r) => a + r.runs * (r.kwh_run || 0), 0), l = rows.some(r => r.l_run != null) ? rows.reduce((a, r) => a + r.runs * (r.l_run || 0), 0) : null, n = rows.reduce((a, r) => a + r.runs, 0);
           const mr = monthRows(m, { kwh: Math.round(k * 100) / 100, water_l: l != null ? Math.round(l) : null, runs: n }).map(r => ({ ...r, device_id: dev }));
-          await store.saveDevice(mr); mergeDeviceDays(mr); extra = ` Gerätewerte: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}, ${nf(n)} Gänge.`; }
+          const sv = await saveDevRows(mr); extra = ` Gerätewerte: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}, ${nf(n)} Gänge.` + lockTxt(sv.blocked); }
       }
       pgMsg = `${monthLabel(m)}: ${nf(rows.length)} Programme gespeichert.${extra}`; pgDraft = null; refreshCalc(); rerender();
     } catch (err) { pgMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderPgRows(); }
   });
 }
+// v0.53: Sperre – ein Gerät mit „gemessen bis“ (dv.to) nimmt ab diesem Tag keine Werte mehr an (Messsteckdose umgesteckt)
+const devLocked = (id, day) => { const d = (S.devices || []).find(x => x.id === id); return !!(d && d.to && day >= d.to); };
+async function saveDevRows(rows) {
+  const ok = rows.filter(r => !devLocked(r.device_id, r.day));
+  if (ok.length) { await store.saveDevice(ok); mergeDeviceDays(ok); }
+  return { n: ok.length, blocked: rows.length - ok.length };
+}
+const lockTxt = b => b ? ` ${nf(b)} Tage ab Messende gesperrt (nicht übernommen).` : "";
 function newDevice(name, from = "") { const d = { id: crypto.randomUUID().slice(0, 8), name, from, note: "" }; (S.devices = S.devices || []).push(d); return d; }
 function wireDevices() {
   $("dv-add").addEventListener("click", () => { newDevice("Neues Gerät"); persist(); rerender(); });
@@ -488,6 +497,7 @@ function wireDevices() {
     const id = $("dvm-dev").value, ym = $("dvm-month").value, k = parseNum($("dvm-kwh").value), l = $("dvm-l").value.trim() ? parseNum($("dvm-l").value.trim().replace(/^(\d{1,3})((?:\.\d{3})+)$/, (m, a, b) => a + b.replace(/\./g, ""))) : null, n = $("dvm-runs").value.trim() ? parseNum($("dvm-runs").value) : null;
     if (!id || !/^\d{4}-\d{2}$/.test(ym) || !(k >= 0) || (l != null && !(l >= 0)) || (n != null && !(n >= 0))) { dvMsg = "Bitte Gerät, Monat und kWh angeben (Zahlen ≥ 0)."; renderDevices(); return; }
     const rows = monthRows(ym, { kwh: k, water_l: l, runs: n }).map(r => ({ ...r, device_id: id }));
+    if (rows.some(r => devLocked(id, r.day))) { dvMsg = `Gesperrt: Für dieses Gerät endet die Messung am ${dde(S.devices.find(d => d.id === id).to)} – Monatswerte ab diesem Monat werden nicht angenommen (Feld „gemessen bis“ in der Geräteliste).`; renderDevices(); return; }
     try { await store.saveDevice(rows); mergeDeviceDays(rows); dvMsg = `${monthLabel(ym)} gespeichert: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}${n != null ? `, ${nf(n)} Programme` : ""} (gleichmäßig auf ${rows.length} Tage verteilt).`;
       ["dvm-kwh", "dvm-l", "dvm-runs"].forEach(x => $(x).value = ""); refreshCalc(); rerender(); }
     catch (err) { dvMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevices(); }
@@ -549,15 +559,15 @@ function wireDevImport() {
     if (dvImports.some(x => !x.dev || (x.dev === "new" && !x.newName))) { dvImportMsg = "Bitte jeder Datei ein Gerät zuordnen."; renderDevImport(); return; }
     e.target.disabled = true; dvImportMsg = "Speichert …"; renderDevImport();
     try {
-      let n = 0, changed = false;
+      let n = 0, blocked = 0, changed = false;
       for (const x of dvImports) {
         if (x.dev === "new") { const d = newDevice(x.newName, x.rows[0]?.day || ""); x.dev = d.id; changed = true; }
         const dv = S.devices.find(d => d.id === x.dev);
         const rows = x.rows.filter(r => !dv.from || r.day >= dv.from).map(r => ({ device_id: dv.id, day: r.day, kwh: r.kwh, src: r.src }));
-        if (rows.length) { await store.saveDevice(rows); mergeDeviceDays(rows); n += rows.length; }
+        if (rows.length) { const sv = await saveDevRows(rows); n += sv.n; blocked += sv.blocked; }
       }
       if (changed) persist();
-      dvImportMsg = `${nf(n)} Tageswerte gespeichert.`; dvImports = null; refreshCalc(); rerender();
+      dvImportMsg = `${nf(n)} Tageswerte gespeichert.` + lockTxt(blocked); dvImports = null; refreshCalc(); rerender();
     } catch (err) { dvImportMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevImport(); }
   });
 }
