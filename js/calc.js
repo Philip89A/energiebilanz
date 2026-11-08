@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.51.0';
+import { hpSum } from './hp.js?v=0.52.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -996,16 +996,21 @@ export function createCalc(S) {
   // v0.32: Geräte (Messsteckdosen, Waschmaschine) je Tag. Haushalt je Tag = Allgemeinstrom-Netzbezug laut Zähler (nach
   // Anker-Profil verteilt) + selbst genutzter Solarstrom. Anteil eines Geräts nur über Tage, an denen beides vorliegt.
   const DEV = (() => { const by = {}; for (const r of S.deviceDays || []) { const dv = (S.devices || []).find(x => x.id === r.dev);
-    if (!dv || (dv.from && r.d < dv.from)) continue; (by[r.dev] = by[r.dev] || {})[r.d] = r; } return by; })();
+    if (!dv || (dv.from && r.d < dv.from)) continue; (by[r.dev] = by[r.dev] || {})[r.d] = r; }
+    // v0.52: Schätzwert je Tag (dv.est kWh ab dv.estFrom) für Tage ohne Messung, bis zum letzten Anker-Tag
+    const last = A.dates[A.n - 1];
+    for (const dv of S.devices || []) { const k = +dv.est; if (!(k > 0) || !dv.estFrom) continue; const m = by[dv.id] = by[dv.id] || {};
+      for (let d = dv.estFrom; d <= last; d = addDays(d, 1)) if (!m[d]) m[d] = { dev: dv.id, d, kwh: k, l: null, runs: null, src: 'est' }; }
+    return by; })();
   const hhDay = (() => { let m = null; return () => { if (m) return m; m = {}; const as = groupSeries('as').daily;
     for (const [d, k] of Object.entries(as)) { const i = A.idx[d]; if (i !== undefined && A.c.use[i] != null) m[d] = k + (+A.c.use[i] || 0); } return m; }; })();
   const yearBack = d => `${+d.slice(0, 4) - 1}${d.slice(4)}`.replace(/-02-29$/, '-02-28');
   function deviceSum(id, from, to) {
-    const rows = DEV[id] || {}; let kwh = 0, n = 0, water = 0, runs = 0, nw = 0, month = false, eur = 0;
+    const rows = DEV[id] || {}; let kwh = 0, n = 0, water = 0, runs = 0, nw = 0, month = false, eur = 0, est = 0;
     for (const [d, r] of Object.entries(rows)) { if (d < from || d > to) continue; n++; kwh += r.kwh || 0;
-      if (r.l != null) { water += r.l; nw++; } if (r.runs != null) runs += r.runs; if (r.src === 'month') month = true;
+      if (r.l != null) { water += r.l; nw++; } if (r.runs != null) runs += r.runs; if (r.src === 'month') month = true; if (r.src === 'est') est++;
       const t = tariffAt('as', d) || currentTariff('as'); if (t) eur += (r.kwh || 0) * t.ap / 100; }
-    return { kwh, n, perDay: n ? kwh / n : null, water: nw ? water : null, runs: runs || null, month, eur };
+    return { kwh, n, perDay: n ? kwh / n : null, water: nw ? water : null, runs: runs || null, month, eur, est };
   }
   // v0.35: Wasser der Geräte (Waschmaschine) gegen den Wasserzähler – nur über die Tage, an denen beides vorliegt.
   function deviceWater(from, to) {

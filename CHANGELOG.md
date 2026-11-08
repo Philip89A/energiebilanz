@@ -699,3 +699,13 @@
   gespeichert als Fahrzeugbuch-Eintrag „Kilometerstand“. Kilometerstände aus Ladevorgängen und Fahrzeugbuch zählen mit.
 - Kein Datenbank-Update nötig.
 - Tests: neu `tests/v51.test.mjs`, neu `scripts/v51-check.mjs` (17 Prüfungen); v48-, v50-Check grün.
+
+## v0.52 – Geräte: Schätzwert für Tage ohne Messung
+- **Neue Felder in der Geräteliste:** „Schätzung kWh/Tag“ und „geschätzt ab“. Für jeden Tag ab diesem Datum ohne Messwert
+  setzt die App den Schätzwert ein, bis zum letzten Tag mit Anker-Daten. Gemessene Tage haben Vorrang. Anlass: Die
+  Messsteckdose der Lüftung misst seit 08.11. die Steckerleiste am PC; die Lüftung läuft mit dem Schnitt der letzten vier
+  gemessenen Wochen weiter, statt in den „Rest Allgemeinstrom“ zu fallen.
+- Die Geräte-Tabelle markiert betroffene Geräte („n Tage geschätzt (x kWh/Tag)“); Grafik, Rest, CO₂ je Gerät rechnen mit.
+- Schätzwerte stehen nicht in der Datenbank, sondern werden aus den Einstellungen berechnet – nichts muss nachgetragen werden.
+- Kein Datenbank-Update nötig.
+- Tests: neu `tests/v52.test.mjs`, neu `scripts/v52-check.mjs` (5 Prüfungen); v48-Check grün.
