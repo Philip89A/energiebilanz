@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.53.0';
-import { parseNum } from './queue.js?v=0.53.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.53.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.53.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.53.0';
-import { explainAll } from './explain.js?v=0.53.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.53.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.54.0';
+import { parseNum } from './queue.js?v=0.54.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.54.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.54.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.54.0';
+import { explainAll } from './explain.js?v=0.54.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.54.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -354,10 +354,10 @@ function renderDevices(){
   $("dv-flags").innerHTML = fl.join("");
   if (st.list.length) {
     const row = x => `<tr><td class="l"><span class="dot" style="background:${dvColor(devs.findIndex(d => d.id === x.id))}"></span>${esc(x.name)}${x.month ? ` <span class="pill">teils aus Monatssummen</span>` : ""}${x.est ? ` <span class="pill">${nf(x.est)} Tage geschätzt (${nf(+(devs.find(d => d.id === x.id)?.est || 0), 2)} kWh/Tag)</span>` : ""}</td>
-      <td>${kwh(x.kwh, 1)}</td><td>${nf(x.perDay, 2)}</td><td>${x.share != null ? pct(x.share, 1) : "–"}</td><td>${eur(x.eur, 2)}</td>
+      <td>${kwh(x.kwh, 1)}</td><td>${nf(x.perDay, 2)}</td><td${x.shareMeas != null ? ` title="An den ${nf(x.measN)} Messtagen des Geräts: ${pct(x.shareMeas, 1)} des Allgemeinstroms"` : ""}>${x.share != null ? pct(x.share, 1) : "–"}${x.measN < x.hhN ? `<br><span class="note">gemessen an ${nf(x.measN)} von ${nf(x.hhN)} Tagen</span>` : ""}</td><td>${eur(x.eur, 2)}</td>
       <td>${x.prev ? `${nf(x.prev.perDay, 2)} (${x.change >= 0 ? "+" : "−"}${pct(Math.abs(x.change))})` : "–"}</td>
       <td>${x.water != null ? nf(x.water) + " l" : "–"}</td><td>${x.runs ? nf(x.runs) : "–"}</td><td>${nf(x.n)}</td></tr>`;
-    $("dv-tbl").innerHTML = `<thead><tr><th class="l">Gerät</th><th>kWh</th><th>kWh/Tag</th><th>Anteil</th><th>Kosten</th><th>Vorjahr kWh/Tag</th><th>Wasser</th><th>Programme</th><th>Tage</th></tr></thead><tbody>${st.list.map(row).join("")}</tbody>
+    $("dv-tbl").innerHTML = `<thead><tr><th class="l">Gerät</th><th>kWh</th><th>kWh/Tag</th><th title="kWh des Geräts ÷ Allgemeinstrom im gewählten Zeitraum">Anteil im Zeitraum</th><th>Kosten</th><th>Vorjahr kWh/Tag</th><th>Wasser</th><th>Programme</th><th>Tage</th></tr></thead><tbody>${st.list.map(row).join("")}</tbody>
       ${st.hhKwh != null ? `<tfoot><tr><td class="l"><b>Allgemeinstrom gesamt</b> <span class="note">(Netz + eigener Solarstrom, ohne Wärmepumpe)</span></td><td><b>${kwh(st.hhKwh, 1)}</b></td><td>${nf(st.hhKwh / st.hhDays, 2)}</td><td>100 %</td><td>${eur(st.hhKwh * st.ap)}</td><td colspan="4" class="l note">${nf(st.hhDays)} Tage mit Haushaltswert</td></tr>
       <tr><td class="l">davon gemessene Geräte</td><td>${kwh(st.devKwhOnHh, 1)}</td><td>${nf(st.devKwhOnHh / st.hhDays, 2)}</td><td>${pct(st.coverShare, 1)}</td><td>${eur(st.devKwhOnHh * st.ap)}</td><td colspan="4"></td></tr>
       <tr><td class="l">davon nicht gemessen (Rest)</td><td>${kwh(st.restKwh, 1)}</td><td>${nf(st.restKwh / st.hhDays, 2)}</td><td>${pct(1 - st.coverShare, 1)}</td><td>${eur(st.restKwh * st.ap)}</td><td colspan="4"></td></tr></tfoot>` : ""}`;
