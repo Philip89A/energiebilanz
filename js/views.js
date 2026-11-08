@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.51.0';
-import { parseNum } from './queue.js?v=0.51.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.51.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.51.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.51.0';
-import { explainAll } from './explain.js?v=0.51.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.51.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.52.0';
+import { parseNum } from './queue.js?v=0.52.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.52.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.52.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.52.0';
+import { explainAll } from './explain.js?v=0.52.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.52.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -344,7 +344,7 @@ let dvMsg = "";
 function renderDevices(){
   const devs = S.devices || [], RS = periodSel(), fl = [];
   if (S.deviceError) fl.push(flag("Tabelle für Geräte fehlt noch in Supabase: bitte <b>docs/UPDATE_V32.sql</b> im SQL Editor ausführen. Bis dahin werden keine Gerätewerte gespeichert.", true));
-  const days = (S.deviceDays || []).map(r => r.d).sort();
+  const days = (S.deviceDays || []).map(r => r.d).concat(devs.some(d => +d.est > 0 && d.estFrom) ? [A.dates[A.n - 1]] : []).sort();   // v0.52: Schätzwerte reichen bis zum letzten Anker-Tag
   let P = RS.P;
   if (RS.all && days.length) P = { from: days[0], to: days[days.length - 1] };
   const st = days.length ? C.deviceStats(P.from, P.to) : { list: [] };
@@ -353,7 +353,7 @@ function renderDevices(){
   else if (!st.list.length) fl.push(flag(days.length ? "Keine Gerätewerte im gewählten Zeitraum." : "Noch keine Gerätewerte importiert.", true));
   $("dv-flags").innerHTML = fl.join("");
   if (st.list.length) {
-    const row = x => `<tr><td class="l"><span class="dot" style="background:${dvColor(devs.findIndex(d => d.id === x.id))}"></span>${esc(x.name)}${x.month ? ` <span class="pill">teils aus Monatssummen</span>` : ""}</td>
+    const row = x => `<tr><td class="l"><span class="dot" style="background:${dvColor(devs.findIndex(d => d.id === x.id))}"></span>${esc(x.name)}${x.month ? ` <span class="pill">teils aus Monatssummen</span>` : ""}${x.est ? ` <span class="pill">${nf(x.est)} Tage geschätzt (${nf(+(devs.find(d => d.id === x.id)?.est || 0), 2)} kWh/Tag)</span>` : ""}</td>
       <td>${kwh(x.kwh, 1)}</td><td>${nf(x.perDay, 2)}</td><td>${x.share != null ? pct(x.share, 1) : "–"}</td><td>${eur(x.eur, 2)}</td>
       <td>${x.prev ? `${nf(x.prev.perDay, 2)} (${x.change >= 0 ? "+" : "−"}${pct(Math.abs(x.change))})` : "–"}</td>
       <td>${x.water != null ? nf(x.water) + " l" : "–"}</td><td>${x.runs ? nf(x.runs) : "–"}</td><td>${nf(x.n)}</td></tr>`;
@@ -373,9 +373,11 @@ function renderDevices(){
   } else { $("dv-tbl").innerHTML = ""; $("dv-note").innerHTML = ""; chart("dv-chart", { type: "bar", data: { labels: [], datasets: [] } }); }
   // Geräteliste und Monatswerte (Bearbeiten)
   const roomOpt = sel => `<option value="">–</option>${(S.rooms || []).map(r => `<option value="${esc(r.id)}"${r.id === sel ? " selected" : ""}>${esc(r.name)}</option>`).join("")}`;
-  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Standort (Raum)</th><th class="l">Notiz</th><th>Werte</th><th></th></tr></thead><tbody>${
+  $("dv-list").innerHTML = devs.length ? `<thead><tr><th class="l">Name</th><th>gemessen ab</th><th class="l">Standort (Raum)</th><th class="l">Notiz</th><th>Schätzung kWh/Tag</th><th>geschätzt ab</th><th>Werte</th><th></th></tr></thead><tbody>${
     devs.map((d, i) => `<tr><td class="l"><input type="text" value="${esc(d.name)}" data-dv="${i}" data-k="name"></td><td><input type="date" value="${d.from || ""}" data-dv="${i}" data-k="from"></td><td class="l"><select data-dv="${i}" data-k="room">${roomOpt(d.room)}</select></td>
-      <td class="l"><input type="text" value="${esc(d.note || "")}" data-dv="${i}" data-k="note" style="min-width:220px"></td><td>${nf((S.deviceDays || []).filter(r => r.dev === d.id).length)}</td>
+      <td class="l"><input type="text" value="${esc(d.note || "")}" data-dv="${i}" data-k="note" style="min-width:220px"></td>
+      <td><input type="number" step="0.01" min="0" style="width:90px" value="${d.est ?? ""}" data-dv="${i}" data-k="est" title="Für Tage ohne Messung ab „geschätzt ab“ (z. B. nach dem Umstecken der Messsteckdose)"></td><td><input type="date" value="${d.estFrom || ""}" data-dv="${i}" data-k="estFrom"></td>
+      <td>${nf((S.deviceDays || []).filter(r => r.dev === d.id).length)}</td>
       <td><button class="x" data-dv-del="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : "";
   const cur = $("dvm-dev").value; $("dvm-dev").innerHTML = devs.map(d => `<option value="${d.id}">${esc(d.name)}</option>`).join("");
   if (cur && devs.some(d => d.id === cur)) $("dvm-dev").value = cur;

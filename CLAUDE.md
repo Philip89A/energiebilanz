@@ -174,6 +174,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Tage, Prognose = Tempo × Laufzeit, Mehr-/Minderkilometer jenseits der Freigrenze; `S.cars.ev` start, months, kmYear,
      kmStart, kmFree, ctMore, ctLess). Abschnitt `lk-*` auf „Tanken & Laden“, Schnellerfassung „Kilometerstand“ (Fahrzeugbuch).
      Prüfung: `v51-check`.
+   - ✅ v0.52: Geräte-Schätzwert (`dv.est` kWh/Tag ab `dv.estFrom`, im `DEV`-Aufbau für Tage ohne Messung bis zum letzten
+     Anker-Tag, `src: 'est'`; `deviceSum.est` = Anzahl geschätzter Tage). Felder in der Geräteliste. Prüfung: `v52-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`
