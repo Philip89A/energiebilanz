@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.52.0';
+import { hpSum } from './hp.js?v=0.53.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -996,7 +996,7 @@ export function createCalc(S) {
   // v0.32: Geräte (Messsteckdosen, Waschmaschine) je Tag. Haushalt je Tag = Allgemeinstrom-Netzbezug laut Zähler (nach
   // Anker-Profil verteilt) + selbst genutzter Solarstrom. Anteil eines Geräts nur über Tage, an denen beides vorliegt.
   const DEV = (() => { const by = {}; for (const r of S.deviceDays || []) { const dv = (S.devices || []).find(x => x.id === r.dev);
-    if (!dv || (dv.from && r.d < dv.from)) continue; (by[r.dev] = by[r.dev] || {})[r.d] = r; }
+    if (!dv || (dv.from && r.d < dv.from) || (dv.to && r.d > dv.to)) continue; (by[r.dev] = by[r.dev] || {})[r.d] = r; }   // v0.53: nach „gemessen bis“ nichts
     // v0.52: Schätzwert je Tag (dv.est kWh ab dv.estFrom) für Tage ohne Messung, bis zum letzten Anker-Tag
     const last = A.dates[A.n - 1];
     for (const dv of S.devices || []) { const k = +dv.est; if (!(k > 0) || !dv.estFrom) continue; const m = by[dv.id] = by[dv.id] || {};
