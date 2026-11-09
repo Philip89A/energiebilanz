@@ -180,6 +180,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      (Import, Monatswerte), `DEV` ignoriert Zeilen nach `to`. Prüfung: `v53-check`.
    - ✅ v0.54: Geräte-Anteil im Zeitraum (`deviceStats`: `share` = Gerät ÷ Allgemeinstrom aller Haushaltstage im Zeitraum,
      `shareMeas` = nur Messtage, `measN`/`hhN` für den Hinweis „gemessen an n von m Tagen“). Prüfung: `v54-check`.
+   - ✅ v0.55: gesperrte Zeiträume je Gerät (`dv.lock` = [[von, bis]], in `devLocked` neben `dv.to`). Prüfung: `v55-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

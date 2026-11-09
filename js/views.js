@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.54.0';
-import { parseNum } from './queue.js?v=0.54.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.54.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.54.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.54.0';
-import { explainAll } from './explain.js?v=0.54.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.54.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.55.0';
+import { parseNum } from './queue.js?v=0.55.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.55.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.55.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.55.0';
+import { explainAll } from './explain.js?v=0.55.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.55.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -479,13 +479,15 @@ function wirePrograms() {
   });
 }
 // v0.53: Sperre – ein Gerät mit „gemessen bis“ (dv.to) nimmt ab diesem Tag keine Werte mehr an (Messsteckdose umgesteckt)
-const devLocked = (id, day) => { const d = (S.devices || []).find(x => x.id === id); return !!(d && d.to && day >= d.to); };
+// v0.55: zusätzlich gesperrte Zeiträume (dv.lock = [[von, bis], …]), z. B. wenn Messsteckdosen vertauscht waren
+const devLocked = (id, day) => { const d = (S.devices || []).find(x => x.id === id); if (!d) return false;
+  return !!(d.to && day >= d.to) || (Array.isArray(d.lock) && d.lock.some(r => Array.isArray(r) && day >= r[0] && day <= (r[1] || r[0]))); };
 async function saveDevRows(rows) {
   const ok = rows.filter(r => !devLocked(r.device_id, r.day));
   if (ok.length) { await store.saveDevice(ok); mergeDeviceDays(ok); }
   return { n: ok.length, blocked: rows.length - ok.length };
 }
-const lockTxt = b => b ? ` ${nf(b)} Tage ab Messende gesperrt (nicht übernommen).` : "";
+const lockTxt = b => b ? ` ${nf(b)} Tage gesperrt (Messende bzw. gesperrter Zeitraum, nicht übernommen).` : "";
 function newDevice(name, from = "") { const d = { id: crypto.randomUUID().slice(0, 8), name, from, note: "" }; (S.devices = S.devices || []).push(d); return d; }
 function wireDevices() {
   $("dv-add").addEventListener("click", () => { newDevice("Neues Gerät"); persist(); rerender(); });
@@ -497,7 +499,7 @@ function wireDevices() {
     const id = $("dvm-dev").value, ym = $("dvm-month").value, k = parseNum($("dvm-kwh").value), l = $("dvm-l").value.trim() ? parseNum($("dvm-l").value.trim().replace(/^(\d{1,3})((?:\.\d{3})+)$/, (m, a, b) => a + b.replace(/\./g, ""))) : null, n = $("dvm-runs").value.trim() ? parseNum($("dvm-runs").value) : null;
     if (!id || !/^\d{4}-\d{2}$/.test(ym) || !(k >= 0) || (l != null && !(l >= 0)) || (n != null && !(n >= 0))) { dvMsg = "Bitte Gerät, Monat und kWh angeben (Zahlen ≥ 0)."; renderDevices(); return; }
     const rows = monthRows(ym, { kwh: k, water_l: l, runs: n }).map(r => ({ ...r, device_id: id }));
-    if (rows.some(r => devLocked(id, r.day))) { dvMsg = `Gesperrt: Für dieses Gerät endet die Messung am ${dde(S.devices.find(d => d.id === id).to)} – Monatswerte ab diesem Monat werden nicht angenommen (Feld „gemessen bis“ in der Geräteliste).`; renderDevices(); return; }
+    if (rows.some(r => devLocked(id, r.day))) { const dv = S.devices.find(d => d.id === id); dvMsg = dv.to && rows.some(r => r.day >= dv.to) ? `Gesperrt: Für dieses Gerät endet die Messung am ${dde(dv.to)} – Monatswerte ab diesem Monat werden nicht angenommen (Feld „gemessen bis“ in der Geräteliste).` : "Gesperrt: Der Monat enthält einen gesperrten Zeitraum dieses Geräts (siehe Notiz)."; renderDevices(); return; }
     try { await store.saveDevice(rows); mergeDeviceDays(rows); dvMsg = `${monthLabel(ym)} gespeichert: ${kwh(k, 2)}${l != null ? `, ${nf(l)} l` : ""}${n != null ? `, ${nf(n)} Programme` : ""} (gleichmäßig auf ${rows.length} Tage verteilt).`;
       ["dvm-kwh", "dvm-l", "dvm-runs"].forEach(x => $(x).value = ""); refreshCalc(); rerender(); }
     catch (err) { dvMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevices(); }
