@@ -728,3 +728,12 @@
   Messtagen) steht im Tooltip der Zelle.
 - Kein Datenbank-Update nötig.
 - Tests: neu `tests/v54.test.mjs`, neu `scripts/v54-check.mjs` (5 Prüfungen); v52-, v53-Check grün.
+
+## v0.55 – Geräte: gesperrte Zeiträume
+- Ein Gerät kann neben „gemessen bis“ auch **gesperrte Zeiträume** haben (`dv.lock = [[von, bis], …]` in den
+  Einstellungen). Importe und Monatswerte übernehmen diese Tage nicht und melden sie; Tage davor und danach gehen normal.
+- Anlass: Die Messsteckdosen von Zirkulationspumpe und PC-Leiste waren am 08./09.11. vertauscht. Die Werte sind korrigiert
+  (Zirkulation geschätzt 0,12 kWh/Tag, Pumpe lief durchgehend); ohne Sperre hätte der nächste Export der Zirkulations-
+  Steckdose diese beiden Tage mit PC-Werten überschrieben.
+- Kein Datenbank-Update nötig.
+- Tests: neu `scripts/v55-check.mjs` (3 Prüfungen); v53-, v54-Check grün.
