@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.55.0';
+import { hpSum } from './hp.js?v=0.56.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -82,6 +82,8 @@ export function stateFromDb(db) {
     deviceDays: (db.device_daily || []).map(r => ({ dev: r.device_id, d: r.day, kwh: r.kwh == null ? null : +r.kwh,
       l: r.water_l == null ? null : +r.water_l, runs: r.runs == null ? null : +r.runs, src: r.src || 'day' })),
     deviceError: db.deviceError || null,
+    deviceHours: (db.device_hourly || []).map(r => ({ dev: r.device_id, d: r.day, h: (r.hours || []).map(v => (v == null ? null : +v)) })),
+    deviceHourlyError: db.deviceHourlyError || null,
     programs: (db.device_programs || []).map(r => ({ dev: r.device_id, m: String(r.month).slice(0, 7), prog: r.program, temp: +r.temp || 0, rpm: +r.rpm || 0,
       extra: r.extra || '', runs: +r.runs || 0, kwh: r.kwh_run == null ? null : +r.kwh_run, l: r.l_run == null ? null : +r.l_run })),
     programError: db.programError || null,
@@ -1347,6 +1349,34 @@ export function createCalc(S) {
     return { ...hpSum(rows), days: rows.length, estDays: rows.filter(r => r.est).length, total: diffDays(from, to) + 1, from: rows[0].d, to: rows[rows.length - 1].d };
   }
   // v0.19: Tagesprofil aus Stundenwerten – Tage mit Stunden, je Stunde Strom/Wärme/Temperaturen, Auswertung des Tages
+  // v0.56: Tagesprofil Strom – Wärmepumpe (Heizen, Warmwasser, Heizstab) und Messsteckdosen je Stunde, Netz-CO₂ je Stunde
+  const DEVH = (() => { const by = {}; for (const r of S.deviceHours || []) { const dv = (S.devices || []).find(x => x.id === r.dev);
+    if (!dv || (dv.from && r.d < dv.from) || (dv.to && r.d > dv.to)) continue; (by[r.d] = by[r.d] || {})[r.dev] = r.h.slice(0, 24); } return by; })();
+  function powerDays() { return [...new Set([...hpHourDays(), ...Object.keys(DEVH)])].sort(); }
+  function powerDayProfile(d) {
+    const hp = hpDayProfile(d), z = () => Array(24).fill(0), v = (r, f) => (r ? +r[f] || 0 : 0);
+    const wp = hp ? { heat: hp.hours.map(r => v(r, 'el_heat') + v(r, 'el_aux_heat')), dhw: hp.hours.map(r => v(r, 'el_dhw') + v(r, 'el_aux_dhw')) } : null;
+    const devs = (S.devices || []).filter(dv => DEVH[d]?.[dv.id]).map(dv => ({ id: dv.id, name: dv.name, h: DEVH[d][dv.id].map(x => x || 0) }));
+    if (!wp && !devs.length) return null;
+    const total = z(); if (wp) for (let h = 0; h < 24; h++) total[h] += wp.heat[h] + wp.dhw[h]; for (const x of devs) for (let h = 0; h < 24; h++) total[h] += x.h[h];
+    const g = S.gridCo2?.[d]?.hours || null, sum = a => a.reduce((s, x) => s + x, 0);
+    const peak = total.reduce((b, x, h) => (x > total[b] ? h : b), 0), night = total.slice(0, 5).reduce((s, x) => s + x, 0) / 5;
+    return { d, wp, devs, total, co2: g, sums: { heat: wp ? sum(wp.heat) : 0, dhw: wp ? sum(wp.dhw) : 0, devs: Object.fromEntries(devs.map(x => [x.id, sum(x.h)])), total: sum(total) },
+      peak: { h: peak, kwh: total[peak] }, nightW: night * 1000 };
+  }
+  // Ø je Stunde über die n Tage vor d, an denen dieselben Quellen Werte haben (Wärmepumpe bzw. jedes Gerät einzeln)
+  function powerDayAverage(d, n = 7) {
+    const days = powerDays().filter(x => x < d).slice(-n * 3), out = { wp: null, devs: {}, total: Array(24).fill(0), n: 0 };
+    const acc = (k, h) => { const o = out.devs[k] = out.devs[k] || { s: Array(24).fill(0), n: 0 }; if (o.n >= n) return; for (let i = 0; i < 24; i++) o.s[i] += h[i]; o.n++; };
+    const wpAcc = { s: Array(24).fill(0), n: 0 };
+    for (const x of [...days].reverse()) { const p = powerDayProfile(x); if (!p) continue;
+      if (p.wp && wpAcc.n < n) { for (let i = 0; i < 24; i++) wpAcc.s[i] += p.wp.heat[i] + p.wp.dhw[i]; wpAcc.n++; }
+      for (const dv of p.devs) acc(dv.id, dv.h); }
+    if (wpAcc.n) { out.wp = wpAcc.s.map(x => x / wpAcc.n); out.wpN = wpAcc.n; }
+    for (const [k, o] of Object.entries(out.devs)) out.devs[k] = { h: o.s.map(x => x / o.n), n: o.n };
+    for (let i = 0; i < 24; i++) out.total[i] = (out.wp ? out.wp[i] : 0) + Object.values(out.devs).reduce((s, o) => s + o.h[i], 0);
+    out.n = Math.max(wpAcc.n, ...Object.values(out.devs).map(o => o.n), 0); return out;
+  }
   function hpHourDays() { return [...new Set(hpRows('hour').map(r => r.ts.slice(0, 10)))].sort(); }
   function hpDayProfile(d) {
     const rows = hpRows('hour').filter(r => r.ts.startsWith(d)); if (!rows.length) return null;
@@ -1427,7 +1457,7 @@ export function createCalc(S) {
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
-    W, leaseKm, addMonths, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
+    W, leaseKm, addMonths, powerDays, powerDayProfile, powerDayAverage, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
     ausbauCosts: p => ausbauCosts(p ?? S.ausbau, S.invest, S.offers || []),
   };
 }

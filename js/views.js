@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.55.0';
-import { parseNum } from './queue.js?v=0.55.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.55.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.55.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.55.0';
-import { explainAll } from './explain.js?v=0.55.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.55.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.56.0';
+import { parseNum } from './queue.js?v=0.56.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.56.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.56.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.56.0';
+import { explainAll } from './explain.js?v=0.56.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.56.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -341,6 +341,41 @@ function renderWater(){
 const DV_PAL = ["--grid","--sun","--batt","--heat","--warn","--feed","--loss","--muted"];
 const dvColor = i => css(DV_PAL[i % DV_PAL.length]);
 let dvMsg = "";
+// v0.56: Tagesprofil Strom (Wärmepumpe + Messsteckdosen je Stunde, Netz-CO₂)
+let tpDay = "";
+function renderPowerDay(){
+  const days = C.powerDays(), sel = $("tp-day");
+  if (!days.length) { $("tp-panel").hidden = true; return; } $("tp-panel").hidden = false;
+  if (!tpDay || !days.includes(tpDay)) tpDay = days[days.length - 1];
+  sel.innerHTML = [...days].reverse().map(d => `<option value="${d}"${d === tpDay ? " selected" : ""}>${dde(d)}</option>`).join("");
+  const p = C.powerDayProfile(tpDay), showAvg = $("tp-avg").checked, avg = showAvg ? C.powerDayAverage(tpDay) : null, fl = [];
+  if (S.deviceHourlyError) fl.push(flag("Für Stundenwerte der Messsteckdosen fehlt noch die Tabelle: bitte <b>docs/UPDATE_V56.sql</b> ausführen.", true));
+  if (p && !p.devs.length) fl.push(flag("Für diesen Tag liegen keine Stundenwerte der Messsteckdosen vor (nur Wärmepumpe). Excel-Export der Tapo-App wöchentlich hochladen.", true));
+  if (p && !p.wp) fl.push(flag("Für diesen Tag fehlen die Stundenwerte der Wärmepumpe (Buderus-Export).", true));
+  $("tp-flags").innerHTML = fl.join("");
+  if (!p) { $("tp-kpis").innerHTML = ""; $("tp-tbl").innerHTML = ""; return; }
+  const k = v => `${nf(v, 2)} kWh`, hl = h => `${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr`;
+  const g = p.co2, gw = g ? (() => { let e = 0, s = 0; for (let h = 0; h < 24; h++) if (g[h] != null) { e += p.total[h]; s += p.total[h] * g[h]; } return e > 0 ? s / e : null; })() : null;
+  $("tp-kpis").innerHTML = kpi(k(p.sums.total), "Gemessen an diesem Tag", `Wärmepumpe ${k(p.sums.heat + p.sums.dhw)}, Geräte ${k(p.sums.total - p.sums.heat - p.sums.dhw)}`)
+    + kpi(hl(p.peak.h), "Stärkste Stunde", `${k(p.peak.kwh)}`)
+    + kpi(`${nf(p.nightW)} W`, "Grundlast nachts (0–5 Uhr)", "gemessene Quellen, Ø Leistung")
+    + kpi(gw != null ? `${nf(gw)} g/kWh` : "–", "Netz-CO₂ dieser Verbräuche", gw != null ? `Tagesmittel ${nf(S.gridCo2[tpDay].g)} g/kWh` : "keine Stundenwerte des Netzes");
+  const ds = [];
+  if (p.wp) ds.push({ label: "Wärmepumpe Heizen", data: p.wp.heat, backgroundColor: css("--heat"), stack: "s", yAxisID: "y", order: 2 },
+    { label: "Wärmepumpe Warmwasser", data: p.wp.dhw, backgroundColor: `color-mix(in srgb, ${css("--heat")} 55%, ${css("--warn")})`, stack: "s", yAxisID: "y", order: 2 });
+  for (const x of p.devs) ds.push({ label: x.name, data: x.h, backgroundColor: dvColor((S.devices || []).findIndex(d => d.id === x.id)), stack: "s", yAxisID: "y", order: 2 });
+  if (avg && avg.n) ds.push({ type: "line", label: `Ø ${nf(avg.n)} Tage davor`, data: avg.total, borderColor: css("--ink"), borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5, yAxisID: "y", order: 0, stepped: "middle" });
+  if (g) ds.push({ type: "line", label: "Netz-CO₂ g/kWh", data: g, borderColor: css("--muted"), pointRadius: 0, borderWidth: 1.2, yAxisID: "y1", order: 1 });
+  chart("tp-chart", { type: "bar", data: { labels: Array.from({ length: 24 }, (_, h) => String(h)), datasets: ds },
+    options: { plugins: { ebTotals: false, tooltip: { callbacks: { title: c => hl(+c[0].label), label: c => c.dataset.yAxisID === "y1" ? `${c.dataset.label}: ${nf(c.parsed.y)}` : `${c.dataset.label}: ${nf(c.parsed.y, 3)} kWh` } } },
+      scales: { x: { stacked: true, title: { display: true, text: "Uhrzeit" } }, y: { stacked: true, title: { display: true, text: "kWh je Stunde" } },
+        ...(g ? { y1: { position: "right", grid: { drawOnChartArea: false }, title: { display: true, text: "g CO₂/kWh" } } } : {}) } } });
+  const rows = [...(p.wp ? [["Wärmepumpe Heizen", p.wp.heat], ["Wärmepumpe Warmwasser", p.wp.dhw]] : []), ...p.devs.map(x => [x.name, x.h])];
+  const av = name => { if (!avg) return null; if (name.startsWith("Wärmepumpe")) return null; const x = p.devs.find(d => d.name === name); const a = x && avg.devs[x.id]; return a ? a.h.reduce((s, v) => s + v, 0) : null; };
+  $("tp-tbl").innerHTML = `<thead><tr><th class="l">Quelle</th><th>kWh am Tag</th><th>stärkste Stunde</th><th>nachts 0–5 Uhr (W)</th><th>Ø 7 Tage kWh</th></tr></thead><tbody>${rows.map(([n, h]) => {
+    const s = h.reduce((a, v) => a + v, 0), pk = h.reduce((b, v, i) => (v > h[b] ? i : b), 0), a = av(n);
+    return `<tr><td class="l">${esc(n)}</td><td>${nf(s, 2)}</td><td>${s > 0 ? `${hl(pk)} (${nf(h[pk], 2)})` : "–"}</td><td>${nf(h.slice(0, 5).reduce((x, v) => x + v, 0) / 5 * 1000)}</td><td>${a != null ? nf(a, 2) : "–"}</td></tr>`; }).join("")}</tbody>`;
+}
 function renderDevices(){
   const devs = S.devices || [], RS = periodSel(), fl = [];
   if (S.deviceError) fl.push(flag("Tabelle für Geräte fehlt noch in Supabase: bitte <b>docs/UPDATE_V32.sql</b> im SQL Editor ausführen. Bis dahin werden keine Gerätewerte gespeichert.", true));
@@ -490,6 +525,8 @@ async function saveDevRows(rows) {
 const lockTxt = b => b ? ` ${nf(b)} Tage gesperrt (Messende bzw. gesperrter Zeitraum, nicht übernommen).` : "";
 function newDevice(name, from = "") { const d = { id: crypto.randomUUID().slice(0, 8), name, from, note: "" }; (S.devices = S.devices || []).push(d); return d; }
 function wireDevices() {
+  $("tp-day").addEventListener("change", e => { tpDay = e.target.value; renderPowerDay(); });
+  $("tp-avg").addEventListener("change", () => renderPowerDay());
   $("dv-add").addEventListener("click", () => { newDevice("Neues Gerät"); persist(); rerender(); });
   $("dv-list").addEventListener("change", e => { const el = e.target; if (el.dataset.dv === undefined) return; const d = S.devices[+el.dataset.dv]; d[el.dataset.k] = el.value.trim(); persist(); rerender(); });
   $("dv-list").addEventListener("click", e => { const i = e.target.dataset.dvDel; if (i === undefined) return; const d = S.devices[+i];
@@ -534,7 +571,7 @@ function renderDevImport() {
       x.diff = df;
       return `<tr><td class="l">${esc(x.name)} <span class="pill">${x.kind}</span></td><td class="l"><select data-dvi="${i}">${opt(x.dev)}</select>${x.dev === "new" ? ` <input type="text" data-dvn="${i}" value="${esc(x.newName || x.guess || "")}" placeholder="Name">` : ""}</td>
         <td>${nf(x.rows.length)}</td><td>${x.rows.length ? `${dde(x.rows[0].day)} – ${dde(x.rows[x.rows.length - 1].day)}` : "–"}</td><td>${nf(x.rows.filter(r => r.src === "month").length)}</td>
-        <td class="l">${df ? `${df.neu} neu, ${df.geaendert} geändert, ${df.gleich} gleich${df.vorher ? `, ${df.vorher} vor „gemessen ab“ ignoriert` : ""}` : x.dev === "new" ? "neues Gerät" : "–"}${x.errors.length ? `<br><span class="error">${esc(x.errors.slice(0, 3).join(" "))}</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
+        <td class="l">${df ? `${df.neu} neu, ${df.geaendert} geändert, ${df.gleich} gleich${df.vorher ? `, ${df.vorher} vor „gemessen ab“ ignoriert` : ""}` : x.dev === "new" ? "neues Gerät" : "–"}${x.hourly?.length ? `<br><span class="note">${nf(x.hourly.length)} Tage mit Stundenwerten</span>` : ""}${x.errors.length ? `<br><span class="error">${esc(x.errors.slice(0, 3).join(" "))}</span>` : ""}</td></tr>`; }).join("")}</tbody></table></div>
       <div class="row"><button type="button" id="dvi-save">Übernehmen</button><button type="button" class="ghost" id="dvi-cancel">Abbrechen</button></div>`;
   }
   $("dv-result").innerHTML = h + (dvImportMsg ? `<p class="note">${dvImportMsg}</p>` : "");
@@ -561,15 +598,21 @@ function wireDevImport() {
     if (dvImports.some(x => !x.dev || (x.dev === "new" && !x.newName))) { dvImportMsg = "Bitte jeder Datei ein Gerät zuordnen."; renderDevImport(); return; }
     e.target.disabled = true; dvImportMsg = "Speichert …"; renderDevImport();
     try {
-      let n = 0, blocked = 0, changed = false;
+      let n = 0, blocked = 0, nh = 0, hourErr = "", changed = false;
       for (const x of dvImports) {
         if (x.dev === "new") { const d = newDevice(x.newName, x.rows[0]?.day || ""); x.dev = d.id; changed = true; }
         const dv = S.devices.find(d => d.id === x.dev);
         const rows = x.rows.filter(r => !dv.from || r.day >= dv.from).map(r => ({ device_id: dv.id, day: r.day, kwh: r.kwh, src: r.src }));
         if (rows.length) { const sv = await saveDevRows(rows); n += sv.n; blocked += sv.blocked; }
+        // v0.56: Stundenwerte (Excel-Blatt „Tag“) – gleiche Regeln wie Tageswerte (gemessen ab, Sperren)
+        const hr = (x.hourly || []).filter(r => (!dv.from || r.day >= dv.from) && !devLocked(dv.id, r.day)).map(r => ({ device_id: dv.id, day: r.day, hours: r.hours }));
+        if (hr.length && !S.deviceHourlyError && store.saveDeviceHourly) {
+          try { await store.saveDeviceHourly(hr); const key = r => r.dev + "|" + r.d, m = new Map((S.deviceHours || []).map(r => [key(r), r]));
+            for (const r of hr) m.set(r.device_id + "|" + r.day, { dev: r.device_id, d: r.day, h: r.hours }); S.deviceHours = [...m.values()]; nh += hr.length; }
+          catch (err) { hourErr = err.message; } }
       }
       if (changed) persist();
-      dvImportMsg = `${nf(n)} Tageswerte gespeichert.` + lockTxt(blocked); dvImports = null; refreshCalc(); rerender();
+      dvImportMsg = `${nf(n)} Tageswerte gespeichert.` + lockTxt(blocked) + (nh ? ` Stundenwerte für ${nf(nh)} Tage gespeichert.` : "") + (hourErr ? ` Stundenwerte nicht gespeichert: ${esc(hourErr)}` : "") + (S.deviceHourlyError && (dvImports || []).some(x => x.hourly?.length) ? " Stundenwerte nicht gespeichert: bitte <b>docs/UPDATE_V56.sql</b> ausführen." : ""); dvImports = null; refreshCalc(); rerender();
     } catch (err) { dvImportMsg = "Speichern fehlgeschlagen: " + esc(err.message); renderDevImport(); }
   });
 }
@@ -1505,7 +1548,7 @@ let current="p-overview"; const rendered={};
 const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-ausbau"]],
   ["Auswertung",["p-co2","p-rel"]],["Auto",["p-log","p-car"]],["⚙",["p-data"]]];
 // v0.48: je Seite ab diesem Block (Index der direkten Kinder) eingeklappt unter „Mehr anzeigen“; fehlt = nichts einklappen
-const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":4,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
+const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":6,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
 const pageTitle=id=>document.getElementById(id).dataset.title, pageColor=id=>(PAGES.find(p=>p[0]===id)||[])[1]||"--muted";
 const navLink=(id,cls="")=>`<a href="#${id.slice(2)}" data-p="${id}"${cls?` class="${cls}"`:""}><span class="dot" style="background:var(${pageColor(id)})"></span>${pageTitle(id)}</a>`;
 function buildNav(){
@@ -1553,7 +1596,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPowerDay(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":()=>{ renderLease(); renderLog(); }, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
@@ -1604,7 +1647,7 @@ function wireEvents(){
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
 const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file","rk-file"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
+const VIEW_INPUTS = new Set(["tp-day","tp-avg","hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   document.querySelectorAll("details.more").forEach(updMore);

@@ -197,6 +197,16 @@ create table if not exists pv_forecast (     -- v8 (App v0.27): gespeicherte PV-
   primary key (user_id, day, made_on)
 );
 
+-- v0.56: Stundenwerte der Messsteckdosen (RLS wie device_daily, siehe docs/UPDATE_V56.sql)
+create table if not exists device_hourly (
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  device_id text not null,
+  day date not null,
+  hours numeric[] not null check (array_length(hours, 1) between 23 and 25),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, device_id, day)
+);
 create table if not exists device_daily (    -- v9 (App v0.32): Verbrauch einzelner Geräte je Tag
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
   device_id text not null, day date not null,
