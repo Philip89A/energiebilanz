@@ -118,3 +118,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    Kontrolle: Regel mit „Sonstiges“ und Spalte `note | text`.
 2. Pull Request mergen, App neu laden (v0.50.0).
 3. **Tanken & Laden** und **Erfassen → Laden**: Ort „Sonstiges“ und Feld „Kommentar“ (bei „Sonstiges“ Pflicht).
+
+# Update v0.56 (Stundenwerte der Messsteckdosen, Tagesprofil Strom)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V56.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V56.sql) → **Run**
+   (Warnung bestätigen, betrifft nur Regeln und Trigger der neuen Tabelle). Kontrolle: `device_hourly | true | 4`.
+2. Pull Request mergen, App neu laden (v0.56.0).
+3. Tapo-Steckdosen als **Excel** exportieren (nicht CSV) und unter **Daten → Geräte** importieren – die Stundenwerte
+   (Blatt „Tag“, letzte ~7 Tage) werden mitgespeichert. Wöchentlich wiederholen, sonst entstehen Lücken.
+4. **Zähler & Verbrauch → Tagesprofil Strom**: Tag wählen.

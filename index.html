@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.55.0">
-<link rel="stylesheet" href="css/style.css?v=0.55.0">
+<meta name="app-version" content="0.56.0">
+<link rel="stylesheet" href="css/style.css?v=0.56.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -192,6 +192,12 @@
       </div>
       <p class="note" id="dvm-msg"></p>
     </div></div>
+  <div class="panel" style="margin-top:16px" id="tp-panel"><h2>Tagesprofil Strom</h2>
+    <p class="note">Strom je Stunde, wo Stundenwerte vorliegen: Wärmepumpe (Buderus-Export) und Messsteckdosen (Excel-Export der Tapo-App, Blatt „Tag“ – enthält nur die letzten ~7 Tage, deshalb wöchentlich exportieren). Der übrige Allgemeinstrom hat keine Stundenwerte. Gestrichelt: Ø der 7 Tage davor; Linie rechts: CO₂ des Stromnetzes.</p>
+    <div class="form" style="max-width:520px"><label class="f">Tag<select id="tp-day"></select></label><label class="f check-row" style="align-self:end"><span><input type="checkbox" id="tp-avg" checked> Ø 7 Tage zeigen</span></label></div>
+    <div id="tp-flags"></div><div class="grid g4" id="tp-kpis" style="margin-top:12px"></div>
+    <div class="chart" style="margin-top:12px"><canvas id="tp-chart"></canvas></div><div class="tbl-wrap"><table id="tp-tbl"></table></div>
+  </div>
   <div class="panel" style="margin-top:16px" id="pg-panel" hidden><h2>Waschprogramme</h2>
     <p class="note">Programme je Monat aus der Monatsanalyse der Waschmaschinen-App. „Wäschen“ zählen ohne Auffrischen (smartFinish), Schleudern und Spülen; diese Gänge zählt die App mit, sie verzerren sonst kWh und Liter je Wäsche.</p>
     <div class="form" style="margin-top:8px;max-width:520px"><label class="f">Gerät<select id="pg-dev"></select></label>
@@ -531,8 +537,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.55.0"></script>
-<script src="vendor/chart.umd.js?v=0.55.0"></script>
-<script type="module" src="js/app.js?v=0.55.0"></script>
+<script src="vendor/supabase.js?v=0.56.0"></script>
+<script src="vendor/chart.umd.js?v=0.56.0"></script>
+<script type="module" src="js/app.js?v=0.56.0"></script>
 </body>
 </html>

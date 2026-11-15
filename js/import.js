@@ -379,7 +379,17 @@ export function parseMerossSheets(sheets) {
   }
   const rows = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
   const first = rows.findIndex(r => r.kwh > 0);
-  return { rows: first < 0 ? [] : rows.slice(first), errors, exportDay };
+  // v0.56: Stundenwerte aus „Tag“ (Ortszeit): je Tag 24 Werte, nur vollständige Tage (mind. 23 Stunden, Zeitumstellung);
+  // der laufende Export-Tag fällt weg
+  const hb = new Map();
+  for (const r of (sheets.Tag || []).slice(1)) {
+    const m = String(r[0] ?? '').trim().match(/^(\d{4})[/-](\d{2})[/-](\d{2})[ T](\d{2}):/), v = Number(r[1]);
+    if (!m || !isFinite(v) || v < 0) continue;
+    const d = `${m[1]}-${m[2]}-${m[3]}`; if (d === exportDay && !completeEnd) continue;
+    let a = hb.get(d); if (!a) hb.set(d, a = Array(24).fill(null)); const h = +m[4]; a[h] = r6((a[h] || 0) + v);
+  }
+  const hourly = [...hb].filter(([, a]) => a.filter(v => v != null).length >= 23).map(([day, hours]) => ({ day, hours })).sort((a, b) => a.day.localeCompare(b.day));
+  return { rows: first < 0 ? [] : rows.slice(first), errors, exportDay, hourly };
 }
 
 // Monatswerte von Hand (z. B. Waschmaschinen-App): gleichmäßig auf die Tage des Monats verteilt

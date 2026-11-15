@@ -737,3 +737,17 @@
   Steckdose diese beiden Tage mit PC-Werten überschrieben.
 - Kein Datenbank-Update nötig.
 - Tests: neu `scripts/v55-check.mjs` (3 Prüfungen); v53-, v54-Check grün.
+
+## v0.56 – Stundenwerte der Messsteckdosen, Tagesprofil Strom
+- **Neue Tabelle `device_hourly`** (`docs/UPDATE_V56.sql`): je Gerät und Tag 24 Stundenwerte in kWh. Der Excel-Import der
+  Messsteckdosen liest jetzt zusätzlich das Blatt „Tag“ (Tapo/Meross: Stundenwerte der letzten ~7 Tage); nur vollständige
+  Tage, der laufende Export-Tag fällt weg; „gemessen ab“ und Sperren gelten wie bei den Tageswerten. Die Vorschau zeigt,
+  wie viele Tage Stundenwerte haben.
+- **Neuer Abschnitt „Tagesprofil Strom“** auf „Zähler & Verbrauch“: gestapelte Stundenbalken für einen gewählten Tag
+  (Wärmepumpe Heizen und Warmwasser aus dem Buderus-Export, jede Messsteckdose), gestrichelt der Ø der 7 Tage davor,
+  Netz-CO₂ je Stunde als Linie. Kennzahlen: gemessene kWh, stärkste Stunde, Grundlast nachts (0–5 Uhr), CO₂ der
+  gemessenen Verbräuche nach ihren Stunden; Tabelle je Quelle.
+- Auf „Zähler & Verbrauch“ bleiben jetzt Geräte und Tagesprofil sichtbar; Waschprogramme, Wasser, Zählerstände und
+  Abgleich stehen unter „Mehr anzeigen“.
+- Der übrige Allgemeinstrom hat keine Stundenwerte (nur Zählerstände/Anker-Tageswerte) und fehlt im Profil bewusst.
+- Tests: neu `tests/v56.test.mjs`, neu `scripts/v56-check.mjs` (13 Prüfungen); v53–v55-Check grün.

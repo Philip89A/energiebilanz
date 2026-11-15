@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.55.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.55.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.56.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.56.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -152,6 +152,8 @@ export async function loadAll() {
   try { db.pv_forecast = await fetchAll('pv_forecast'); } catch (e) { db.pv_forecast = []; db.pvForecastError = e.message; }
   // Geräte (schema v9, v0.32), ebenso tolerant
   try { db.device_daily = await fetchAll('device_daily'); } catch (e) { db.device_daily = []; db.deviceError = e.message; }
+  // Stundenwerte der Messsteckdosen (v0.56), ebenso tolerant
+  try { db.device_hourly = await fetchAll('device_hourly'); } catch (e) { db.device_hourly = []; db.deviceHourlyError = e.message; }
   // Raumklima (schema v10, v0.33), ebenso tolerant
   try { db.room_climate = await fetchAll('room_climate'); } catch (e) { db.room_climate = []; db.climateError = e.message; }
   // Programme je Monat (v0.36), ebenso tolerant
@@ -198,6 +200,10 @@ export async function savePvForecast(rows) {
 // Gerätewerte speichern (Upsert je Gerät und Tag); nur online
 export async function saveDevice(rows, onProgress) {
   await upsertRows('device_daily', rows, 'user_id,device_id,day', onProgress);
+}
+// v0.56: Stundenwerte je Gerät und Tag (24 kWh-Werte); nur online
+export async function saveDeviceHourly(rows) {
+  await upsertRows('device_hourly', rows, 'user_id,device_id,day');
 }
 
 // Raumklima speichern (Upsert je Raum und Tag); nur online
