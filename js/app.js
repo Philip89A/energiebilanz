@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveDeviceHourly, saveClimate, savePrograms, saveGridCo2, fetchGridCo2Raw } from './db.js?v=0.56.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays } from './import.js?v=0.56.0';
-import { stateFromDb } from './calc.js?v=0.56.0';
-import { setModel, startViews, setStore, syncWeather, syncGridCo2 } from './views.js?v=0.56.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.56.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveDeviceHourly, saveClimate, savePrograms, saveGridCo2, fetchGridCo2Raw } from './db.js?v=0.57.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays, PV_EXTRA } from './import.js?v=0.57.0';
+import { stateFromDb } from './calc.js?v=0.57.0';
+import { setModel, startViews, setStore, syncWeather, syncGridCo2 } from './views.js?v=0.57.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.57.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -25,7 +25,7 @@ const FIELD_LABELS = {
   solar_zu_haus: 'Solar zu Haus', solar_zu_speicher: 'Solar zu Speicher', speicher_ladung: 'Ladung',
   speicher_entladung: 'Entladung', speicher_zu_haus: 'Speicher zu Haus', genutzt: 'genutzt', netz_zu_speicher: 'Netz zu Speicher',
   erzeugung: 'Erzeugung', einspeisung: 'Einspeisung', pv1: 'PV1', pv2: 'PV2', pv3: 'PV3', pv4: 'PV4',
-  smart_plug: 'Smart Plug',
+  pv5: 'PV5 (SB2 PV1)', pv6: 'PV6 (SB2 PV2)', pv7: 'PV7 (SB2 PV3)', pv8: 'PV8 (SB2 PV4)', smart_plug: 'Smart Plug',
 };
 
 /* ---------- Offline: Datenstand und Warteschlange ---------- */
@@ -309,6 +309,8 @@ function renderCsvDiff(out, name, parsed, diff) {
       <li>${diff.ergaenzt.length} Tage nur ergänzt (bisher leere Felder, z. B. Smart Plug)</li>
       <li>${diff.gleich} Tage unverändert</li>
       ${parsed.summed.length ? `<li>Aus mehreren Dateien addiert: ${dl(parsed.summed)}</li>` : ''}
+      ${parsed.gridOnce?.length ? `<li>Netzbezug nur einmal gezählt (beide Smart Meter am Hausanschluss): ${dl(parsed.gridOnce)}</li>` : ''}
+      ${parsed.gridDiff?.length ? `<li class="warn">Die beiden Smart Meter weichen um mehr als 10 % voneinander ab an ${dl(parsed.gridDiff)}. Gezählt wird der größere Wert.</li>` : ''}
       ${grid.length ? `<li class="warn">Speicher aus dem Netz geladen (über 0,1 kWh) an ${grid.length} Tag${grid.length > 1 ? 'en' : ''}: ${dl(grid)}</li>` : ''}
       ${diff.kleiner.length ? `<li class="warn">Kleinere Erzeugung oder kleinerer Verbrauch als bisher an ${dl(diff.kleiner)}. Bei zwei Systemen bitte beide Dateien zusammen wählen.</li>` : ''}
     </ul>
@@ -324,12 +326,16 @@ function renderCsvDiff(out, name, parsed, diff) {
     if (diff.kleiner.length && !confirm(`An ${diff.kleiner.length} Tag(en) würden Erzeugung oder Verbrauch kleiner. Trotzdem übernehmen?`)) return;
     ev.target.disabled = true;
     try {
-      await upsertRows('anker_daily', diff.write, 'user_id,day',
+      // v0.57: PV5–PV8 nur mitschicken, wenn ein Wert dabei ist (ohne UPDATE_V57.sql gibt es die Spalten nicht)
+      const extra = PV_EXTRA.filter(f => diff.write.some(r => r[f] != null));
+      const rows = diff.write.map(r => { const o = { ...r }; for (const f of PV_EXTRA) if (!extra.includes(f)) delete o[f]; return o; });
+      await upsertRows('anker_daily', rows, 'user_id,day',
                        (n, total) => { $('csv-progress').textContent = `${n}/${total}`; });
       $('csv-progress').innerHTML = '<span class="ok">Übernommen.</span>';
       loadModel();
     } catch (err) {
-      const hint = /netz_zu_speicher/.test(err.message) ? ' – bitte zuerst docs/UPDATE_V31.sql in Supabase ausführen.' : '';
+      const hint = /netz_zu_speicher/.test(err.message) ? ' – bitte zuerst docs/UPDATE_V31.sql in Supabase ausführen.'
+        : /pv[5-8]/.test(err.message) ? ' – bitte zuerst docs/UPDATE_V57.sql in Supabase ausführen.' : '';
       $('csv-progress').innerHTML = `<span class="error">${esc(err.message + hint)}</span>`;
       ev.target.disabled = false;
     }

@@ -127,3 +127,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. Tapo-Steckdosen als **Excel** exportieren (nicht CSV) und unter **Daten → Geräte** importieren – die Stundenwerte
    (Blatt „Tag“, letzte ~7 Tage) werden mitgespeichert. Wöchentlich wiederholen, sonst entstehen Lücken.
 4. **Zähler & Verbrauch → Tagesprofil Strom**: Tag wählen.
+
+# Update v0.57 (Solarbank 2 als PV5–PV8, zwei Smart Meter)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V57.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V57.sql) → **Run**.
+   Kontrolle: `pv5 | pv6 | pv7 | pv8`.
+2. Pull Request mergen, App neu laden (v0.57.0).
+3. **Daten → Anker-Import**: beide Exporte (Solarbank 4 „Home“ und Solarbank 2 „Zuhause“) zusammen wählen. Die Vorschau
+   zeigt, an welchen Tagen der Netzbezug nur einmal gezählt wird.
+

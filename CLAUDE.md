@@ -184,6 +184,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.56: Stundenwerte der Messsteckdosen (`device_hourly` je Gerät/Tag mit `hours[24]`, `docs/UPDATE_V56.sql`; `parseMerossSheets`
      liest Blatt „Tag“ → `hourly`), Tagesprofil Strom (`powerDays`/`powerDayProfile`/`powerDayAverage`, Abschnitt `tp-*`).
      Prüfung: `v56-check`.
+   - ✅ v0.57: Solarbank 2 als PV5–PV8 ab 14.11.2026 (`SB2_PV_FROM`, `docs/UPDATE_V57.sql`), Netzbezug bei zwei Smart Metern am
+     Hausanschluss nur einmal (`mergeAnkerParsed` → `gridOnce`/`gridDiff`), Strang 5–8 im Diagramm. Prüfung: `v57-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

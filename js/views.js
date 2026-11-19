@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.56.0';
-import { parseNum } from './queue.js?v=0.56.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.56.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.56.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.56.0';
-import { explainAll } from './explain.js?v=0.56.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.56.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.57.0';
+import { parseNum } from './queue.js?v=0.57.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.57.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.57.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.57.0';
+import { explainAll } from './explain.js?v=0.57.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.57.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -992,13 +992,15 @@ function renderPV(){
     kpiC(mm,cc,"evq","pct",1,"Eigenverbrauchsquote","Genutzter Solarstrom je erzeugter kWh") +
     kpiC(mm,cc,"aut","pct",1,"Autarkie Messkreis",m.aut==null?`Netzbezug erst ab ${dde(is)} gemessen`:"Ohne Wärmepumpe") +
     kpiC(mm,cc,"feed","kwh",0,"Eingespeist","Gemessen erst seit dem Smart Meter");
-  const sr = ankerSeries(["use","imp","pv1","pv2","pv3","pv4","gen","s2h","s2b","feed"],P.from,P.to);
+  const sr = ankerSeries(["use","imp","pv1","pv2","pv3","pv4","pv5","pv6","pv7","pv8","gen","s2h","s2b","feed"],P.from,P.to);
   const okImp = k => (sr.g==="day"?k:monthKey(k)) >= (sr.g==="day"?is:monthKey(is));
   chart("pv-aut",{type:"bar",data:{labels:sr.labels,datasets:[
     {label:"Autarkie",data:sr.ks.map((k,j)=>okImp(k)&&(sr.rows[j].use+sr.rows[j].imp)>0?sr.rows[j].use/(sr.rows[j].use+sr.rows[j].imp)*100:null),backgroundColor:css("--sun")}]},
     options:{plugins:{legend:{display:false},tooltip:wxTip(numTip("%"),sr)},scales:{x:{ticks:{maxTicksLimit:14}},y:{max:100,title:{display:true,text:"%"}}}}});
-  const cols=["--sun","--batt","--grid","--heat"];
-  chart("pv-str",{type:"line",data:{labels:sr.labels,datasets:["pv1","pv2","pv3","pv4"].map((p,i)=>({label:"Strang "+(i+1),data:sr.rows.map(r=>r[p]),borderColor:css(cols[i]),backgroundColor:css(cols[i]),pointRadius:sr.g==="day"?0:2,tension:.3}))},
+  // v0.57: PV5–PV8 = Eingänge der Solarbank 2 (ab 14.11.2026), gestrichelt und nur, wenn im Zeitraum Ertrag da ist
+  const cols=["--sun","--batt","--grid","--heat"], strs=["pv1","pv2","pv3","pv4","pv5","pv6","pv7","pv8"].filter((p,i)=>i<4||sr.rows.some(r=>r[p]>0));
+  chart("pv-str",{type:"line",data:{labels:sr.labels,datasets:strs.map(p=>{ const n=+p.slice(2), c=css(cols[(n-1)%4]);
+    return {label:n<5?"Strang "+n:`Strang ${n} (SB2 PV${n-4})`,data:sr.rows.map(r=>r[p]),borderColor:c,backgroundColor:c,borderDash:n<5?[]:[5,4],pointRadius:sr.g==="day"?0:2,tension:.3}; })},
     options:{plugins:{tooltip:numTip("kWh",1)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
   chart("pv-yield",{type:"bar",data:{labels:sr.labels,datasets:[{label:"kWh je kWp",data:sr.rows.map((r,j)=>{ const k=sr.ks[j]; return r.gen/(sr.g==="day"?C_.stageAt(k).kwp:C_.kwpIn(`${k}-01`,`${k}-31`)); }),backgroundColor:css("--sun")}]},
     options:{plugins:{legend:{display:false},tooltip:wxTip(numTip("kWh/kWp",1),sr)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh je kWp"}}}}});

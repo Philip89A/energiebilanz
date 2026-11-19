@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.56.0">
-<link rel="stylesheet" href="css/style.css?v=0.56.0">
+<meta name="app-version" content="0.57.0">
+<link rel="stylesheet" href="css/style.css?v=0.57.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -129,7 +129,7 @@
   <div class="grid g2" style="margin-top:16px">
     <div class="panel"><h2>Autarkie im Anker-Messkreis</h2><p class="note">Anteil Solarstrom am Verbrauch des Messkreises (nur Allgemeinstrom, ohne Wärmepumpe).</p><div class="chart"><canvas id="pv-aut"></canvas></div></div>
     <div class="panel"><h2>Erzeugung <span id="pv-gran">je Monat</span></h2><p class="note">Spezifischer Ertrag in kWh je kWp installierter Leistung.</p><div class="chart"><canvas id="pv-yield"></canvas></div></div>
-    <div class="panel"><h2>Erzeugung je Strang</h2><p class="note">Hilft, verschattete oder ausgefallene Module zu erkennen.</p><div class="chart"><canvas id="pv-str"></canvas></div></div>
+    <div class="panel"><h2>Erzeugung je Strang</h2><p class="note">Hilft, verschattete oder ausgefallene Module zu erkennen. Gestrichelt: Strang 5–8 = Eingänge PV1–PV4 der Solarbank 2 (ab 14.11.2026, nur mit Ertrag).</p><div class="chart"><canvas id="pv-str"></canvas></div></div>
     <div class="panel"><h2>Solarstrom nach Verwendung</h2><p class="note">Direkt verbraucht, in den Speicher geladen oder eingespeist.</p><div class="chart"><canvas id="pv-use"></canvas></div></div>
   </div>
   <div class="panel" style="margin-top:16px" id="wx-pv-panel"><h2>PV und Wetter <span id="wx-pv-gran">je Monat</span></h2>
@@ -537,8 +537,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.56.0"></script>
-<script src="vendor/chart.umd.js?v=0.56.0"></script>
-<script type="module" src="js/app.js?v=0.56.0"></script>
+<script src="vendor/supabase.js?v=0.57.0"></script>
+<script src="vendor/chart.umd.js?v=0.57.0"></script>
+<script type="module" src="js/app.js?v=0.57.0"></script>
 </body>
 </html>
