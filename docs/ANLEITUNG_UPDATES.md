@@ -136,3 +136,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 3. **Daten → Anker-Import**: beide Exporte (Solarbank 4 „Home“ und Solarbank 2 „Zuhause“) zusammen wählen. Die Vorschau
    zeigt, an welchen Tagen der Netzbezug nur einmal gezählt wird.
 
+# Update v0.58 (Vergleich öffentliches Laden, Fremdladung)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V58.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V58.sql) → **Run**.
+   Kontrolle: `guest | boolean`.
+2. Pull Request mergen, App neu laden (v0.58.0).
+3. **Amortisation → Vergleich öffentliches Laden**: „Rechnen mit“ prüfen (Standard: automatisch günstigster), Tarife unter
+   „Tarife bearbeiten“ anpassen; „Was wäre, wenn“ zeigt die Verschiebung des Break-even.
+4. Fremdladung im Ladebuch oder unter **Erfassen → Laden** mit dem Haken „Fremdladung“ eintragen, Betrag = erhalten.
+

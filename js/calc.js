@@ -8,7 +8,7 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.57.0';
+import { hpSum } from './hp.js?v=0.58.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -28,6 +28,12 @@ export const monthKey = s => s.slice(0, 7);
 // Wärme (Gas 240 bzw. Öl 310 g je kWh Brennstoff nach GEG Anlage 9, Kesselwirkungsgrad ~0,9, Rest Fernwärme/Strom).
 export const CO2_DEFAULTS = { mix: { 2023: 379, 2024: 353, 2025: 344 }, contract: { as: 0, wp: 0 }, heatRef: 280, petrol: 2370,
   pvKgKwp: 800, battKgKwh: 80, persons: 3, copFallback: 3.0 };
+// v0.58: Vergleichstarife öffentliches Laden (Stand 11/2026, laut Vergleichsportalen; in der App änderbar)
+export const PUB_DEFAULTS = [
+  { name: 'EnBW S', from: '2026-11-01', ap: 0.56, fee: 0, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
+  { name: 'EnBW M', from: '2026-11-01', ap: 0.46, fee: 5.99, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
+  { name: 'EnBW L', from: '2026-11-01', ap: 0.39, fee: 11.99, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
+];
 export const monthEnd = k => addDays(`${k}-01`, new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7), 0)).getUTCDate() - 1);
 export function shiftYear(d, n = -1) { const y = +d.slice(0, 4) + n; let md = d.slice(5); if (md === '02-29') md = '02-28'; return `${y}-${md}`; }
 export function nextMonth(k) { const y = +k.slice(0, 4), m = +k.slice(5, 7); return m === 12 ? `${y + 1}-01` : `${y}-${String(m + 1).padStart(2, '0')}`; }
@@ -65,7 +71,8 @@ export function stateFromDb(db) {
     abschlaege: (db.installments || []).map(a => ({ id: a.id, group: a.grp, from: a.valid_from, amount: +a.amount, note: a.note || '' })),
     invest: (db.investments || []).map(x => ({ id: x.id, name: x.name, date: x.day || '', cost: +x.cost, ...(x.category ? { cat: x.category } : {}) })),
     fuel: (db.fuel_log || []).map(x => ({ id: x.id, d: x.day, km: +x.odometer, l: +x.liters, e: +x.amount, s: x.fuel_type, full: x.full_tank })),
-    charges: (db.charge_log || []).map(x => ({ id: x.id, d: x.day, km: x.odometer == null ? null : +x.odometer, k: +x.kwh, e: x.amount == null ? 0 : +x.amount, o: x.location, n: x.note || '' })),
+    charges: (db.charge_log || []).map(x => ({ id: x.id, d: x.day, km: x.odometer == null ? null : +x.odometer, k: +x.kwh, e: x.amount == null ? 0 : +x.amount, o: x.location, n: x.note || '',
+      ...('guest' in x ? { g: !!x.guest, gk: true } : {}) })),   // v0.58: Fremdladung; gk = Spalte vorhanden
     carlog: (db.car_log || []).map(x => ({ id: x.id, d: x.day, car: x.car, cat: x.category, km: x.odometer == null ? null : +x.odometer, e: +x.amount || 0, note: x.note || '' })),
     payments: (db.payments || []).map(x => ({ id: x.id, group: x.grp, d: x.day, amount: +x.amount, kind: x.kind, note: x.note || '' })),
     battery: s.battery || {}, pv: s.pv || {}, amort: s.amort || {}, cars: s.cars || { ice: {}, ev: {} },
@@ -109,7 +116,7 @@ export const toDb = {
   installment: a => ({ id: a.id, grp: a.group, valid_from: a.from, amount: +a.amount, note: a.note || null }),
   investment: x => ({ id: x.id, day: x.date || null, name: x.name, cost: +x.cost || 0, ...(x.cat ? { category: x.cat } : {}) }),   // Spalte erst ab schema v4
   fuel: x => ({ id: x.id, day: x.d, odometer: +x.km, liters: +x.l, amount: +x.e, fuel_type: x.s || null, full_tank: !!x.full }),
-  charge: x => ({ id: x.id, day: x.d, odometer: x.km ? +x.km : null, kwh: +x.k, amount: x.e == null ? null : +x.e, location: x.o || null, ...(x.n ? { note: String(x.n).slice(0, 500) } : {}) }),   // v0.50: note nur wenn gesetzt
+  charge: x => ({ id: x.id, day: x.d, odometer: x.km ? +x.km : null, kwh: +x.k, amount: x.e == null ? null : +x.e, location: x.o || null, ...(x.n ? { note: String(x.n).slice(0, 500) } : {}), ...(x.g || x.gk ? { guest: !!x.g } : {}) }),   // v0.50: note nur wenn gesetzt; v0.58: guest nur wenn gesetzt oder Spalte bekannt
   carlog: x => ({ id: x.id, day: x.d, car: x.car, category: x.cat, odometer: x.km ? +x.km : null, amount: +x.e || 0, note: x.note || null }),
   event: e => ({ id: e.id, day: e.d, grp: e.group || null, type: e.type || null, note: e.text || null }),
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
@@ -266,12 +273,51 @@ export function createCalc(S) {
   }
 
   /* E-Auto zu Hause (Ladebuch, Ort „zu Hause“): läuft über den Allgemeinstrom-Zähler */
-  const isHome = c => /zu hause/i.test(c.o || '');
-  function homeCharging(from, to) {
-    let kwh = 0, eur = 0; const e = S.cars.ev || {}, pub = +e.pricePublic || 0;
-    for (const c of S.charges) { if (!isHome(c) || c.d < from || c.d > to) continue; const t = tariffAt('as', c.d) || currentTariff('as');
-      kwh += +c.k || 0; eur += (+c.k || 0) * (pub - (t ? t.ap : 0) / 100); }
-    return { kwh, saving: eur };     // saving: gegenüber öffentlichem Laden
+  // v0.58: Fremdladung (Gast lädt an der Wallbox, Betrag = erhaltene Erstattung) zählt nicht als eigenes Laden
+  const isHome = c => /zu hause/i.test(c.o || '') && !c.g;
+  const isGuest = c => /zu hause/i.test(c.o || '') && !!c.g;
+  // v0.58: Vergleich öffentliches Laden. Je Ladung zu Hause: kWh × Preis + Blockiergebühr für die Zeit, die dieselbe Ladung
+  // an einer Säule mit `kw` über `blockMin` Minuten hinaus dauern würde (höchstens `blockMax`); je Monat ab Wallbox und
+  // Übergabe die Grundgebühr. „auto“ wählt den günstigsten Tarif für die erwartete Jahresmenge, „manual“ = pricePublic.
+  const evHomeYear = () => { const e = S.cars.ev || {}; return (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100) * (+e.shHome || 0) / 100; };
+  const pubList = () => { const l = S.cars.ev?.pubTariffs; return Array.isArray(l) && l.length ? l : PUB_DEFAULTS; };
+  const pubNames = () => [...new Set(pubList().map(t => t.name).filter(Boolean))];
+  function pubTariffAt(name, d) {
+    const l = pubList().filter(t => t.name === name).sort((a, b) => (a.from || '').localeCompare(b.from || ''));
+    return l.filter(t => !t.from || t.from <= d).pop() || l[0] || null;
+  }
+  const pubBlock = (kwh, t) => { const over = (+kwh || 0) / (+t.kw || 11) * 60 - (+t.blockMin || 0);
+    return +t.blockEur > 0 && over > 0 ? Math.min(+t.blockMax > 0 ? +t.blockMax : Infinity, over * +t.blockEur) : 0; };
+  // Ø Ladung zu Hause (kWh) für die Blockiergebühr in der Prognose; ohne Ladebuch keine Blockiergebühr
+  const avgSession = () => { const h = S.charges.filter(isHome).filter(c => +c.k > 0); return h.length ? h.reduce((a, c) => a + +c.k, 0) / h.length : 0; };
+  function pubYearCost(t, kwhY, sess = avgSession()) { return kwhY * (+t.ap || 0) + 12 * (+t.fee || 0) + (sess > 0 ? kwhY / sess * pubBlock(sess, t) : 0); }
+  function pubTariff(d, choice) {
+    const e = S.cars.ev || {}, ch = choice ?? e.pubChoice ?? 'auto';
+    if (ch && typeof ch === 'object') return { name: ch.name || 'eigener Preis', ap: +ch.ap || 0, fee: +ch.fee || 0, blockMin: 0, blockEur: 0, kw: 11 };
+    if (ch === 'manual') return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0, blockMin: 0, blockEur: 0, kw: 11 };
+    if (ch !== 'auto') { const t = pubTariffAt(ch, d); if (t) return t; }
+    const kY = evHomeYear() || 1500, ts = pubNames().map(n => pubTariffAt(n, d)).filter(Boolean);
+    if (!ts.length) return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0, blockMin: 0, blockEur: 0, kw: 11 };
+    return ts.reduce((a, b) => (pubYearCost(b, kY) < pubYearCost(a, kY) ? b : a));
+  }
+  // effektiver Preis je kWh (inkl. Grundgebühr und Blockiergebühr) für die erwartete Jahresmenge
+  const pubEff = (d, choice) => { const t = pubTariff(d, choice), kY = evHomeYear(); return kY > 0 ? pubYearCost(t, kY) / kY : +t.ap || 0; };
+  const wbStart = () => { const f = wallboxFrom(); if (!f) return null; const s = (S.cars.ev || {}).start; return [f, s || f].sort()[1]; };
+  function homeCharging(from, to, choice) {
+    let kwh = 0, eur = 0, block = 0, n = 0, fee = 0; const gu = { kwh: 0, eur: 0, margin: 0, n: 0 };
+    for (const c of S.charges) {
+      if (c.d < from || c.d > to) continue;
+      const t = tariffAt('as', c.d) || currentTariff('as'), ap = (t ? t.ap : 0) / 100, k = +c.k || 0;
+      if (isGuest(c)) { gu.kwh += k; gu.eur += +c.e || 0; gu.margin += (+c.e || 0) - k * ap; gu.n++; continue; }
+      if (!isHome(c)) continue;
+      const pt = pubTariff(c.d, choice), b = pubBlock(k, pt);
+      kwh += k; n++; block += b; eur += k * ((+pt.ap || 0) - ap) + b;
+    }
+    // Grundgebühr je Monat ab Wallbox und Übergabe, bis zum letzten Datenstand (nicht in die Zukunft)
+    const ws = wbStart();
+    if (ws) { const end = [to, [A.dates[A.n - 1], ...S.charges.map(c => c.d)].sort().pop()].sort()[0];
+      for (let k = monthKey([from, ws].sort()[1]); k <= monthKey(end); k = nextMonth(k)) fee += +pubTariff(`${k}-15`, choice).fee || 0; }
+    return { kwh, saving: eur + fee, block, fee, n, guest: gu };     // saving: gegenüber öffentlichem Laden
   }
   // Beginn der Wallbox-Wirkung: erste Investition der Kategorie „wallbox“
   const wallboxFrom = () => S.invest.filter(x => x.cat === 'wallbox').map(x => x.date || A.dates[0]).sort()[0] || null;
@@ -382,7 +428,8 @@ export function createCalc(S) {
   }
 
   /* Amortisation entlang der Investitionsdaten */
-  function amortTimeline() {
+  function amortTimeline(opt = {}) {
+    const choice = opt.pub;
     const am = S.amort, items = S.invest.filter(x => x.cat !== 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
     const startK = monthKey(items[0]?.date || A.dates[0]);
     const act = {}, feedK = {};
@@ -396,10 +443,11 @@ export function createCalc(S) {
     // Wallbox (v0.9): gemessen = Laden zu Hause laut Ladebuch × (öffentlicher Preis − Arbeitspreis), ab erster
     // Wallbox-Investition; Prognose aus dem Auto-Vergleich (kWh zu Hause pro Jahr) ab Übergabe des E-Autos
     const wbFrom = wallboxFrom(), ev = S.cars.ev || {}, wbK = {};
-    if (wbFrom) for (const c of S.charges) { if (!isHome(c) || c.d < wbFrom || monthKey(c.d) > lastK) continue;
-      const t = tariffAt('as', c.d) || currentTariff('as'); wbK[monthKey(c.d)] = (wbK[monthKey(c.d)] || 0) + (+c.k || 0) * ((+ev.pricePublic || 0) - (t ? t.ap : 0) / 100); }
-    const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100;
-    const wbYear = tb ? tb.evHome * ((+ev.pricePublic || 0) - apNow) : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
+    // v0.58: je Monat Ersparnis gegenüber dem Vergleichstarif (kWh, Blockiergebühr, Grundgebühr) plus Marge aus Fremdladungen
+    if (wbFrom) for (let mk = monthKey(wbFrom); mk <= lastK; mk = nextMonth(mk)) {
+      const h = homeCharging([`${mk}-01`, wbFrom].sort()[1], monthEnd(mk), choice); wbK[mk] = h.saving + h.guest.margin; }
+    const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100, pubNow = pubTariff(lastD, choice);
+    const wbYear = tb ? pubYearCost(pubNow, tb.evHome) - tb.evHome * apNow : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
     // Erstattungen/Gutschriften (v0.18): gebuchte Beträge als Ersparnis im Monat des Eingangs. Prognose für §14a (Wert der
     // Ausbau-Seite, ab Wallbox und Übergabe) und THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils frühestens 12 Monate
     // nach der letzten gebuchten Gutschrift dieser Art (Name enthält „14a“ bzw. „THG“), damit nichts doppelt zählt.
@@ -435,7 +483,8 @@ export function createCalc(S) {
       if (be === null && ci > 0 && cs >= ci && j > 0) be = k;
       k = nextMonth(k);
     }
-    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK };
+    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK, pub: pubNow,
+      pubEff: tb && tb.evHome > 0 ? pubYearCost(pubNow, tb.evHome) / tb.evHome : +pubNow.ap || 0 };
   }
   function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
@@ -791,7 +840,8 @@ export function createCalc(S) {
     const evYear = (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100);
     const evHome = evYear * (+e.shHome || 0) / 100, evGrid = evHome * (1 - (+e.shPV || 0) / 100);
     // Laden zu Hause steckt ab v0.9 schon im Zählerwert: Netzanteil abziehen, damit „inkl. E-Auto“ nicht doppelt zählt
-    const hc = as ? homeCharging(as.from, as.to).kwh * (1 - (+e.shPV || 0) / 100) * (pr ? 365 / as.days : 1) : 0;
+    const hcr = as ? homeCharging(as.from, as.to) : null;   // v0.58: Fremdladungen laufen auch über den Zähler
+    const hc = hcr ? (hcr.kwh + hcr.guest.kwh) * (1 - (+e.shPV || 0) / 100) * (pr ? 365 / as.days : 1) : 0;
     return { asKwh: as ? Math.max(0, as.kwh - hc) : 0, asMeter: as ? as.kwh : 0, homeGrid: hc, wpKwh: wp ? wp.kwh : 0, from: as?.from || wp?.from || null, to: as?.to || wp?.to || null, evYear, evHome, evGrid,
       annualized: !!pr, days: pr ? Math.max(as?.days || 0, wp?.days || 0) : 365 };
   }
@@ -800,7 +850,7 @@ export function createCalc(S) {
   function odoPoints(car) {
     const p = [];
     if (car === 'leon') S.fuel.forEach(x => { if (+x.km) p.push({ d: x.d, km: +x.km }); });
-    if (car === 'tavascan') S.charges.forEach(x => { if (+x.km) p.push({ d: x.d, km: +x.km }); });
+    if (car === 'tavascan') S.charges.forEach(x => { if (+x.km && !x.g) p.push({ d: x.d, km: +x.km }); });
     S.carlog.forEach(x => { if (x.car === car && +x.km) p.push({ d: x.d, km: +x.km }); });
     p.sort((a, b) => a.d.localeCompare(b.d) || a.km - b.km);
     const o = []; p.forEach(x => { if (o.length && o[o.length - 1].d === x.d) { o[o.length - 1].km = Math.max(o[o.length - 1].km, x.km); } else o.push(x); });
@@ -839,7 +889,7 @@ export function createCalc(S) {
   function carCostItems(car) {
     const it = [];
     if (car === 'leon') S.fuel.forEach(x => it.push({ d: x.d, cat: 'Sprit', e: +x.e || 0 }));
-    if (car === 'tavascan') S.charges.forEach(x => it.push({ d: x.d, cat: 'Laden', e: +x.e || 0 }));
+    if (car === 'tavascan') S.charges.forEach(x => { if (!x.g) it.push({ d: x.d, cat: 'Laden', e: +x.e || 0 }); });
     S.carlog.forEach(x => { if (x.car === car && +x.e) it.push({ d: x.d, cat: x.cat, e: +x.e }); });
     return it;
   }
@@ -1450,13 +1500,14 @@ export function createCalc(S) {
       days.push({ d, gen: A.c.gen[i] || 0, use: A.c.use[i] || 0, bch: A.c.bch[i] || 0, bdis: A.c.bdis[i] || 0, asGrid: as[d] ?? null }); });
     const b = S.battery, e = S.cars.ev || {}, tb = tariffBase();
     return { from: r.from, to: r.to, days, kwp: kwpIn(r.from, r.to), usable: usableIn(r.from, r.to),
-      evHome: tb.evHome, ap: +(currentTariff('as')?.ap) || 0, pricePublic: +e.pricePublic || 0, evStart: e.start || '',
+      evHome: tb.evHome, ap: +(currentTariff('as')?.ap) || 0, pricePublic: pubEff(r.to), evStart: e.start || '',
       priceInc: +S.amort.priceInc || 0, degr: +S.amort.degr || 0 };
   }
 
   return {
     A, IMPORT_START, sumRange, last12, groupSeries, tariffAt, currentTariff, costs, last365Cost, feedValue, pvSavings,
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
+    pubTariff, pubTariffAt, pubNames, pubList, pubBlock, pubYearCost, pubEff, evHomeYear,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,

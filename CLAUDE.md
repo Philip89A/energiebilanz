@@ -186,6 +186,9 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      Prüfung: `v56-check`.
    - ✅ v0.57: Solarbank 2 als PV5–PV8 ab 14.11.2026 (`SB2_PV_FROM`, `docs/UPDATE_V57.sql`), Netzbezug bei zwei Smart Metern am
      Hausanschluss nur einmal (`mergeAnkerParsed` → `gridOnce`/`gridDiff`), Strang 5–8 im Diagramm. Prüfung: `v57-check`.
+   - ✅ v0.58: Vergleich öffentliches Laden (`cars.ev.pubTariffs` mit „gültig ab“, `pubChoice` auto/Name/manual; `pubTariff`,
+     `pubBlock`, `pubYearCost`, `pubEff`; `homeCharging` mit Blockier- und Grundgebühr), „Was wäre, wenn“ (`amortTimeline({pub})`,
+     `S.ui.pubAlt`), Fremdladung (`charge_log.guest`, `docs/UPDATE_V58.sql`). Prüfung: `v58-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

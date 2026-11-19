@@ -139,6 +139,7 @@ create table if not exists charge_log (     -- Ladevorgänge (Cupra Tavascan)
   amount numeric check (amount is null or amount >= 0),
   location text check (location in ('zu Hause','öffentlich AC','öffentlich DC','Arbeitgeber','Sonstiges')),
   note text check (note is null or char_length(note) <= 500),   -- v0.50: Kommentar
+  guest boolean not null default false,   -- v0.58: Fremdladung (Gast an der Wallbox, amount = erhaltene Erstattung)
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

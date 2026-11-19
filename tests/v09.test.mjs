@@ -23,7 +23,7 @@ function state(over = {}) {
     battery: { capGross: 2, reserve: 0, fullThresh: 0.3 }, pv: { kwp: 1 },
     amort: { priceInc: 0, degr: 0, years: 1, feedin: 0, feedinFrom: '' },
     cars: { ice: { rate: 0, km: 0, l100: 0, price: 0, priceSrc: 'manual', ins: 0, tax: 0, other: 0 },
-            ev: { start: '', rate: 0, km: 10000, kwh100: 20, loss: 10, shHome: 50, shPV: 20, pricePublic: 0.5, ins: 0, tax: 0, thg: 0, transfer: 0 } },
+            ev: { start: '', rate: 0, km: 10000, kwh100: 20, loss: 10, shHome: 50, shPV: 20, pricePublic: 0.5, pubChoice: 'manual', ins: 0, tax: 0, thg: 0, transfer: 0 } },   // v0.58: fester Preis wie bisher
     ...over,
   };
 }

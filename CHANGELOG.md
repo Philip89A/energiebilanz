@@ -764,3 +764,21 @@
 - „Erzeugung je Strang“: Strang 5–8 gestrichelt („SB2 PV1“ …), nur wenn im Zeitraum Ertrag da ist.
 - Tests: neu `tests/v57.test.mjs`, neu `scripts/v57-check.mjs` (11 Prüfungen); v47/v52/v54/v56-Check grün.
 
+## v0.58 – Vergleich öffentliches Laden, „Was wäre, wenn“, Fremdladung
+- **SQL-Update `docs/UPDATE_V58.sql`**: Spalte `guest` im Ladebuch (`charge_log`).
+- Wallbox-Ersparnis gegen echte Ladetarife statt eines festen Preises: Tarife mit „gültig ab“ (Preis je kWh, Grundgebühr
+  je Monat, Blockiergebühr ab Minute, €/min, Höchstbetrag, Säulenleistung). Voreinstellung EnBW S/M/L (Stand 11/2026).
+- Je Ladung zu Hause: kWh × Preis + Blockiergebühr für die Zeit, die dieselbe Ladung an einer 11-kW-Säule über 4 h dauern
+  würde; je Monat ab Wallbox und Übergabe die Grundgebühr. Frühere Ladungen behalten den damals gültigen Preis.
+- „Rechnen mit“: automatisch der günstigste Tarif für die erwartete Jahresmenge (Auto-Vergleich), ein bestimmter Tarif
+  oder der feste Preis. Prognose mit dem effektiven Preis inkl. Grund- und Blockiergebühr (Ø Ladung aus dem Ladebuch).
+- **„Was wäre, wenn“** auf der Amortisationsseite: anderer Tarif oder eigener Preis, zeigt Break-even, Wallbox-Ersparnis
+  pro Jahr und Ersparnis nach der Betrachtungsdauer gegen den Standard; ändert keine Einstellung.
+- **Fremdladung** (Gast lädt an der Wallbox, Betrag = erhaltene Erstattung): im Ladebuch und in der Schnellerfassung.
+  Zählt nicht als eigenes Laden, nicht im Kilometerstand und nicht in den Ladekosten des Tavascan; in der Amortisation
+  mit ihrer Marge (Erstattung − kWh × Arbeitspreis). Im Allgemeinstrom „ohne E-Auto“ wird sie mit herausgerechnet.
+- Ausbau-Seite rechnet die Wallbox mit dem effektiven Vergleichspreis. „Öffentlich €/kWh“ im Auto-Vergleich heißt jetzt
+  „Öffentlich unterwegs €/kWh“ (Laden unterwegs; zugleich der feste Preis bei „Rechnen mit: fester Preis“).
+- Tests: neu `tests/v58.test.mjs`, neu `scripts/v58-check.mjs` (13 Prüfungen); v09-Tests rechnen ausdrücklich mit festem
+  Preis; alle Browser-Checks ohne Seed-Daten grün.
+
