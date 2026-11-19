@@ -1,4 +1,4 @@
-// v0.58-Test: Vergleich öffentliches Laden (Tarife, Blockier- und Grundgebühr), „Was wäre, wenn“, Fremdladung im Ladebuch.
+// v0.58-Test: Vergleich öffentliches Laden (Tarife mit Grundgebühr, ohne Blockiergebühr), „Was wäre, wenn“, Fremdladung im Ladebuch.
 // Eigenständig mit synthetischen Daten (kein data/ nötig).
 // Aufruf: python3 -m http.server 8000 &  dann  npx -y -p playwright node scripts/v58-check.mjs
 import { chromium } from 'playwright';
@@ -64,7 +64,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (
   const { p, ctx } = await open('?unfold#amort');
   const t = await p.textContent('#am-pub');
   check(/Gerechnet wird mit EnBW L/.test(t), 'automatisch günstigster: EnBW L bei 1.900 kWh');
-  check(/Blockiergebühr 0,10 €\/min ab 240 min/.test(t), 'Blockiergebühr genannt');
+  check(/Ohne Blockiergebühr/.test(t) && /11,99 € Grundgebühr/.test(t), 'Grundgebühr genannt, ohne Blockiergebühr');
   check((await p.textContent('#am-wb-note')).includes('gegenüber EnBW L'), 'Wallbox-Hinweis nennt den Vergleichstarif');
   check(!/Break-even mit/.test(t), 'ohne Vergleich keine Zusatzkennzahlen');
   await p.selectOption('#pub-alt', 'EnBW S'); await p.waitForTimeout(300);

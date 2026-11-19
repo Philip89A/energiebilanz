@@ -30,9 +30,9 @@ export const CO2_DEFAULTS = { mix: { 2023: 379, 2024: 353, 2025: 344 }, contract
   pvKgKwp: 800, battKgKwh: 80, persons: 3, copFallback: 3.0 };
 // v0.58: Vergleichstarife öffentliches Laden (Stand 11/2026, laut Vergleichsportalen; in der App änderbar)
 export const PUB_DEFAULTS = [
-  { name: 'EnBW S', from: '2026-11-01', ap: 0.56, fee: 0, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
-  { name: 'EnBW M', from: '2026-11-01', ap: 0.46, fee: 5.99, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
-  { name: 'EnBW L', from: '2026-11-01', ap: 0.39, fee: 11.99, blockMin: 240, blockEur: 0.10, blockMax: 12, kw: 11 },
+  { name: 'EnBW S', from: '2026-11-01', ap: 0.56, fee: 0 },
+  { name: 'EnBW M', from: '2026-11-01', ap: 0.46, fee: 5.99 },
+  { name: 'EnBW L', from: '2026-11-01', ap: 0.39, fee: 11.99 },
 ];
 export const monthEnd = k => addDays(`${k}-01`, new Date(Date.UTC(+k.slice(0, 4), +k.slice(5, 7), 0)).getUTCDate() - 1);
 export function shiftYear(d, n = -1) { const y = +d.slice(0, 4) + n; let md = d.slice(5); if (md === '02-29') md = '02-28'; return `${y}-${md}`; }
@@ -276,9 +276,9 @@ export function createCalc(S) {
   // v0.58: Fremdladung (Gast lädt an der Wallbox, Betrag = erhaltene Erstattung) zählt nicht als eigenes Laden
   const isHome = c => /zu hause/i.test(c.o || '') && !c.g;
   const isGuest = c => /zu hause/i.test(c.o || '') && !!c.g;
-  // v0.58: Vergleich öffentliches Laden. Je Ladung zu Hause: kWh × Preis + Blockiergebühr für die Zeit, die dieselbe Ladung
-  // an einer Säule mit `kw` über `blockMin` Minuten hinaus dauern würde (höchstens `blockMax`); je Monat ab Wallbox und
-  // Übergabe die Grundgebühr. „auto“ wählt den günstigsten Tarif für die erwartete Jahresmenge, „manual“ = pricePublic.
+  // v0.58: Vergleich öffentliches Laden. Je Ladung zu Hause: kWh × Preis des Vergleichstarifs; je Monat ab Wallbox und
+  // Übergabe die Grundgebühr. Keine Blockiergebühr (Nutzerentscheidung: zu Hause fällt keine an, öffentlich würde umgeparkt).
+  // „auto“ wählt den günstigsten Tarif für die erwartete Jahresmenge, „manual“ = pricePublic.
   const evHomeYear = () => { const e = S.cars.ev || {}; return (+e.km || 0) / 100 * (+e.kwh100 || 0) * (1 + (+e.loss || 0) / 100) * (+e.shHome || 0) / 100; };
   const pubList = () => { const l = S.cars.ev?.pubTariffs; return Array.isArray(l) && l.length ? l : PUB_DEFAULTS; };
   const pubNames = () => [...new Set(pubList().map(t => t.name).filter(Boolean))];
@@ -286,38 +286,34 @@ export function createCalc(S) {
     const l = pubList().filter(t => t.name === name).sort((a, b) => (a.from || '').localeCompare(b.from || ''));
     return l.filter(t => !t.from || t.from <= d).pop() || l[0] || null;
   }
-  const pubBlock = (kwh, t) => { const over = (+kwh || 0) / (+t.kw || 11) * 60 - (+t.blockMin || 0);
-    return +t.blockEur > 0 && over > 0 ? Math.min(+t.blockMax > 0 ? +t.blockMax : Infinity, over * +t.blockEur) : 0; };
-  // Ø Ladung zu Hause (kWh) für die Blockiergebühr in der Prognose; ohne Ladebuch keine Blockiergebühr
-  const avgSession = () => { const h = S.charges.filter(isHome).filter(c => +c.k > 0); return h.length ? h.reduce((a, c) => a + +c.k, 0) / h.length : 0; };
-  function pubYearCost(t, kwhY, sess = avgSession()) { return kwhY * (+t.ap || 0) + 12 * (+t.fee || 0) + (sess > 0 ? kwhY / sess * pubBlock(sess, t) : 0); }
+  function pubYearCost(t, kwhY) { return kwhY * (+t.ap || 0) + 12 * (+t.fee || 0); }
   function pubTariff(d, choice) {
     const e = S.cars.ev || {}, ch = choice ?? e.pubChoice ?? 'auto';
-    if (ch && typeof ch === 'object') return { name: ch.name || 'eigener Preis', ap: +ch.ap || 0, fee: +ch.fee || 0, blockMin: 0, blockEur: 0, kw: 11 };
-    if (ch === 'manual') return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0, blockMin: 0, blockEur: 0, kw: 11 };
+    if (ch && typeof ch === 'object') return { name: ch.name || 'eigener Preis', ap: +ch.ap || 0, fee: +ch.fee || 0 };
+    if (ch === 'manual') return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0 };
     if (ch !== 'auto') { const t = pubTariffAt(ch, d); if (t) return t; }
     const kY = evHomeYear() || 1500, ts = pubNames().map(n => pubTariffAt(n, d)).filter(Boolean);
-    if (!ts.length) return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0, blockMin: 0, blockEur: 0, kw: 11 };
+    if (!ts.length) return { name: 'manuell', ap: +e.pricePublic || 0, fee: 0 };
     return ts.reduce((a, b) => (pubYearCost(b, kY) < pubYearCost(a, kY) ? b : a));
   }
-  // effektiver Preis je kWh (inkl. Grundgebühr und Blockiergebühr) für die erwartete Jahresmenge
+  // effektiver Preis je kWh (inkl. Grundgebühr) für die erwartete Jahresmenge
   const pubEff = (d, choice) => { const t = pubTariff(d, choice), kY = evHomeYear(); return kY > 0 ? pubYearCost(t, kY) / kY : +t.ap || 0; };
   const wbStart = () => { const f = wallboxFrom(); if (!f) return null; const s = (S.cars.ev || {}).start; return [f, s || f].sort()[1]; };
   function homeCharging(from, to, choice) {
-    let kwh = 0, eur = 0, block = 0, n = 0, fee = 0; const gu = { kwh: 0, eur: 0, margin: 0, n: 0 };
+    let kwh = 0, eur = 0, n = 0, fee = 0; const gu = { kwh: 0, eur: 0, margin: 0, n: 0 };
     for (const c of S.charges) {
       if (c.d < from || c.d > to) continue;
       const t = tariffAt('as', c.d) || currentTariff('as'), ap = (t ? t.ap : 0) / 100, k = +c.k || 0;
       if (isGuest(c)) { gu.kwh += k; gu.eur += +c.e || 0; gu.margin += (+c.e || 0) - k * ap; gu.n++; continue; }
       if (!isHome(c)) continue;
-      const pt = pubTariff(c.d, choice), b = pubBlock(k, pt);
-      kwh += k; n++; block += b; eur += k * ((+pt.ap || 0) - ap) + b;
+      const pt = pubTariff(c.d, choice);
+      kwh += k; n++; eur += k * ((+pt.ap || 0) - ap);
     }
     // Grundgebühr je Monat ab Wallbox und Übergabe, bis zum letzten Datenstand (nicht in die Zukunft)
     const ws = wbStart();
     if (ws) { const end = [to, [A.dates[A.n - 1], ...S.charges.map(c => c.d)].sort().pop()].sort()[0];
       for (let k = monthKey([from, ws].sort()[1]); k <= monthKey(end); k = nextMonth(k)) fee += +pubTariff(`${k}-15`, choice).fee || 0; }
-    return { kwh, saving: eur + fee, block, fee, n, guest: gu };     // saving: gegenüber öffentlichem Laden
+    return { kwh, saving: eur + fee, fee, n, guest: gu };     // saving: gegenüber öffentlichem Laden
   }
   // Beginn der Wallbox-Wirkung: erste Investition der Kategorie „wallbox“
   const wallboxFrom = () => S.invest.filter(x => x.cat === 'wallbox').map(x => x.date || A.dates[0]).sort()[0] || null;
@@ -443,7 +439,7 @@ export function createCalc(S) {
     // Wallbox (v0.9): gemessen = Laden zu Hause laut Ladebuch × (öffentlicher Preis − Arbeitspreis), ab erster
     // Wallbox-Investition; Prognose aus dem Auto-Vergleich (kWh zu Hause pro Jahr) ab Übergabe des E-Autos
     const wbFrom = wallboxFrom(), ev = S.cars.ev || {}, wbK = {};
-    // v0.58: je Monat Ersparnis gegenüber dem Vergleichstarif (kWh, Blockiergebühr, Grundgebühr) plus Marge aus Fremdladungen
+    // v0.58: je Monat Ersparnis gegenüber dem Vergleichstarif (kWh, Grundgebühr) plus Marge aus Fremdladungen
     if (wbFrom) for (let mk = monthKey(wbFrom); mk <= lastK; mk = nextMonth(mk)) {
       const h = homeCharging([`${mk}-01`, wbFrom].sort()[1], monthEnd(mk), choice); wbK[mk] = h.saving + h.guest.margin; }
     const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100, pubNow = pubTariff(lastD, choice);
@@ -1507,7 +1503,7 @@ export function createCalc(S) {
   return {
     A, IMPORT_START, sumRange, last12, groupSeries, tariffAt, currentTariff, costs, last365Cost, feedValue, pvSavings,
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
-    pubTariff, pubTariffAt, pubNames, pubList, pubBlock, pubYearCost, pubEff, evHomeYear,
+    pubTariff, pubTariffAt, pubNames, pubList, pubYearCost, pubEff, evHomeYear,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
