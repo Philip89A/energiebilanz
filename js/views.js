@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.56.0';
-import { parseNum } from './queue.js?v=0.56.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.56.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.56.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.56.0';
-import { explainAll } from './explain.js?v=0.56.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.56.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.58.0';
+import { parseNum } from './queue.js?v=0.58.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.58.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.58.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.58.0';
+import { explainAll } from './explain.js?v=0.58.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.58.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -992,13 +992,15 @@ function renderPV(){
     kpiC(mm,cc,"evq","pct",1,"Eigenverbrauchsquote","Genutzter Solarstrom je erzeugter kWh") +
     kpiC(mm,cc,"aut","pct",1,"Autarkie Messkreis",m.aut==null?`Netzbezug erst ab ${dde(is)} gemessen`:"Ohne Wärmepumpe") +
     kpiC(mm,cc,"feed","kwh",0,"Eingespeist","Gemessen erst seit dem Smart Meter");
-  const sr = ankerSeries(["use","imp","pv1","pv2","pv3","pv4","gen","s2h","s2b","feed"],P.from,P.to);
+  const sr = ankerSeries(["use","imp","pv1","pv2","pv3","pv4","pv5","pv6","pv7","pv8","gen","s2h","s2b","feed"],P.from,P.to);
   const okImp = k => (sr.g==="day"?k:monthKey(k)) >= (sr.g==="day"?is:monthKey(is));
   chart("pv-aut",{type:"bar",data:{labels:sr.labels,datasets:[
     {label:"Autarkie",data:sr.ks.map((k,j)=>okImp(k)&&(sr.rows[j].use+sr.rows[j].imp)>0?sr.rows[j].use/(sr.rows[j].use+sr.rows[j].imp)*100:null),backgroundColor:css("--sun")}]},
     options:{plugins:{legend:{display:false},tooltip:wxTip(numTip("%"),sr)},scales:{x:{ticks:{maxTicksLimit:14}},y:{max:100,title:{display:true,text:"%"}}}}});
-  const cols=["--sun","--batt","--grid","--heat"];
-  chart("pv-str",{type:"line",data:{labels:sr.labels,datasets:["pv1","pv2","pv3","pv4"].map((p,i)=>({label:"Strang "+(i+1),data:sr.rows.map(r=>r[p]),borderColor:css(cols[i]),backgroundColor:css(cols[i]),pointRadius:sr.g==="day"?0:2,tension:.3}))},
+  // v0.57: PV5–PV8 = Eingänge der Solarbank 2 (ab 14.11.2026), gestrichelt und nur, wenn im Zeitraum Ertrag da ist
+  const cols=["--sun","--batt","--grid","--heat"], strs=["pv1","pv2","pv3","pv4","pv5","pv6","pv7","pv8"].filter((p,i)=>i<4||sr.rows.some(r=>r[p]>0));
+  chart("pv-str",{type:"line",data:{labels:sr.labels,datasets:strs.map(p=>{ const n=+p.slice(2), c=css(cols[(n-1)%4]);
+    return {label:n<5?"Strang "+n:`Strang ${n} (SB2 PV${n-4})`,data:sr.rows.map(r=>r[p]),borderColor:c,backgroundColor:c,borderDash:n<5?[]:[5,4],pointRadius:sr.g==="day"?0:2,tension:.3}; })},
     options:{plugins:{tooltip:numTip("kWh",1)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh"}}}}});
   chart("pv-yield",{type:"bar",data:{labels:sr.labels,datasets:[{label:"kWh je kWp",data:sr.rows.map((r,j)=>{ const k=sr.ks[j]; return r.gen/(sr.g==="day"?C_.stageAt(k).kwp:C_.kwpIn(`${k}-01`,`${k}-31`)); }),backgroundColor:css("--sun")}]},
     options:{plugins:{legend:{display:false},tooltip:wxTip(numTip("kWh/kWp",1),sr)},scales:{x:{ticks:{maxTicksLimit:14}},y:{title:{display:true,text:"kWh je kWp"}}}}});
@@ -1360,7 +1362,8 @@ function renderAmort(first){
   const {from,to}=last12(), base=pvSavings(from,to).eur, am=S.amort;
   const realized = pvSavings(A.dates[0], to).eur, tl=amortTimeline();
   const beYears = tl.be ? (diffDays(`${tl.startK}-01`,`${tl.be}-01`)/365.25) : null;
-  const wb12 = tl.wbFrom ? C.homeCharging([from,tl.wbFrom].sort()[1], to).saving : 0, wbAll = tl.wbFrom ? C.homeCharging(tl.wbFrom, to).saving : 0;
+  const hcS = h => h.saving + h.guest.margin;   // v0.58: Ersparnis gegenüber dem Vergleichstarif plus Marge aus Fremdladungen
+  const wb12 = tl.wbFrom ? hcS(C.homeCharging([from,tl.wbFrom].sort()[1], to)) : 0, wbAll = tl.wbFrom ? hcS(C.homeCharging(tl.wbFrom, to)) : 0;
   const refIn = (f,t)=>tl.refunds.filter(x=>x.date>=f&&x.date<=t).reduce((a,x)=>a+(+x.cost||0),0), ref12=refIn(from,to), refAll=refIn("0000",to);
   $("am-kpis").innerHTML =
     kpi(eur(inv,2),"Investition gesamt", `${nInv} Positionen, Verkäufe abgezogen${openOffers()?`; offen aus Angeboten ${eur(openOffers(),2)} (zählt erst nach Buchung)`:""}`) +
@@ -1368,7 +1371,8 @@ function renderAmort(first){
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
     kpi(eur(realized+wbAll+refAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll+refAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}${refAll?`, davon Erstattungen ${eur(refAll)}`:""}`);
   const fc=[tl.s14K?`§14a-Gutschrift ${eur(tl.s14Year)} pro Jahr ab ${monthLabel(tl.s14K)} (Wert der Ausbau-Seite)`:"", tl.thgK?`THG-Prämie ${eur(tl.thgYear)} pro Jahr ab ${monthLabel(tl.thgK)} – nicht durch die Investition verursacht, sie gibt es für jedes E-Auto`:""].filter(Boolean);
-  $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den Ladevorgängen „zu Hause“ (kWh × öffentlicher Preis − Arbeitspreis), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich ab Übergabe des E-Autos. Solarstrom im Auto steckt bereits in der PV-Ersparnis.`, true) : "");
+  $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den eigenen Ladevorgängen „zu Hause“ gegenüber ${esc(tl.pub.name)} (kWh × Preis − Arbeitspreis, dazu die Grundgebühr je Monat ab Übergabe), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich, effektiv ${nf(tl.pubEff,2)} €/kWh öffentlich inkl. Grundgebühr. Solarstrom im Auto steckt bereits in der PV-Ersparnis; Fremdladungen zählen mit ihrer Marge (Erstattung − kWh × Arbeitspreis).`, true) : "");
+  renderPub(tl);
   $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
     S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td><td></td></tr>`:""}</tfoot>`;
   renderOffers();
@@ -1392,6 +1396,41 @@ function renderAmort(first){
     {label:"Ersparnis Prognose",data:tl.cumS.map((v,j)=>(tl.proj[j]||j===li-1)?v:null),borderColor:css("--sun"),borderDash:[5,4],backgroundColor:css("--sun"),pointRadius:0,borderWidth:2},
     {label:"Investition kumuliert",data:tl.cumI,borderColor:css("--ink"),backgroundColor:css("--ink"),pointRadius:0,borderWidth:1.5,stepped:true}]},
     options:{plugins:{tooltip:numTip("€")},scales:{x:{ticks:{maxTicksLimit:12}},y:{title:{display:true,text:"€"}}}}});
+}
+
+/* ---------- Vergleich öffentliches Laden (v0.58) ---------- */
+const PUB_FIELDS=[["name","Tarif","text"],["from","gültig ab","date"],["ap","€/kWh","0.01"],["fee","Grundgebühr €/Monat","0.01"]];
+function renderPub(tl){
+  const e=S.cars.ev=S.cars.ev||{}, names=C.pubNames(), lastD=A.dates[A.n-1], kY=C.evHomeYear(), choice=e.pubChoice||"auto";
+  const ui=S.ui, alt=ui.pubAlt||"", altObj=alt==="custom"?{name:`eigener Preis ${nf(+ui.pubAltAp||0,2)} €`,ap:+ui.pubAltAp||0,fee:+ui.pubAltFee||0}:alt;
+  const opt=(v,l,sel)=>`<option value="${esc(v)}" ${v===sel?"selected":""}>${esc(l)}</option>`;
+  const yc=t=>kY>0?C.pubYearCost(t,kY):0;
+  const rows=names.map(n=>{ const t=C.pubTariffAt(n,lastD); return `<tr><td class="l">${esc(n)}${t.name===tl.pub.name?" ✓":""}</td><td>${nf(+t.ap||0,2)}</td><td>${nf(+t.fee||0,2)}</td><td>${kY>0?eur(yc(t)):"–"}</td><td>${kY>0?nf(yc(t)/kY,3):"–"}</td></tr>`; }).join("");
+  let altHtml="";
+  if(alt&&tl.wbFrom){ const ta=C.amortTimeline({pub:altObj}), d=ta.wbYear-tl.wbYear;
+    altHtml=`<div class="grid g3" style="margin-top:10px">${kpi(ta.be?monthLabel(ta.be):"–","Break-even mit "+esc(ta.pub.name),`Standard (${esc(tl.pub.name)}): ${tl.be?monthLabel(tl.be):"–"}`)}${kpi(eur(ta.wbYear),"Wallbox-Ersparnis pro Jahr",`${d>=0?"+":"−"}${eur(Math.abs(d))} gegenüber Standard, effektiv ${nf(ta.pubEff,2)} €/kWh`)}${kpi(eur(ta.cumS[ta.cumS.length-1]),"Ersparnis nach "+S.amort.years+" Jahren",`Standard: ${eur(tl.cumS[tl.cumS.length-1])}`)}</div>`; }
+  $("am-pub").innerHTML=`
+    <div class="form" style="margin-top:6px">
+      <label class="f">Rechnen mit<select id="pub-choice" class="edit-only-input">${opt("auto","automatisch günstigster",choice)}${names.map(n=>opt(n,n,choice)).join("")}${opt("manual",`fester Preis ${nf(+e.pricePublic||0,2)} €/kWh`,choice)}</select></label>
+      <label class="f">Vergleich: was wäre, wenn …<select id="pub-alt">${opt("","– aus –",alt)}${names.map(n=>opt(n,n,alt)).join("")}${opt("custom","eigener Preis",alt)}</select></label>
+      ${alt==="custom"?`<label class="f">€/kWh<input type="number" step="0.01" id="pub-alt-ap" value="${esc(ui.pubAltAp??"")}"></label><label class="f">Grundgebühr €/Monat<input type="number" step="0.01" id="pub-alt-fee" value="${esc(ui.pubAltFee??"")}"></label>`:""}
+    </div>
+    <p class="note">Gerechnet wird mit <b>${esc(tl.pub.name)}</b>: ${nf(+tl.pub.ap||0,2)} €/kWh${+tl.pub.fee?`, ${nf(+tl.pub.fee,2)} € Grundgebühr pro Monat`:""}. ${kY>0?`Erwartet ${kwh(kY)} pro Jahr zu Hause (Auto-Vergleich).`:"Für die Wahl „automatisch“ fehlen km und Verbrauch im Auto-Vergleich."} Ohne Blockiergebühr: zu Hause fällt keine an, öffentlich würde nach dem Laden umgeparkt. Der Vergleich „was wäre, wenn“ ändert nichts an den gespeicherten Einstellungen.</p>
+    ${altHtml}
+    <div class="tbl-wrap"><table><thead><tr><th class="l">Tarif (aktuell gültig)</th><th>€/kWh</th><th>€/Monat</th><th>pro Jahr</th><th>effektiv €/kWh</th></tr></thead><tbody>${rows}</tbody></table></div>
+    <details class="edit-only" style="margin-top:10px"><summary>Tarife bearbeiten</summary>
+      <p class="note">Je Tarif mehrere Zeilen mit „gültig ab“ möglich (Preisänderung); frühere Ladungen rechnen mit dem damals gültigen Preis. Werte prüft der monatliche Check.</p>
+      <div class="tbl-wrap"><table><thead><tr>${PUB_FIELDS.map(([,l])=>`<th class="l">${l}</th>`).join("")}<th></th></tr></thead><tbody>${
+        C.pubList().map((t,i)=>`<tr>${PUB_FIELDS.map(([k,,st])=>`<td class="l"><input ${st==="text"?'type="text" style="min-width:110px"':st==="date"?'type="date"':`type="number" step="${st}" style="width:90px"`} value="${esc(t[k]??"")}" data-pub="${i}" data-k="${k}"></td>`).join("")}<td><button class="x" data-del-pub="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody></table></div>
+      <button id="pub-add" style="margin-top:8px">Zeile hinzufügen</button></details>`;
+  const own=()=>{ if(!Array.isArray(e.pubTariffs)||!e.pubTariffs.length) e.pubTariffs=C.pubList().map(t=>({...t})); return e.pubTariffs; };
+  $("pub-choice").addEventListener("change",ev=>{ e.pubChoice=ev.target.value; persist(); rerender(); });
+  $("pub-alt").addEventListener("change",ev=>{ ui.pubAlt=ev.target.value; persist(); rerender(); });
+  ["ap","fee"].forEach(k=>{ const el=$("pub-alt-"+k); if(el) el.addEventListener("change",()=>{ ui[k==="ap"?"pubAltAp":"pubAltFee"]=parseNum(el.value); persist(); rerender(); }); });
+  $("am-pub").querySelectorAll("[data-pub]").forEach(el=>el.addEventListener("change",()=>{ const l=own(), t=l[+el.dataset.pub], k=el.dataset.k;
+    t[k]=k==="name"||k==="from"?el.value:parseNum(el.value); persist(); rerender(); }));
+  $("am-pub").querySelectorAll("[data-del-pub]").forEach(el=>el.addEventListener("click",()=>{ const l=own(); l.splice(+el.dataset.delPub,1); persist(); rerender(); }));
+  $("pub-add").addEventListener("click",()=>{ const l=own(), last=l[l.length-1]||{}; l.push({...last,from:iso(new Date())}); persist(); rerender(); });
 }
 
 /* ---------- Angebote mit Positionen (v0.20) ---------- */
@@ -1461,7 +1500,7 @@ function renderCar(first){
     numField(he,e,"rate","Leasingrate €/Monat","0.01"); numField(he,e,"km","km pro Jahr","100");
     numField(he,e,"kwh100","Verbrauch kWh/100 km","0.1"); numField(he,e,"loss","Ladeverluste %","1");
     numField(he,e,"shHome","Anteil Laden zu Hause %","1"); numField(he,e,"shPV","davon aus PV %","1");
-    numField(he,e,"pricePublic","Öffentlich €/kWh","0.01"); numField(he,e,"ins","Versicherung €/Jahr","1");
+    numField(he,e,"pricePublic","Öffentlich unterwegs €/kWh","0.01"); numField(he,e,"ins","Versicherung €/Jahr","1");
     numField(he,e,"tax","Kfz-Steuer €/Jahr","1"); numField(he,e,"thg","THG-Prämie €/Jahr","1");
     numField(he,e,"transfer","Überführung/Zulassung €","1");
   }
@@ -1525,7 +1564,7 @@ function renderLog(){
   renderCarAnalytics();
   const PS=periodSel();
   if(!PS.all){ renderLogPeriod(PS); return; }
-  const fs=fuelStats(), ch=S.charges, kW=ch.reduce((a,b)=>a+(+b.k||0),0), cE=ch.reduce((a,b)=>a+(+b.e||0),0);
+  const fs=fuelStats(), ch=S.charges.filter(x=>!x.g), kW=ch.reduce((a,b)=>a+(+b.k||0),0), cE=ch.reduce((a,b)=>a+(+b.e||0),0);
   $("lg-kpis").innerHTML =
     kpi(fs.l100?nf(fs.l100,2)+" l":"–","Ø Verbrauch je 100 km",fs.intervals.length?`${fs.intervals.length} Volltank-Intervalle`:"Zwei Volltankungen nötig") +
     kpi(fs.avgPrice?nf(fs.avgPrice,3)+" €/l":"–","Ø Spritpreis, alle",(()=>{ const p=fuelPrice(20); return `${nf(fs.L,1)} l getankt${p.count?`, letzte ${p.count}: ${nf(p.price,3)} €/l`:""}`; })()) +
@@ -1535,9 +1574,9 @@ function renderLog(){
   const fr=S.fuel.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
   $("fu-tbl").innerHTML = fr.length? `<thead><tr><th>Datum</th><th>km</th><th>Liter</th><th>Betrag</th><th>€/l</th><th class="l">Sorte</th><th>voll</th><th>l/100 km</th><th></th></tr></thead><tbody>${
     fr.map(x=>{ const iv=ivMap.get(S.fuel[x.i]); return `<tr><td>${dde(x.d)}</td><td>${nf(x.km)}</td><td>${nf(x.l,2)}</td><td>${eur(x.e,2)}</td><td>${nf(x.e/x.l,3)}</td><td class="l">${esc(x.s)}</td><td>${x.full?"ja":"nein"}</td><td>${iv?nf(iv.l100,2):""}</td><td><button class="x" data-del-fu="${x.i}" aria-label="Löschen">×</button></td></tr>`;}).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Noch keine Tankvorgänge. Der erste Eintrag mit „voll getankt“ ist der Startpunkt für die Verbrauchsrechnung.</td></tr></tbody>`;
-  const cr=ch.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
+  const cr=S.charges.map((x,i)=>({...x,i})).sort((a,b)=>b.d.localeCompare(a.d));
   $("ch-tbl").innerHTML = cr.length? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
-    cr.map(x=>`<tr><td>${dde(x.d)}</td><td>${x.km?nf(x.km):"–"}</td><td>${nf(x.k,1)}</td><td>${eur(x.e,2)}</td><td>${x.k?nf(x.e/x.k,3):"–"}</td><td class="l">${esc(x.o)}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Ladevorgänge erfassen, sobald der Tavascan da ist. Laden zu Hause kommt später aus Wallbox- oder Zählerdaten.</td></tr></tbody>`;
+    cr.map(x=>`<tr><td>${dde(x.d)}</td><td>${x.km?nf(x.km):"–"}</td><td>${nf(x.k,1)}</td><td>${eur(x.e,2)}</td><td>${x.k?nf(x.e/x.k,3):"–"}</td><td class="l">${esc(x.o)}${x.g?" · <b>Fremdladung</b> (Betrag erhalten)":""}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>` : `<tbody><tr><td class="l" style="color:var(--muted)">Ladevorgänge erfassen, sobald der Tavascan da ist. Laden zu Hause kommt später aus Wallbox- oder Zählerdaten.</td></tr></tbody>`;
 }
 
 /* ---------- Daten ---------- */
@@ -1758,8 +1797,9 @@ function wireEditing(){
     S.fuel.push(x); ["fu-km","fu-l","fu-e"].forEach(i=>$(i).value=""); write("fuel",x); rerender(); });
   $("ch-add").addEventListener("click",()=>{ const x={d:$("ch-d").value,km:+$("ch-km").value||null,k:+$("ch-k").value,e:+$("ch-e").value,o:$("ch-o").value,n:$("ch-n").value.trim()};
     if(!x.d||!x.k){ alert("Datum und kWh angeben."); return; }
+    if($("ch-g").checked){ if(x.o!=="zu Hause"){ alert("Fremdladung gibt es nur an der Wallbox („zu Hause“)."); return; } x.g=true; x.km=null; }   // v0.58
     if(x.o==="Sonstiges"&&!x.n){ alert("Bei „Sonstiges“ bitte im Kommentar angeben, wo geladen wurde."); return; }
-    S.charges.push(x); ["ch-km","ch-k","ch-e","ch-n"].forEach(i=>$(i).value=""); write("charge",x); rerender(); });
+    S.charges.push(x); ["ch-km","ch-k","ch-e","ch-n"].forEach(i=>$(i).value=""); $("ch-g").checked=false; write("charge",x); rerender(); });
   $("st-init").addEventListener("click",()=>{ if((S.stages||[]).length) return; S.stages=[{id:crypto.randomUUID(),name:"Bestand",from:A.dates[0],status:"live",kwp:+S.pv.kwp||null,capGross:+S.battery.capGross||null,maxW:800,note:""}]; persist(); rerender(); });
   $("st-add").addEventListener("click",()=>{ const l=(S.stages||[]).slice(-1)[0]||{}; (S.stages=S.stages||[]).push({id:crypto.randomUUID(),name:"Neue Stufe",from:"",status:"planned",kwp:l.kwp??null,capGross:l.capGross??null,maxW:l.maxW??null,note:""}); persist(); rerender(); });
   $("wt-create").addEventListener("click",()=>{ if(S.meters.some(m=>m.group==="water")) return;
@@ -1845,7 +1885,8 @@ function openQuick(kind) {
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`) + fld("kWh", num("q-k", "z. B. 42,5"))
       + fld("Betrag in € (optional)", num("q-e")) + fld("Kilometerstand (optional)", num("q-km", "", "numeric"))
       + fld("Ort", `<select id="q-o">${["zu Hause", "öffentlich AC", "öffentlich DC", "Arbeitgeber", "Sonstiges"].map(x => `<option ${x === lastO ? "selected" : ""}>${x}</option>`).join("")}</select>`)
-      + fld("Kommentar (bei „Sonstiges“ Pflicht)", `<input type="text" id="q-n" maxlength="500" placeholder="z. B. Hotel, Freunde">`, "wide");
+      + fld("Kommentar (bei „Sonstiges“ Pflicht)", `<input type="text" id="q-n" maxlength="500" placeholder="z. B. Hotel, Freunde">`, "wide")
+      + `<label class="f check-row"><span><input type="checkbox" id="q-g"> Fremdladung (Gast an der Wallbox, Betrag = erhalten)</span></label>`;
   } else if (kind === "odo") {
     body = fld("Datum", `<input type="date" id="q-d" value="${today}">`)
       + fld("Fahrzeug", `<select id="q-car">${Object.entries(CARS).map(([k, v]) => `<option value="${k}" ${k === "tavascan" ? "selected" : ""}>${v}</option>`).join("")}</select>`)
@@ -1921,8 +1962,9 @@ async function saveQuick(kind) {
     if (!(k > 0)) return err("kWh angeben.");
     const o = $("q-o").value, n = ($("q-n")?.value || "").trim();
     if (o === "Sonstiges" && !n) return err("Bei „Sonstiges“ bitte im Kommentar angeben, wo geladen wurde.");
-    obj = { d, km: km > 0 ? km : null, k, e: isFinite(e) ? e : 0, o, n }; S.charges.push(obj);
-    label = `Ladevorgang ${nf(k, 1)} kWh`;
+    const g = !!$("q-g")?.checked; if (g && o !== "zu Hause") return err("Fremdladung gibt es nur an der Wallbox („zu Hause“).");
+    obj = { d, km: km > 0 && !g ? km : null, k, e: isFinite(e) ? e : 0, o, n, ...(g ? { g: true } : {}) }; S.charges.push(obj);
+    label = g ? `Fremdladung ${nf(k, 1)} kWh` : `Ladevorgang ${nf(k, 1)} kWh`;
   } else if (kind === "odo") {
     const km = parseNum($("q-km").value), car = $("q-car").value;
     if (!(km > 0)) return err("Kilometerstand angeben.");
@@ -2142,7 +2184,7 @@ function renderEvHome() {
   $("evh-kpis").innerHTML = kpi(kwh(h.kwh), "Geladen zu Hause", tb.to ? `365 Tage bis ${dde(tb.to)}, laut Ladebuch` : "")
     + kpi(kwh(tb.homeGrid), "davon aus dem Netz (geschätzt)", `PV-Anteil ${nf(+e.shPV || 0)} % laut Auto-Vergleich`)
     + kpi(kwh(tb.asKwh), "Allgemeinstrom ohne E-Auto", `Zähler ${kwh(tb.asMeter)} minus Netzanteil Auto`)
-    + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause, ${nf(+e.pricePublic || 0, 2)} €/kWh öffentlich`);
+    + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause gegenüber ${esc(C.pubTariff(tb.to || iso(new Date())).name)}, effektiv ${nf(C.pubEff(tb.to || iso(new Date())), 2)} €/kWh` + (all.guest.n ? `; Fremdladungen ${kwh(all.guest.kwh)}, Marge ${eur(all.guest.margin)}` : ""));
   const hint = C.evAbschlagHint();
   $("ab-ev").innerHTML = hint ? flag(`E-Auto ab ${dde(hint.from)}: Es lädt über den Allgemeinstrom, voraussichtlich etwa ${kwh(hint.kwhMonth)} pro Monat aus dem Netz, rund ${eur(hint.eurMonth)} pro Monat mehr. Die Hochrechnung oben enthält das erst, wenn Zählerstände nach der Übergabe vorliegen – Abschlag rechtzeitig um diesen Betrag erhöhen.`) : "";
 }
@@ -2422,7 +2464,7 @@ function renderHp() {
 const vsTxt = (a, b, f, label) => (b == null || a == null) ? "" : ` · ${esc(label)}: ${f(b)}${b ? ` (${a >= b ? "+" : "−"}${pct(Math.abs(a / b - 1))})` : ""}`;
 function renderLogPeriod(PS) {
   const { P, Cp } = PS, fs = C.fuelStatsIn(P.from, P.to), fc = Cp ? C.fuelStatsIn(Cp.from, Cp.to) : null;
-  const chIn = (f, t) => S.charges.filter(x => x.d >= f && x.d <= t), ch = chIn(P.from, P.to), chc = Cp ? chIn(Cp.from, Cp.to) : null;
+  const chIn = (f, t) => S.charges.filter(x => x.d >= f && x.d <= t && !x.g), ch = chIn(P.from, P.to), chc = Cp ? chIn(Cp.from, Cp.to) : null;   // v0.58: ohne Fremdladungen
   const kW = ch.reduce((a, b) => a + (+b.k || 0), 0), cE = ch.reduce((a, b) => a + (+b.e || 0), 0);
   const kWc = chc ? chc.reduce((a, b) => a + (+b.k || 0), 0) : null, cEc = chc ? chc.reduce((a, b) => a + (+b.e || 0), 0) : null;
   $("lg-kpis").innerHTML =
@@ -2437,7 +2479,7 @@ function renderLogPeriod(PS) {
     : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Tankvorgänge im Zeitraum.</td></tr></tbody>`;
   const cr = S.charges.map((x, i) => ({ ...x, i })).filter(x => PS.inP(x.d)).sort((a, b) => b.d.localeCompare(a.d));
   $("ch-tbl").innerHTML = cr.length ? `<thead><tr><th>Datum</th><th>km</th><th>kWh</th><th>Betrag</th><th>€/kWh</th><th class="l">Ort</th><th></th></tr></thead><tbody>${
-    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
+    cr.map(x => `<tr><td>${dde(x.d)}</td><td>${x.km ? nf(x.km) : "–"}</td><td>${nf(x.k, 1)}</td><td>${eur(x.e, 2)}</td><td>${x.k ? nf(x.e / x.k, 3) : "–"}</td><td class="l">${esc(x.o)}${x.g?" · <b>Fremdladung</b> (Betrag erhalten)":""}${x.n?`<br><span class="note">${esc(x.n)}</span>`:""}</td><td><button class="x" data-del-ch="${x.i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`
     : `<tbody><tr><td class="l" style="color:var(--muted)">Keine Ladevorgänge im Zeitraum.</td></tr></tbody>`;
 }
 function renderCarPeriodKpis(car, kd, items, PS) {

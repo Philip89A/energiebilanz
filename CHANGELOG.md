@@ -751,3 +751,34 @@
   Abgleich stehen unter „Mehr anzeigen“.
 - Der übrige Allgemeinstrom hat keine Stundenwerte (nur Zählerstände/Anker-Tageswerte) und fehlt im Profil bewusst.
 - Tests: neu `tests/v56.test.mjs`, neu `scripts/v56-check.mjs` (13 Prüfungen); v53–v55-Check grün.
+
+## v0.57 – Solarbank 2 als PV5–PV8, Netzbezug bei zwei Smart Metern nur einmal
+- **SQL-Update `docs/UPDATE_V57.sql`**: Spalten `pv5`–`pv8` in `anker_daily`.
+- Anker-Import erkennt den Export der Solarbank 2 („Solarbank 2 E1600 Pro – PV1‑Erzeugung“). Ab 14.11.2026 (Umbau
+  Garage Ost/West) landen ihre Eingänge PV1–PV4 in PV5–PV8, die Eingänge der Solarbank 4 bleiben PV1–PV4. Davor bleibt
+  alles wie bisher, damit die Historie vergleichbar bleibt.
+- Zwei Smart Meter am Hausanschluss: Melden beide Dateien an einem Tag Netzstrom zu Haushalt, zählt er nur einmal (der
+  größere Wert); Netzimport und Eigenverbrauch werden um den doppelten Teil verringert. „Genutzt“ und „Netz zu Speicher“
+  bleiben Summen. Die Vorschau nennt die Tage; weichen die Zähler um mehr als 10 % ab, gibt es eine Warnung.
+- PV5–PV8 werden nur mitgeschickt, wenn ein Wert dabei ist – ein Import nur der Solarbank 4 klappt auch ohne SQL-Update.
+- „Erzeugung je Strang“: Strang 5–8 gestrichelt („SB2 PV1“ …), nur wenn im Zeitraum Ertrag da ist.
+- Tests: neu `tests/v57.test.mjs`, neu `scripts/v57-check.mjs` (11 Prüfungen); v47/v52/v54/v56-Check grün.
+
+## v0.58 – Vergleich öffentliches Laden, „Was wäre, wenn“, Fremdladung
+- **SQL-Update `docs/UPDATE_V58.sql`**: Spalte `guest` im Ladebuch (`charge_log`).
+- Wallbox-Ersparnis gegen echte Ladetarife statt eines festen Preises: Tarife mit „gültig ab“ (Preis je kWh, Grundgebühr
+  je Monat). Voreinstellung EnBW S/M/L (Stand 11/2026).
+- Je Ladung zu Hause: kWh × Preis; je Monat ab Wallbox und Übergabe die Grundgebühr. Frühere Ladungen behalten den damals
+  gültigen Preis. Bewusst ohne Blockiergebühr (zu Hause fällt keine an, öffentlich würde nach dem Laden umgeparkt).
+- „Rechnen mit“: automatisch der günstigste Tarif für die erwartete Jahresmenge (Auto-Vergleich), ein bestimmter Tarif
+  oder der feste Preis. Prognose mit dem effektiven Preis inkl. Grundgebühr.
+- **„Was wäre, wenn“** auf der Amortisationsseite: anderer Tarif oder eigener Preis, zeigt Break-even, Wallbox-Ersparnis
+  pro Jahr und Ersparnis nach der Betrachtungsdauer gegen den Standard; ändert keine Einstellung.
+- **Fremdladung** (Gast lädt an der Wallbox, Betrag = erhaltene Erstattung): im Ladebuch und in der Schnellerfassung.
+  Zählt nicht als eigenes Laden, nicht im Kilometerstand und nicht in den Ladekosten des Tavascan; in der Amortisation
+  mit ihrer Marge (Erstattung − kWh × Arbeitspreis). Im Allgemeinstrom „ohne E-Auto“ wird sie mit herausgerechnet.
+- Ausbau-Seite rechnet die Wallbox mit dem effektiven Vergleichspreis. „Öffentlich €/kWh“ im Auto-Vergleich heißt jetzt
+  „Öffentlich unterwegs €/kWh“ (Laden unterwegs; zugleich der feste Preis bei „Rechnen mit: fester Preis“).
+- Tests: neu `tests/v58.test.mjs`, neu `scripts/v58-check.mjs` (13 Prüfungen); v09-Tests rechnen ausdrücklich mit festem
+  Preis; alle Browser-Checks ohne Seed-Daten grün.
+
