@@ -75,13 +75,12 @@ const file = (name, text) => ({ name, mimeType: 'text/csv', buffer: Buffer.from(
   await p.setInputFiles('#csv-file', [file('home.csv', homeCsv), file('sb2.csv', sb2Csv)]);
   await p.waitForSelector('#csv-apply');
   const t = await p.textContent('#csv-result');
-  check(t.includes('Netzbezug nur einmal gezählt') && t.includes('20.11.2026'), 'Vorschau: Netzbezug einmal gezählt am 20.11.');
-  check(!t.includes('weichen um mehr als 10 %'), 'keine Abweichungs-Warnung bei gleichen Zählern');
+  check(t.includes('Netzbezug nur aus dem Hauptsystem') && t.includes('20.11.2026'), 'Vorschau: Netzbezug nur aus dem Hauptsystem am 20.11.');
   check(/16\.11\.2026Erzeugung1,601,61/.test(t), '16.11.: Erzeugung 1,60 → 1,61 in der Änderungsliste');
   await p.click('#csv-apply'); await p.waitForSelector('#csv-progress .ok');
   const r16 = DB.anker_daily.find(x => x.day === '2026-11-16'), r20 = DB.anker_daily.find(x => x.day === '2026-11-20');
   check(r16.pv1 === 0.58 && r16.pv5 === 0.01 && r16.erzeugung === 1.61, '16.11.: PV1 Solarbank 4, PV5 = 0,01 von der Solarbank 2');
-  check(r20.netz_zu_haus === 6 && r20.netzimport === 6.3 && r20.eigenverbrauch === 8.3, '20.11.: Netz 6 statt 12, Eigenverbrauch 8,3');
+  check(r20.netz_zu_haus === 6 && r20.netzimport === 6 && r20.eigenverbrauch === 8.3, '20.11.: Netz 6 statt 12, Eigenverbrauch 8,3');
   await ctx.close();
 }
 {

@@ -189,6 +189,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
    - ✅ v0.58: Vergleich öffentliches Laden (`cars.ev.pubTariffs` mit „gültig ab“, `pubChoice` auto/Name/manual; `pubTariff`,
      `pubYearCost`, `pubEff`; `homeCharging` mit Grundgebühr, ohne Blockiergebühr), „Was wäre, wenn“ (`amortTimeline({pub})`,
      `S.ui.pubAlt`), Fremdladung (`charge_log.guest`, `docs/UPDATE_V58.sql`). Prüfung: `v58-check`.
+   - ✅ v0.59: Export „Home Gesamt“ (Power Dock) ohne PV-Eingänge, Spalte `wallbox` (`docs/UPDATE_V59.sql`, Reihe `wb`), Netzwerte
+     nur aus dem Hauptsystem (`mergeAnkerParsed` → `sideGrid`, Nebensystem = `parsed.sb2`). Prüfung: `v59-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

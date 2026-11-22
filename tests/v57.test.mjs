@@ -28,20 +28,18 @@ test('zwei Dateien: PV1 bleibt Solarbank 4, PV5 kommt von der Solarbank 2; ohne 
   const m = mergeAnkerParsed([{ name: 'a', text: a, parsed: parseAnkerCsv(a) }, { name: 'b', text: b, parsed: parseAnkerCsv(b) }]);
   const r = m.rows[0];
   assert.equal(r.pv1, 0.58); assert.equal(r.pv5, 0.01); assert.equal(r.erzeugung, 1.61);
-  assert.equal(r.netz_zu_haus, 8.02); assert.equal(r.eigenverbrauch, 9.7); assert.deepEqual(m.gridOnce, []);
+  assert.equal(r.netz_zu_haus, 8.02); assert.equal(r.eigenverbrauch, 9.7); assert.deepEqual(m.sideGrid, []);
 });
 
-test('zwei Smart Meter am Hausanschluss: Netzbezug nur einmal, Eigenverbrauch ohne Doppelung, Abweichung > 10 % gemeldet', () => {
-  // SB4: Netz 6, Solar 1, Speicher 0,5 → EV 7,5; SB2: Netz 6 (gleicher Zähler), Speicher 0,8 → EV 6,8; SB2 lädt 0,3 aus dem Netz
+test('zwei Smart Meter am Hausanschluss (v0.59): Netzwerte nur aus dem Hauptsystem, Solar und Speicher der Solarbank 2 kommen dazu', () => {
+  // SB4: Netz 6, Solar 1, Speicher 0,5 → EV 7,5; SB2: meldet denselben Netzbezug 6 (+0,3 „Netz zu Speicher“), Speicher 0,8 zu Haus
   const a = home(['20/11/2026,7.5,6,6,0,1.2,1,0.2,0,0.5,0.5,0,0.4,0.4,0.2,0.2,0.2']);
   const b = sb2(['20/11/2026,6.8,0,6.3,6,0,0.1,0.4,0.8,0.8,0.5,0.1,0,0.1,0.1,0,0,0']);
   const m = mergeAnkerParsed([{ name: 'a', text: a, parsed: parseAnkerCsv(a) }, { name: 'b', text: b, parsed: parseAnkerCsv(b) }]);
   const r = m.rows[0];
-  assert.equal(r.netz_zu_haus, 6); assert.equal(r.netzimport, 6.3); assert.equal(r.eigenverbrauch, 8.3);
-  assert.equal(r.netz_zu_speicher, 0.3); assert.deepEqual(m.gridOnce, ['2026-11-20']); assert.deepEqual(m.gridDiff, []);
-  const c = sb2(['20/11/2026,5.3,0,4.5,4.5,0,0.1,0.1,0.8,0.8,0.8,0.1,0,0.1,0.1,0,0,0']);
-  const m2 = mergeAnkerParsed([{ name: 'a', text: a, parsed: parseAnkerCsv(a) }, { name: 'c', text: c, parsed: parseAnkerCsv(c) }]);
-  assert.equal(m2.rows[0].netz_zu_haus, 6); assert.deepEqual(m2.gridDiff, ['2026-11-20']);
+  assert.equal(r.netz_zu_haus, 6); assert.equal(r.netzimport, 6); assert.equal(r.netz_zu_speicher, 0);
+  assert.equal(r.eigenverbrauch, 8.3); assert.equal(r.genutzt, 2.3); assert.equal(r.erzeugung, 1.3);
+  assert.deepEqual(m.sideGrid, ['2026-11-20']);
 });
 
 test('Bestand ohne PV5–PV8: neue Werte gelten als ergänzt, alte Daten rechnen weiter', () => {

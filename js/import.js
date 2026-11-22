@@ -8,12 +8,14 @@
 export const ANKER_FIELDS = [
   'eigenverbrauch', 'netzimport', 'netz_zu_haus', 'solar_zu_haus', 'solar_zu_speicher',
   'speicher_ladung', 'speicher_entladung', 'speicher_zu_haus', 'genutzt', 'erzeugung', 'einspeisung',
-  'pv1', 'pv2', 'pv3', 'pv4', 'smart_plug', 'netz_zu_speicher', 'pv5', 'pv6', 'pv7', 'pv8',
+  'pv1', 'pv2', 'pv3', 'pv4', 'smart_plug', 'netz_zu_speicher', 'pv5', 'pv6', 'pv7', 'pv8', 'wallbox',
 ];
 // v0.57: ab diesem Tag zählen die Eingänge PV1–PV4 der Solarbank 2 als PV5–PV8 (Umbau Garage auf Ost/West);
 // davor bleiben sie wie bisher in PV1–PV4, damit die Historie vergleichbar bleibt.
 export const SB2_PV_FROM = '2026-11-14';
 export const PV_EXTRA = ['pv5', 'pv6', 'pv7', 'pv8'];
+// v0.59: Spalten, die nur mitgeschickt werden, wenn ein Wert dabei ist (ohne SQL-Update fehlen sie in der Tabelle)
+export const OPTIONAL_DB = [...PV_EXTRA, 'wallbox'];
 
 // Kürzel in seed_state.json -> Spalte in anker_daily
 const SEED_ANKER = {
@@ -166,11 +168,13 @@ const CSV_COLUMNS = [
   ['pv3', h => /pv3-erzeugung/.test(h)],
   ['pv4', h => /pv4-erzeugung/.test(h)],
   ['smart_plug', h => h.includes('smart plug')],
+  ['wallbox', h => h.startsWith('ladesäulen-verbrauch')],   // v0.59: Wallbox am Power Dock
 ];
 // v0.31: der Export des neuen Heimsystems (Solarbank 4) hat keine Spalte „Genutzte Solarenergie“; sie wird wie im
 // alten Export als Eigenverbrauch − Netzimport berechnet. „Netzstrom zu Speicher“ gibt es im alten Export nicht, dort
 // gilt Netzimport − Netzstrom zu Haushalt (laut Definition in beiden Exporten).
-const OPTIONAL_COLUMNS = new Set(['smart_plug', 'pv3', 'pv4', 'genutzt', 'netz_zu_speicher']);
+// v0.59: „Home Gesamt“ (Power Dock) exportiert keine Werte je PV-Eingang mehr – PV1/PV2 sind deshalb optional
+const OPTIONAL_COLUMNS = new Set(['smart_plug', 'pv1', 'pv2', 'pv3', 'pv4', 'genutzt', 'netz_zu_speicher', 'wallbox']);
 const r3 = v => Math.round(v * 1000) / 1000;
 
 export function splitCsvLine(line, sep) {
@@ -255,20 +259,20 @@ export function parseAnkerCsv(text) {
     rows.push(row);
   }
   rows.sort((a, b) => a.day.localeCompare(b.day));
-  return { rows, errors, sb2, from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
+  return { rows, errors, sb2, from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };   // sb2 = Nebensystem
 }
 
 // v0.31: mehrere Exporte in einem Import. Tage, die in mehreren Dateien stehen (Umbautag, später zwei Systeme), werden
 // addiert; leere Zellen zählen nur, wenn alle Dateien leer sind. Weil die Summe vor dem Schreiben entsteht, ergibt
 // derselbe Import zweimal dasselbe Ergebnis. Dieselbe Datei zweimal gewählt ist ein Fehler.
 export function mergeAnkerParsed(list) {
-  const errors = [], byDay = new Map(), seenText = new Set(), summed = new Set(), n2hParts = new Map();
+  const errors = [], byDay = new Map(), seenText = new Set(), summed = new Set(), parts = new Map();
   for (const { name, text, parsed } of list) {
     if (seenText.has(text)) { errors.push(`${name}: dieselbe Datei wurde doppelt gewählt, sie zählt nur einmal.`); continue; }
     seenText.add(text);
     for (const e of parsed.errors) errors.push(`${name}: ${e}`);
     for (const r of parsed.rows) {
-      if ((r.netz_zu_haus || 0) > 0) (n2hParts.get(r.day) || n2hParts.set(r.day, []).get(r.day)).push(+r.netz_zu_haus);
+      (parts.get(r.day) || parts.set(r.day, []).get(r.day)).push({ r, side: !!parsed.sb2 });
       const old = byDay.get(r.day);
       if (!old) { byDay.set(r.day, { ...r }); continue; }
       summed.add(r.day);
@@ -278,21 +282,25 @@ export function mergeAnkerParsed(list) {
       }
     }
   }
-  // v0.57: zwei Smart Meter am Hausanschluss – jedes System meldet denselben Netzbezug des Hauses. Melden an einem Tag
-  // mehrere Dateien Netzstrom zu Haushalt, zählt er nur einmal (der größere Wert); Netzimport und Eigenverbrauch
-  // werden um den doppelten Teil verringert. „Genutzt“ und „Netz zu Speicher“ bleiben Summen (je System getrennt).
-  const gridOnce = [], gridDiff = [];
-  for (const [day, parts] of n2hParts) {
-    if (parts.length < 2) continue;
-    const r = byDay.get(day), max = Math.max(...parts), extra = r3(parts.reduce((a, b) => a + b, 0) - max);
-    r.netz_zu_haus = r3(max);
-    if (r.netzimport != null) r.netzimport = r3(r.netzimport - extra);
-    if (r.eigenverbrauch != null) r.eigenverbrauch = r3(r.eigenverbrauch - extra);
-    gridOnce.push(day);
-    if (Math.min(...parts) < 0.9 * max) gridDiff.push(day);
+  // v0.59: Hauptsystem (Solarbank 4: „Home“, „Home Gesamt“) und Nebensystem (Solarbank 2: „Zuhause“, „Zuhause neu“).
+  // Beide Smart Meter sitzen am Hausanschluss, das Nebensystem meldet also denselben Netzbezug des Hauses. Gibt es an einem
+  // Tag eine Datei des Hauptsystems, kommen Netzbezug, Netz zu Haus und Netz zu Speicher nur aus dem Hauptsystem (mehrere
+  // Hauptdateien = verschiedene Stunden, z. B. Umbautag, werden addiert). Vom Nebensystem zählen Erzeugung, Solar und
+  // Speicher; Eigenverbrauch = Hauptsystem + Solar zu Haus + Speicher zu Haus des Nebensystems. Nur Nebensystem = wie bisher.
+  const sideGrid = [];
+  for (const [day, ps] of parts) {
+    const main = ps.filter(p => !p.side), side = ps.filter(p => p.side);
+    if (!main.length || !side.length) continue;
+    const r = byDay.get(day), S = (arr, f) => arr.some(p => p.r[f] != null) ? r3(arr.reduce((a, p) => a + (+p.r[f] || 0), 0)) : null;
+    const add = r3(side.reduce((a, p) => a + (+p.r.solar_zu_haus || 0) + (+p.r.speicher_zu_haus || 0), 0));
+    for (const f of ['netzimport', 'netz_zu_haus', 'netz_zu_speicher']) r[f] = S(main, f);
+    const ev = S(main, 'eigenverbrauch'), gu = S(main, 'genutzt');
+    r.eigenverbrauch = ev == null ? null : r3(ev + add);
+    r.genutzt = gu == null ? null : r3(gu + add);
+    if (side.some(p => (+p.r.netz_zu_haus || 0) > 0)) sideGrid.push(day);
   }
   const rows = [...byDay.values()].sort((a, b) => a.day.localeCompare(b.day));
-  return { rows, errors, summed: [...summed].sort(), gridOnce: gridOnce.sort(), gridDiff: gridDiff.sort(),
+  return { rows, errors, summed: [...summed].sort(), sideGrid: sideGrid.sort(),
     from: rows[0]?.day ?? null, to: rows[rows.length - 1]?.day ?? null };
 }
 

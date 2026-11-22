@@ -782,3 +782,17 @@
 - Tests: neu `tests/v58.test.mjs`, neu `scripts/v58-check.mjs` (13 Prüfungen); v09-Tests rechnen ausdrücklich mit festem
   Preis; alle Browser-Checks ohne Seed-Daten grün.
 
+## v0.59 – Export „Home Gesamt“ (Power Dock), Wallbox, Netzwerte nur aus dem Hauptsystem
+- **SQL-Update `docs/UPDATE_V59.sql`**: Spalte `wallbox` in `anker_daily` („Ladesäulen-Verbrauch“).
+- Anker-Import liest den Export „Home Gesamt“ (Power Dock, Solarbank 4, Solarbank 2, Wallbox): PV1/PV2 sind nicht mehr
+  Pflicht, weil dieser Export keine Werte je PV-Eingang enthält; vorhandene PV-Werte im Bestand bleiben erhalten.
+- Neue Regel bei mehreren Dateien (ersetzt die Max-Regel aus v0.57): Netzbezug, Netz zu Haus und Netz zu Speicher kommen
+  nur aus dem Hauptsystem (Solarbank 4: „Home“, „Home Gesamt“); mehrere Hauptdateien am selben Tag (Umbautag) werden
+  addiert. Vom Nebensystem (Solarbank 2) zählen Erzeugung, Solar, Speicher und PV5–PV8; Eigenverbrauch und genutzt
+  bekommen dessen Solar und Speicher zu Haus dazu. Die Vorschau nennt die Tage.
+- Vorschau zeigt die Wallbox-kWh; PV5–PV8 und Wallbox werden nur mitgeschickt, wenn ein Wert dabei ist.
+- Rechenkern: Reihe `wb` (Wallbox). „E-Auto zu Hause“ zeigt „Wallbox laut Anker“ gegen das Ladebuch.
+- „Erzeugung je Strang“: Hinweis, dass der Export seit dem Power Dock (19.11.2026) keine Werte je Eingang enthält.
+- Tests: neu `tests/v59.test.mjs`, neu `scripts/v59-check.mjs` (6 Prüfungen); v57-Tests auf die neue Regel umgestellt;
+  alle Browser-Checks ohne Seed-Daten grün.
+

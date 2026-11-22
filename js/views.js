@@ -3,13 +3,13 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.58.0';
-import { parseNum } from './queue.js?v=0.58.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.58.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.58.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.58.0';
-import { explainAll } from './explain.js?v=0.58.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.58.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.59.0';
+import { parseNum } from './queue.js?v=0.59.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.59.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.59.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.59.0';
+import { explainAll } from './explain.js?v=0.59.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.59.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -2185,6 +2185,9 @@ function renderEvHome() {
     + kpi(kwh(tb.homeGrid), "davon aus dem Netz (geschätzt)", `PV-Anteil ${nf(+e.shPV || 0)} % laut Auto-Vergleich`)
     + kpi(kwh(tb.asKwh), "Allgemeinstrom ohne E-Auto", `Zähler ${kwh(tb.asMeter)} minus Netzanteil Auto`)
     + kpi(eur(all.saving), "Ersparnis gegenüber öffentlich", `alle ${kwh(all.kwh)} zu Hause gegenüber ${esc(C.pubTariff(tb.to || iso(new Date())).name)}, effektiv ${nf(C.pubEff(tb.to || iso(new Date())), 2)} €/kWh` + (all.guest.n ? `; Fremdladungen ${kwh(all.guest.kwh)}, Marge ${eur(all.guest.margin)}` : ""));
+  // v0.59: Wallbox laut Anker-Export (Power Dock) gegen Ladebuch, gleicher Zeitraum
+  const wbA = tb.to ? C.sumRange("wb", tb.from, tb.to) : 0;
+  if (wbA > 0 || h.kwh > 0) $("evh-kpis").innerHTML += kpi(kwh(wbA), "Wallbox laut Anker", `Ladebuch ${kwh(h.kwh + (h.guest?.kwh || 0))} im selben Zeitraum${h.kwh + (h.guest?.kwh || 0) > 0 && wbA > 0 ? `, Abweichung ${pct(Math.abs(wbA / (h.kwh + (h.guest?.kwh || 0)) - 1))}` : ""}`);
   const hint = C.evAbschlagHint();
   $("ab-ev").innerHTML = hint ? flag(`E-Auto ab ${dde(hint.from)}: Es lädt über den Allgemeinstrom, voraussichtlich etwa ${kwh(hint.kwhMonth)} pro Monat aus dem Netz, rund ${eur(hint.eurMonth)} pro Monat mehr. Die Hochrechnung oben enthält das erst, wenn Zählerstände nach der Übergabe vorliegen – Abschlag rechtzeitig um diesen Betrag erhöhen.`) : "";
 }
