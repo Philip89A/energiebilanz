@@ -191,6 +191,8 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      `S.ui.pubAlt`), Fremdladung (`charge_log.guest`, `docs/UPDATE_V58.sql`). Prüfung: `v58-check`.
    - ✅ v0.59: Export „Home Gesamt“ (Power Dock) ohne PV-Eingänge, Spalte `wallbox` (`docs/UPDATE_V59.sql`, Reihe `wb`), Netzwerte
      nur aus dem Hauptsystem (`mergeAnkerParsed` → `sideGrid`, Nebensystem = `parsed.sb2`). Prüfung: `v59-check`.
+   - ✅ v0.60: Simulation dynamischer Tarif (`grid_price`, `docs/UPDATE_V60.sql`; Edge Function grid-co2 `&kind=price`; `js/gridprice.js`,
+     `js/dyn.js` mit `hourPrices`/`evHours`/`simDay`/`dynSim`; `C.dynTariff()`; Seite `p-dyn`; `settings.data.dyn`, `loadProfile`). Prüfung: `v60-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

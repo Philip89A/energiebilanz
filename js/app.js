@@ -1,10 +1,10 @@
 // Einstieg: Anmeldung (E-Mail + Passwort, wie M&M-Tracker), Laden der Daten, Seiten (views.js), Importe,
 // Offline-Betrieb (Datenstand und Warteschlange je Nutzer im localStorage, js/queue.js) und Service Worker.
-import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveDeviceHourly, saveClimate, savePrograms, saveGridCo2, fetchGridCo2Raw } from './db.js?v=0.59.0';
-import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays, OPTIONAL_DB } from './import.js?v=0.59.0';
-import { stateFromDb } from './calc.js?v=0.59.0';
-import { setModel, startViews, setStore, syncWeather, syncGridCo2 } from './views.js?v=0.59.0';
-import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.59.0';
+import { client, fetchAll, upsertRows, tableCounts, importSeed, seedConflicts, loadAll, saveRow, deleteRow, saveSettings, saveWeather, saveHp, savePvForecast, saveDevice, saveDeviceHourly, fetchGridPriceRaw, saveGridPrice, saveClimate, savePrograms, saveGridCo2, fetchGridCo2Raw } from './db.js?v=0.60.0';
+import { validateSeed, mapSeed, seedSummary, parseAnkerCsv, diffAnker, mergeAnkerParsed, gridChargeDays, OPTIONAL_DB } from './import.js?v=0.60.0';
+import { stateFromDb } from './calc.js?v=0.60.0';
+import { setModel, startViews, setStore, syncWeather, syncGridCo2, syncGridPrice } from './views.js?v=0.60.0';
+import { applyOps, enqueue, isNetworkError, localStore } from './queue.js?v=0.60.0';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -62,6 +62,8 @@ setStore({
   savePrograms: (dev, month, rows) => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? savePrograms(dev, month, rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut speichern.'))),
   gridCo2Raw: (a, b) => (online() ? fetchGridCo2Raw(a, b) : Promise.reject(new Error('offline'))),
   saveGridCo2: rows => (readOnly ? Promise.resolve('readonly') : online() ? saveGridCo2(rows) : Promise.reject(new Error('offline'))),
+  gridPriceRaw: (a, b) => (online() ? fetchGridPriceRaw(a, b) : Promise.reject(new Error('offline'))),
+  saveGridPrice: rows => (readOnly ? Promise.resolve('readonly') : online() ? saveGridPrice(rows) : Promise.reject(new Error('offline'))),
   saveClimate: rows => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? saveClimate(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut speichern.'))),
   saveHp: rows => (readOnly ? Promise.reject(new Error('Gastzugang – nur lesen.')) : online() ? saveHp(rows) : Promise.reject(new Error('Offline – bitte mit Netz erneut hochladen.'))),
 });
@@ -171,6 +173,7 @@ async function loadModel() {
     flushQueue();
     syncWeather(true);
     syncGridCo2(true);
+    syncGridPrice(true);
   } catch (err) {
     $('loading').hidden = true;
     if (snap && (err.message === 'offline' || isNetworkError(err, navigator.onLine))) setOfflineBanner(true, snap.savedAt);

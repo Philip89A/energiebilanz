@@ -796,3 +796,21 @@
 - Tests: neu `tests/v59.test.mjs`, neu `scripts/v59-check.mjs` (6 Prüfungen); v57-Tests auf die neue Regel umgestellt;
   alle Browser-Checks ohne Seed-Daten grün.
 
+## v0.60 – Simulation „Dynamischer Tarif“
+- **SQL-Update `docs/UPDATE_V60.sql`**: Tabelle `grid_price` (Day-Ahead-Börsenpreise DE-LU je Tag, 24 Stundenmittel €/MWh,
+  RLS wie die übrigen Tabellen).
+- Edge Function „grid-co2“ (Version 2): `&kind=price` holt die Börsenpreise von Energy-Charts (Fraunhofer ISE); feste
+  Zieladressen, nur angemeldete Nutzer. Die App lädt fehlende Tage der letzten 400 Tage beim Start nach (nicht als Gast).
+- Neu `js/gridprice.js` (Viertelstunden → Stundenmittel in Ortszeit, negative Preise bleiben) und `js/dyn.js` (Simulation).
+- Neue Seite „Dynamischer Tarif“ (Geld → Planung): letzte 365 Tage mit Anker-Daten und Börsenpreisen, Hausverbrauch je Tag
+  nach Lastprofil (eigenes aus `settings.data.loadProfile`, sonst allgemeines Haushaltsprofil) über den Tag verteilt, PV als
+  Sonnenkurve, heutiger Speicher (nutzbar), E-Auto in den günstigsten Stunden 18–7 Uhr (gemessen ab Übergabe, sonst
+  erwartete Menge). Speicher preisgesteuert per dynamischer Programmierung: lädt mit PV und – wenn erlaubt – aus dem Netz,
+  entlädt in teuren Stunden (höchstens Entladeleistung), nie ins Auto. Vergleich mit dem aktuellen Allgemeinstrom-Tarif.
+- Kennzahlen fest / dynamisch / Ersparnis pro Jahr; Bausteine Hausverbrauch zu Börsenpreisen, E-Auto, Speicher, Grundgebühren;
+  Monatsdiagramm und Tagesverlauf (Ø Endpreis gegen Ø Hausverbrauch).
+- Annahmen einstellbar und gespeichert (`settings.data.dyn`): Netzentgelt, Steuern/Umlagen, Aufschlag, Grundgebühren,
+  Speichergröße, Lade-/Entladeleistung, Wirkungsgrad, § 14a Modul 3 (Nieder-/Hochtarif), Netzladung und E-Auto an/aus.
+- Tests: neu `tests/v60.test.mjs`, neu `scripts/v60-check.mjs` (9 Prüfungen); v48-Check kennt die neue Seite; alle
+  Browser-Checks ohne Seed-Daten grün.
+

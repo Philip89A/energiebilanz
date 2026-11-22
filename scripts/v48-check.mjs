@@ -72,7 +72,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (
   await p.click('#snav details:nth-of-type(2) > summary'); await p.waitForTimeout(150);
   check(await p.$$eval('#snav details[open]', e => e.length) === 1, 'nur ein Menü offen');
   const geld = await p.$eval('#snav details:nth-of-type(2) .dd-menu', e => e.innerText.replace(/\s+/g, ' '));
-  check(/Planung Tarifrechner Ausbau/i.test(geld), 'Geld: Tarifrechner und Ausbau unter „Planung“ am Ende');
+  check(/Planung Tarifrechner Dynamischer Tarif Ausbau/i.test(geld), 'Geld: Tarifrechner, Dynamischer Tarif (v0.60) und Ausbau unter „Planung“ am Ende');
   await p.click('#snav details:nth-of-type(1) > summary'); await p.click('#snav a[data-p="p-pv"]'); await p.waitForTimeout(500);
   check(await p.$eval('#p-pv', e => !e.hidden), 'Klick auf PV-Anlage öffnet die Seite');
   check(await p.$$eval('#snav details[open]', e => e.length) === 0, 'Menü schließt nach Auswahl');

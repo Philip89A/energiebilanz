@@ -210,6 +210,17 @@ create table if not exists device_hourly (
   updated_at timestamptz not null default now(),
   primary key (user_id, device_id, day)
 );
+-- v0.60: Day-Ahead-Börsenpreise DE-LU je Tag (RLS wie device_hourly, siehe docs/UPDATE_V60.sql)
+create table if not exists grid_price (
+  user_id uuid not null default auth.uid() references auth.users on delete cascade,
+  day date not null,
+  eur_mwh numeric not null,
+  hours jsonb not null,
+  src text not null default 'energy-charts',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (user_id, day)
+);
 create table if not exists device_daily (    -- v9 (App v0.32): Verbrauch einzelner Geräte je Tag
   user_id uuid not null default auth.uid() references auth.users on delete cascade,
   device_id text not null, day date not null,
