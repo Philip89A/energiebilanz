@@ -8,12 +8,12 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.58.0';
+import { hpSum } from './hp.js?v=0.59.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
   use: 'genutzt', gen: 'erzeugung', feed: 'einspeisung', pv1: 'pv1', pv2: 'pv2', pv3: 'pv3', pv4: 'pv4', plug: 'smart_plug', n2b: 'netz_zu_speicher',
-  pv5: 'pv5', pv6: 'pv6', pv7: 'pv7', pv8: 'pv8' };   // v0.57: PV5–PV8 = Eingänge 1–4 der Solarbank 2 ab 14.11.2026
+  pv5: 'pv5', pv6: 'pv6', pv7: 'pv7', pv8: 'pv8', wb: 'wallbox' };   // v0.59: wb = Wallbox laut Anker-Export   // v0.57: PV5–PV8 = Eingänge 1–4 der Solarbank 2 ab 14.11.2026
 
 /* ---------- Datumshilfen ---------- */
 const DAY = 86400000;
@@ -136,7 +136,7 @@ export function createCalc(S) {
   const dates = src.dates ? [...src.dates] : Array.from({ length: src.n }, (_, i) => addDays(src.start, i));
   // v0.31: Netzladung fehlt in Seed und älteren Zuständen
   // Spalten, die ältere Daten nicht haben (n2b ab v0.31, pv5–pv8 ab v0.57), als leer ergänzen
-  const cc = { ...src.c }; for (const k of ['n2b', 'pv5', 'pv6', 'pv7', 'pv8']) if (!cc[k]) cc[k] = dates.map(() => null);
+  const cc = { ...src.c }; for (const k of ['n2b', 'pv5', 'pv6', 'pv7', 'pv8', 'wb']) if (!cc[k]) cc[k] = dates.map(() => null);
   const A = { dates, c: cc, n: dates.length, idx: Object.fromEntries(dates.map((d, i) => [d, i])) };
   if (!A.n) throw new Error('Keine Anker-Daten.');
 

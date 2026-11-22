@@ -29,6 +29,7 @@ create table if not exists anker_daily (
   smart_plug numeric,
   netz_zu_speicher numeric,         -- ab v0.31 (neues Anker-Heimsystem, Netzladung des Speichers)
   pv5 numeric, pv6 numeric, pv7 numeric, pv8 numeric,   -- ab v0.57: Eingänge PV1–PV4 der Solarbank 2 ab 14.11.2026
+  wallbox numeric,                  -- ab v0.59: Ladesäulen-Verbrauch (Wallbox am Power Dock)
   imported_at timestamptz not null default now(),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),

@@ -145,3 +145,10 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    „Tarife bearbeiten“ anpassen; „Was wäre, wenn“ zeigt die Verschiebung des Break-even.
 4. Fremdladung im Ladebuch oder unter **Erfassen → Laden** mit dem Haken „Fremdladung“ eintragen, Betrag = erhalten.
 
+# Update v0.59 (Export „Home Gesamt“, Wallbox)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V59.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V59.sql) → **Run**.
+   Kontrolle: `wallbox | numeric`.
+2. Pull Request mergen, App neu laden (v0.59.0).
+3. **Daten → Anker-Import**: Export „Home Gesamt“ wählen. Seit dem 21.11.2026 hängen alle Geräte in diesem einen System.
+
