@@ -9,7 +9,7 @@ const DB = {
   meters: [], meter_readings: [], grid_co2: [], room_climate: [], charge_log: [], car_log: [],
   settings: [{ user_id: uid, data: { battery: { reserve: 10, capGross: 12.5 }, pv: { kwp: 2.8 }, amort: {}, cars: { ice: {}, ev: { km: 10000, kwh100: 18, loss: 10, shHome: 85, start: '2026-12-04' } }, devices: [] } }],
   device_daily: [], device_hourly: [], hp_energy: [], payments: [], events: [], tariffs: [{ user_id: uid, id: 't1', grp: 'as', name: 'Test', valid_from: '2026-01-01', ap_ct: 30, gp_eur_year: 100 }], installments: [], investments: [], tariffs: [{ user_id: uid, id: 't1', grp: 'as', name: 'ENTEGA', valid_from: '2026-04-02', ap_ct: 33.08, gp_eur_year: 169.22, boni_eur: 0 }] };
-let priceCalls = 0;
+let priceCalls = 0, failOnce = true;
 const posted = []; let failNext = false; const log = [];
 const b = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
 let failures = 0;
@@ -55,7 +55,8 @@ async function open(page) {
   });
   await ctx.route('**/functions/v1/**', r => { const u = new URL(r.request().url());
     if (u.searchParams.get('kind') !== 'price') return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ unix_seconds: [], co2eq: [] }) });
-    priceCalls++; const a = Date.parse(u.searchParams.get('start') + 'T00:00:00+01:00') / 1000, z = Date.parse(u.searchParams.get('end') + 'T23:45:00+01:00') / 1000, ts = [], pr = [];
+    priceCalls++; if (failOnce && priceCalls === 2) { failOnce = false; return r.fulfill({ status: 502, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ error: 'Energy-Charts: HTTP 429' }) }); }
+    const a = Date.parse(u.searchParams.get('start') + 'T00:00:00+01:00') / 1000, z = Date.parse(u.searchParams.get('end') + 'T23:45:00+01:00') / 1000, ts = [], pr = [];
     for (let t = a; t <= z; t += 900) { ts.push(t); const h = new Date((t + 3600) * 1000).getUTCHours(); pr.push(h >= 17 && h < 21 ? 180 : h < 6 ? 50 : 90); }
     return r.fulfill({ status: 200, contentType: 'application/json', headers: { 'access-control-allow-origin': '*' }, body: JSON.stringify({ unix_seconds: ts, price: pr, unit: 'EUR / MWh' }) }); });
   await ctx.route('**/auth/v1/**', r => r.fulfill({ status: 200, contentType: 'application/json', body: '{}' }));
@@ -67,8 +68,8 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (
 
 {
   const { p, ctx } = await open('?unfold#dyn');
-  await p.waitForTimeout(1500);
-  check(priceCalls > 0 && DB.grid_price.length > 50, 'Börsenpreise automatisch geladen und gespeichert: ' + DB.grid_price.length + ' Tage');
+  await p.waitForFunction(() => /Tage Börsenpreise gespeichert \(/.test(document.getElementById('dy-sync-msg')?.textContent || ''), null, { timeout: 60000 });
+  check(priceCalls === 14 && DB.grid_price.length > 350, 'Börsenpreise blockweise geladen, ein Fehler wiederholt (' + priceCalls + ' Abrufe), ' + DB.grid_price.length + ' Tage gespeichert');
   const k = await p.textContent('#dy-kpis');
   check(/Fester Vertrag pro Jahr/.test(k) && /Dynamisch pro Jahr/.test(k) && /(Ersparnis|Mehrkosten) pro Jahr/.test(k), 'Kennzahlen fest / dynamisch / Ersparnis');
   check(/11,3 kWh/.test(k), 'Speicher nutzbar 12,5 × 90 % = 11,3 kWh');
@@ -82,7 +83,7 @@ const check = (ok, msg) => { console.log((ok ? 'OK   ' : 'FEHLER ') + msg); if (
   await p.fill('[data-dyk="netzCt"]', '12'); await p.dispatchEvent('[data-dyk="netzCt"]', 'change'); await p.waitForTimeout(2800);
   const st = DB.settings[0].data.dyn;
   check(st && st.ev === false && st.netzCt === 12, 'Einstellungen dyn gespeichert (ev aus, Netzentgelt 12)');
-  check(!p.errs.length, 'keine Skriptfehler ' + p.errs.join(' | '));
+  const errs = p.errs.filter(e => !/502 \(Bad Gateway\)/.test(e)); check(!errs.length, 'keine Skriptfehler (gewollter 502 ausgenommen) ' + errs.join(' | '));
   await ctx.close();
 }
 await b.close();

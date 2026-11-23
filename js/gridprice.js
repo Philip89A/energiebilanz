@@ -2,7 +2,7 @@
 // api.energy-charts.info/price?bzn=DE-LU, über die Edge Function „grid-co2“ (&kind=price). Seit Oktober 2025 liefert die
 // Börse Viertelstundenwerte; ausgewertet wird je Ortsstunde (Europe/Berlin) als Mittelwert in €/MWh. Negative Preise
 // sind möglich und bleiben erhalten. Antwortformat tolerant: Zeitachse unix_seconds/…, Werte price/data/values.
-import { localDayHour } from './gridco2.js?v=0.60.0';
+import { localDayHour } from './gridco2.js?v=0.60.1';
 const isoDay = d => d.toISOString().slice(0, 10);
 const addD = (s, n) => isoDay(new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5));
 const pickArr = (o, keys) => { for (const k of keys) if (Array.isArray(o?.[k]) && o[k].length) return o[k]; return null; };
@@ -27,11 +27,19 @@ export function aggregateGridPrice(pts, from = '0000-01-01', to = '9999-12-31') 
     return { day, eur_mwh: Math.round(h.reduce((a, b) => a + b, 0) / 24 * 100) / 100, hours: h, src: 'energy-charts' };
   }).filter(Boolean).sort((a, b) => a.day.localeCompare(b.day));
 }
-export async function fetchGridPrice(from, to, getRaw) {
-  const rows = [];
+// v0.60.1: Energy-Charts lehnt schnelle Folgeabrufe gelegentlich ab. Darum je Block (31 Tage) sofort speichern (onChunk),
+// zwischen den Abrufen kurz warten und einen fehlgeschlagenen Block einmal wiederholen. Bricht ein Block endgültig ab,
+// bleiben die bereits gespeicherten erhalten; der nächste Start lädt nur die fehlenden Tage.
+const pause = ms => new Promise(r => setTimeout(r, ms));
+export async function fetchGridPrice(from, to, getRaw, onChunk, { wait = 1500, retryWait = 4000 } = {}) {
+  const rows = []; let first = true;
   for (let a = from; a <= to; a = addD(a, 31)) {
     const b = addD(a, 30) < to ? addD(a, 30) : to;
-    rows.push(...aggregateGridPrice(parseGridPrice(await getRaw(a, b)), a, b));
+    if (!first) await pause(wait); first = false;
+    let raw; try { raw = await getRaw(a, b); } catch (e) { if (e.message === 'offline') throw e; await pause(retryWait); raw = await getRaw(a, b); }
+    const part = aggregateGridPrice(parseGridPrice(raw), a, b);
+    if (onChunk && part.length) await onChunk(part);
+    rows.push(...part);
   }
   return rows;
 }

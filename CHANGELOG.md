@@ -814,3 +814,11 @@
 - Tests: neu `tests/v60.test.mjs`, neu `scripts/v60-check.mjs` (9 Prüfungen); v48-Check kennt die neue Seite; alle
   Browser-Checks ohne Seed-Daten grün.
 
+## v0.60.1 – Börsenpreise robust nachladen
+- Fehler: Lehnte Energy-Charts einen der 13 Monatsabrufe ab (HTTP 502/429 bei schnellen Folgeabrufen), wurde gar nichts
+  gespeichert – die Seite „Dynamischer Tarif“ blieb leer.
+- Jetzt wird jeder Block (31 Tage) sofort gespeichert, zwischen den Abrufen 1,5 s gewartet und ein fehlgeschlagener Block
+  nach 4 s einmal wiederholt. Bricht ein Block endgültig ab, bleiben die bisherigen Tage erhalten; „Börsenpreise laden“ bzw.
+  der nächste Start lädt nur die fehlenden Tage. Die Seite zeigt den Fortschritt.
+- Tests: `tests/v60.test.mjs` um Blockspeichern und Wiederholung ergänzt; `scripts/v60-check.mjs` simuliert einen Fehler.
+

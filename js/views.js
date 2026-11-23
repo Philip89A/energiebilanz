@@ -3,15 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.0';
-import { parseNum } from './queue.js?v=0.60.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.60.0';
-import { explainAll } from './explain.js?v=0.60.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.60.0';
-import { fetchGridPrice } from './gridprice.js?v=0.60.0';
-import { DYN_DEFAULTS } from './dyn.js?v=0.60.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.1';
+import { parseNum } from './queue.js?v=0.60.1';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.1';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.1';
+import { parseHpCsv, hpSum } from './hp.js?v=0.60.1';
+import { explainAll } from './explain.js?v=0.60.1';
+import { fetchGridCo2 } from './gridco2.js?v=0.60.1';
+import { fetchGridPrice } from './gridprice.js?v=0.60.1';
+import { DYN_DEFAULTS } from './dyn.js?v=0.60.1';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1446,13 +1446,14 @@ export async function syncGridPrice(auto){
   let from=null; for(let d=start; d<=yest; d=addDaysIso(d,1)) if(!have[d]){ from=d; break; }
   if(!from) return;
   gpMsg="Börsenpreise werden geladen …"; if(current==="p-dyn") $("dy-sync-msg").textContent=gpMsg;
+  let saved=0;
+  const onChunk=async part=>{ await store.saveGridPrice(part); const map={...(S.gridPrice||{})}; part.forEach(r=>map[r.day]=r.hours); S.gridPrice=map; saved+=part.length;
+    gpMsg=`Börsenpreise werden geladen … ${nf(saved)} Tage gespeichert (bis ${dde(part[part.length-1].day)}).`; if(current==="p-dyn") $("dy-sync-msg").textContent=gpMsg; };
   try{
-    const rows=await fetchGridPrice(from,yest,store.gridPriceRaw);
-    if(rows.length) await store.saveGridPrice(rows);
-    const map={...(S.gridPrice||{})}; rows.forEach(r=>map[r.day]=r.hours);
-    S.gridPrice=map; gpMsg=rows.length?`${nf(rows.length)} Tage Börsenpreise gespeichert (${dde(rows[0].day)} – ${dde(rows[rows.length-1].day)}).`:"Keine neuen Börsenpreise verfügbar.";
-    refreshCalc(); if(current==="p-dyn") rerender();
-  }catch(e){ gpMsg=e.message==="offline"?"Offline – Börsenpreise werden beim nächsten Öffnen ergänzt.":`Börsenpreise konnten nicht geladen werden: ${esc(e.message)}`; if(current==="p-dyn") $("dy-sync-msg").textContent=gpMsg; }
+    const rows=await fetchGridPrice(from,yest,store.gridPriceRaw,onChunk);
+    gpMsg=rows.length?`${nf(rows.length)} Tage Börsenpreise gespeichert (${dde(rows[0].day)} – ${dde(rows[rows.length-1].day)}).`:"Keine neuen Börsenpreise verfügbar.";
+  }catch(e){ gpMsg=e.message==="offline"?"Offline – Börsenpreise werden beim nächsten Öffnen ergänzt.":`Börsenpreise teilweise geladen (${nf(saved)} Tage). Abbruch: ${esc(e.message)} – „Börsenpreise laden“ setzt fort.`; }
+  refreshCalc(); if(current==="p-dyn") rerender();
 }
 const DY_FIELDS=[["netzCt","Netzentgelt ct/kWh netto"],["taxCt","Steuern und Umlagen ct/kWh netto"],["markupCt","Aufschlag Anbieter ct/kWh netto"],["feeMonth","Grundgebühr Anbieter €/Monat"],["netzGpYear","Grundpreis Netz €/Jahr"],
   ["capKwh","Speicher nutzbar kWh"],["chgKw","Laden aus dem Netz kW"],["disKw","Entladen kW"],["eff","Wirkungsgrad Speicher %"],["ntCt","Modul 3: Niedertarif ct (0–6 Uhr)"],["htCt","Modul 3: Hochtarif ct (17–21 Uhr)"]];
