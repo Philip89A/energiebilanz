@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.59.0">
-<link rel="stylesheet" href="css/style.css?v=0.59.0">
+<meta name="app-version" content="0.60.0">
+<link rel="stylesheet" href="css/style.css?v=0.60.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -380,6 +380,24 @@
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
 </section>
 
+<section id="p-dyn" data-title="Dynamischer Tarif" hidden>
+  <h1>Dynamischer Tarif</h1>
+  <p class="lead">Was hätte ein dynamischer Stromtarif in den letzten 12 Monaten gekostet – mit deinem Verbrauch, deiner PV und dem heutigen Speicher, gegen den aktuellen Allgemeinstrom-Vertrag. Annahme: Der Speicher lädt in den günstigsten Stunden mit PV und aus dem Netz und entlädt in den teuersten; das E-Auto lädt in den günstigsten Nachtstunden.</p>
+  <div id="dy-flags"></div>
+  <div class="grid g4" id="dy-kpis"></div>
+  <div class="panel" style="margin-top:16px"><h2>Ersparnis je Baustein</h2><div class="tbl-wrap"><table id="dy-parts"></table></div><p class="note" id="dy-note"></p></div>
+  <div class="grid g2" style="margin-top:16px">
+    <div class="panel"><h2>Kosten je Monat</h2><div class="chart"><canvas id="dy-months"></canvas></div></div>
+    <div class="panel"><h2>Preis und Verbrauch über den Tag</h2><p class="note">Ø Endpreis je Stunde (Linie) und Ø Hausverbrauch laut Lastprofil (Balken) im betrachteten Zeitraum.</p><div class="chart"><canvas id="dy-hours"></canvas></div></div>
+  </div>
+  <div class="panel" style="margin-top:16px"><h2>Annahmen</h2>
+    <p class="note">Netzentgelt und Grundpreis stehen im Preisblatt deines Netzbetreibers; Steuern und Umlagen = Stromsteuer, Konzessionsabgabe und Umlagen. Alle ct-Werte netto, die Mehrwertsteuer kommt dazu. Leere Felder = Standardwert.</p>
+    <div class="form" id="dy-form" style="margin-top:10px"></div>
+    <p class="note" id="dy-sync-msg"></p>
+    <div class="row edit-only" style="margin-top:8px"><button type="button" class="ghost" id="dy-sync">Börsenpreise laden</button></div>
+  </div>
+</section>
+
 <section id="p-ausbau" data-title="Ausbau (Weg B)" hidden>
   <h1>Ausbau: PV-Erweiterung, Speicher, Wallbox</h1>
   <p class="lead">Grobe Amortisation des Pakets gegenüber der heutigen Anlage, gerechnet mit deinen Tageswerten der letzten 365 Tage. Das E-Auto ist ausdrücklich enthalten: Die Wallbox ersetzt das Laden an der gewählten Alternative, die PV-Erweiterung lädt einen Teil davon mit Solarstrom. Schätzung, keine Messung.</p>
@@ -539,8 +557,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.59.0"></script>
-<script src="vendor/chart.umd.js?v=0.59.0"></script>
-<script type="module" src="js/app.js?v=0.59.0"></script>
+<script src="vendor/supabase.js?v=0.60.0"></script>
+<script src="vendor/chart.umd.js?v=0.60.0"></script>
+<script type="module" src="js/app.js?v=0.60.0"></script>
 </body>
 </html>

@@ -152,3 +152,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
 2. Pull Request mergen, App neu laden (v0.59.0).
 3. **Daten → Anker-Import**: Export „Home Gesamt“ wählen. Seit dem 21.11.2026 hängen alle Geräte in diesem einen System.
 
+# Update v0.60 (Simulation „Dynamischer Tarif“)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V60.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V60.sql) → **Run**
+   (Warnung bestätigen, betrifft nur Regeln und Trigger der neuen Tabelle). Kontrolle: `grid_price | true | 4`.
+2. Edge Function „grid-co2“ ist bereits auf Version 2 (Börsenpreise mit `&kind=price`).
+3. Pull Request mergen, App neu laden (v0.60.0). Beim Öffnen lädt die App die Börsenpreise der letzten 400 Tage (einmalig
+   ~13 Abrufe, danach nur neue Tage).
+4. **Geld → Dynamischer Tarif**: Annahmen prüfen (Netzentgelt und Grundpreis aus dem Preisblatt des Netzbetreibers).
+

@@ -8,7 +8,8 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.59.0';
+import { hpSum } from './hp.js?v=0.60.0';
+import { dynSim, DYN_DEFAULTS } from './dyn.js?v=0.60.0';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -97,6 +98,11 @@ export function stateFromDb(db) {
     programError: db.programError || null,
     rooms: Array.isArray(s.rooms) ? s.rooms : [],
     co2: s.co2 && typeof s.co2 === 'object' ? s.co2 : {},
+    // v0.60: Simulation dynamischer Tarif – Einstellungen, eigenes Lastprofil und Börsenpreise je Tag
+    dyn: s.dyn && typeof s.dyn === 'object' ? s.dyn : {},
+    loadProfile: s.loadProfile && typeof s.loadProfile === 'object' ? s.loadProfile : null,
+    gridPrice: Object.fromEntries((db.grid_price || []).filter(r => Array.isArray(r.hours) && r.hours.length === 24).map(r => [r.day, r.hours.map(v => +v)])),
+    gridPriceError: db.gridPriceError || null,
     gridCo2: Object.fromEntries((db.grid_co2 || []).map(r => [r.day, { g: +r.g_mean, hours: Array.isArray(r.hours) ? r.hours.map(v => (v == null ? null : +v)) : null }])),
     gridCo2Error: db.gridCo2Error || null,
     climate: (db.room_climate || []).map(r => ({ room: r.room, d: r.day, n: +r.n, t: r.t == null ? null : +r.t, rh: r.rh == null ? null : +r.rh,
@@ -122,7 +128,8 @@ export const toDb = {
   payment: x => ({ id: x.id, grp: x.group, day: x.d, amount: +x.amount, kind: x.kind, note: x.note || null }),
   settings: S => ({ data: { schema_version: 2, battery: S.battery, pv: S.pv, amort: S.amort, cars: S.cars, ...(S.tarif && Object.keys(S.tarif).length ? { tarif: S.tarif } : {}),
     ...(S.ausbau && Object.keys(S.ausbau).length ? { ausbau: S.ausbau } : {}),
-    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}), ...(S.rooms && S.rooms.length ? { rooms: S.rooms } : {}), ...(S.co2 && Object.keys(S.co2).length ? { co2: S.co2 } : {}) } }),
+    ...(S.wx && Object.keys(S.wx).length ? { wx: S.wx } : {}), ...(S.offers && S.offers.length ? { offers: S.offers } : {}), ...(S.water && Object.keys(S.water).length ? { water: S.water } : {}), ...(S.stages && S.stages.length ? { stages: S.stages } : {}), ...(S.devices && S.devices.length ? { devices: S.devices } : {}), ...(S.rooms && S.rooms.length ? { rooms: S.rooms } : {}), ...(S.co2 && Object.keys(S.co2).length ? { co2: S.co2 } : {}),
+    ...(S.dyn && Object.keys(S.dyn).length ? { dyn: S.dyn } : {}), ...(S.loadProfile ? { loadProfile: S.loadProfile } : {}) } }),
 };
 
 /* ---------- Rechenkern ---------- */
@@ -481,6 +488,23 @@ export function createCalc(S) {
     }
     return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK, pub: pubNow,
       pubEff: tb && tb.evHome > 0 ? pubYearCost(pubNow, tb.evHome) / tb.evHome : +pubNow.ap || 0 };
+  }
+  // v0.60: Simulation dynamischer Tarif über die letzten `days` Tage mit Anker-Daten und Börsenpreisen. Hausverbrauch =
+  // Eigenverbrauch ohne Wallbox; E-Auto: gemessene Wallbox-kWh ab Übergabe, sonst erwartete Jahresmenge ÷ 365 (Annahme).
+  // Speicher: heutiger Ausbau (nutzbar). Vergleich mit dem heute gültigen Allgemeinstrom-Tarif.
+  function dynTariff(over = {}) {
+    const c = { ...DYN_DEFAULTS, ...(S.dyn || {}), ...over }, P = S.gridPrice || {}, today = A.dates[A.n - 1];
+    const t = currentTariff('as'), fixed = { ap: (t?.ap || 0) / 100, gpYear: +t?.gp || 0 }, evStart = (S.cars.ev || {}).start || '';
+    const cap = c.capKwh != null && c.capKwh !== '' ? +c.capKwh : usableOf(stageAt(today).capGross), evDay = evHomeYear() / 365;
+    const from = addDays(today, -(+c.days || 365) + 1), days = [];
+    A.dates.forEach((d, i) => {
+      if (d < from || !P[d]) return; const ev = A.c.ev[i], wb = A.c.wb[i];
+      if (ev == null) return;
+      const measured = evStart && d >= evStart && wb != null;
+      days.push({ d, load: Math.max(0, +ev - (+wb || 0)), pv: +A.c.gen[i] || 0, ev: measured ? +wb : evDay, spot: P[d] });
+    });
+    if (!days.length) return { n: 0, fixed, cap, cfg: c };
+    return { ...dynSim(days, { cfg: c, fixed, cap, profile: S.loadProfile }), n: days.length, from: days[0].d, to: days[days.length - 1].d, fixed, cap, cfg: c, evDay };
   }
   function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
@@ -1503,7 +1527,7 @@ export function createCalc(S) {
   return {
     A, IMPORT_START, sumRange, last12, groupSeries, tariffAt, currentTariff, costs, last365Cost, feedValue, pvSavings,
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
-    pubTariff, pubTariffAt, pubNames, pubList, pubYearCost, pubEff, evHomeYear,
+    pubTariff, pubTariffAt, pubNames, pubList, pubYearCost, pubEff, evHomeYear, dynTariff,
     amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,

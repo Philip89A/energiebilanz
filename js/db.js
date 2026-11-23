@@ -1,7 +1,7 @@
 // Supabase-Zugriff. Einziger Ort, der createClient() aufruft.
 // user_id wird überall explizit mitgeschickt; RLS prüft sie gegen auth.uid().
-import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.59.0';
-import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.59.0';
+import { SUPABASE_URL, SUPABASE_KEY } from '../config.js?v=0.60.0';
+import { PLAIN_TABLES, seedSummary, compareSummary } from './import.js?v=0.60.0';
 
 export const client = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY, {
   auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true },
@@ -160,6 +160,8 @@ export async function loadAll() {
   try { db.device_programs = await fetchAll('device_programs'); } catch (e) { db.device_programs = []; db.programError = e.message; }
   // CO₂ des Stromnetzes (v0.41), ebenso tolerant
   try { db.grid_co2 = await fetchAll('grid_co2'); } catch (e) { db.grid_co2 = []; db.gridCo2Error = e.message; }
+  // Börsenpreise (v0.60), ebenso tolerant
+  try { db.grid_price = await fetchAll('grid_price'); } catch (e) { db.grid_price = []; db.gridPriceError = e.message; }
   // Gastzugang (schema v7): ist der Nutzer als Gast eingetragen, nur lesen
   try { const me = await uid(); db.readOnly = (await fetchAll('shares')).some(r => r.viewer_id === me); } catch (e) { db.readOnly = false; }
   return db;
@@ -222,6 +224,18 @@ export async function fetchGridCo2Raw(start, end) {
   let j = null; try { j = await r.json(); } catch { /* leer */ }
   if (!r.ok) throw new Error(j?.error ? `${j.error}` : r.status === 404 ? 'Edge Function „grid-co2“ fehlt in Supabase' : `HTTP ${r.status}`);
   return j;
+}
+// v0.60: Börsenpreise über dieselbe Edge Function (&kind=price)
+export async function fetchGridPriceRaw(start, end) {
+  const { data } = await client.auth.getSession(), tok = data?.session?.access_token;
+  if (!tok) throw new Error('nicht angemeldet');
+  const r = await fetch(`${SUPABASE_URL}/functions/v1/grid-co2?kind=price&start=${start}&end=${end}`, { headers: { Authorization: `Bearer ${tok}`, apikey: SUPABASE_KEY } });
+  let j = null; try { j = await r.json(); } catch { /* leer */ }
+  if (!r.ok) throw new Error(j?.error ? `${j.error}` : r.status === 404 ? 'Edge Function „grid-co2“ fehlt in Supabase' : `HTTP ${r.status}`);
+  return j;
+}
+export async function saveGridPrice(rows, onProgress) {
+  await upsertRows('grid_price', rows, 'user_id,day', onProgress);
 }
 export async function saveGridCo2(rows, onProgress) {
   await upsertRows('grid_co2', rows, 'user_id,day', onProgress);

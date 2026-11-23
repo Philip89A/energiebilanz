@@ -3,13 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.59.0';
-import { parseNum } from './queue.js?v=0.59.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.59.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.59.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.59.0';
-import { explainAll } from './explain.js?v=0.59.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.59.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.0';
+import { parseNum } from './queue.js?v=0.60.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.60.0';
+import { explainAll } from './explain.js?v=0.60.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.60.0';
+import { fetchGridPrice } from './gridprice.js?v=0.60.0';
+import { DYN_DEFAULTS } from './dyn.js?v=0.60.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -878,6 +880,7 @@ export async function syncGridCo2(auto){
 function wireCo2(){
   $("co-hourly").addEventListener("change",e=>{ S.co2=S.co2||{}; if(e.target.checked) delete S.co2.hourly; else S.co2.hourly=false; persist(); refreshCalc(); rerender(); });
   $("co-grid-sync").addEventListener("click",()=>{ gcAutoDone=false; syncGridCo2(false); });
+  $("dy-sync").addEventListener("click",()=>{ gpAutoDone=false; syncGridPrice(false); });
   $("co-form").addEventListener("change",e=>{ const k=e.target.dataset.co; if(!k) return; const raw=e.target.value.trim(), v=raw===""?null:parseNum(raw);
     if(raw!==""&&!(v>=0)){ $("co-msg").textContent="Bitte eine Zahl ≥ 0 eingeben."; return; }
     const c=S.co2=S.co2||{};
@@ -1433,6 +1436,67 @@ function renderPub(tl){
   $("pub-add").addEventListener("click",()=>{ const l=own(), last=l[l.length-1]||{}; l.push({...last,from:iso(new Date())}); persist(); rerender(); });
 }
 
+
+/* ---------- Dynamischer Tarif (v0.60) ---------- */
+let gpMsg="", gpAutoDone=false;
+export async function syncGridPrice(auto){
+  if(!S||!store?.saveGridPrice||!store?.gridPriceRaw||S.gridPriceError||document.body.classList.contains("ro")) return;
+  if(auto&&gpAutoDone) return; gpAutoDone=true;
+  const today=iso(new Date()), yest=addDaysIso(today,-1), have=S.gridPrice||{}, start=addDaysIso(today,-400);
+  let from=null; for(let d=start; d<=yest; d=addDaysIso(d,1)) if(!have[d]){ from=d; break; }
+  if(!from) return;
+  gpMsg="Börsenpreise werden geladen …"; if(current==="p-dyn") $("dy-sync-msg").textContent=gpMsg;
+  try{
+    const rows=await fetchGridPrice(from,yest,store.gridPriceRaw);
+    if(rows.length) await store.saveGridPrice(rows);
+    const map={...(S.gridPrice||{})}; rows.forEach(r=>map[r.day]=r.hours);
+    S.gridPrice=map; gpMsg=rows.length?`${nf(rows.length)} Tage Börsenpreise gespeichert (${dde(rows[0].day)} – ${dde(rows[rows.length-1].day)}).`:"Keine neuen Börsenpreise verfügbar.";
+    refreshCalc(); if(current==="p-dyn") rerender();
+  }catch(e){ gpMsg=e.message==="offline"?"Offline – Börsenpreise werden beim nächsten Öffnen ergänzt.":`Börsenpreise konnten nicht geladen werden: ${esc(e.message)}`; if(current==="p-dyn") $("dy-sync-msg").textContent=gpMsg; }
+}
+const DY_FIELDS=[["netzCt","Netzentgelt ct/kWh netto"],["taxCt","Steuern und Umlagen ct/kWh netto"],["markupCt","Aufschlag Anbieter ct/kWh netto"],["feeMonth","Grundgebühr Anbieter €/Monat"],["netzGpYear","Grundpreis Netz €/Jahr"],
+  ["capKwh","Speicher nutzbar kWh"],["chgKw","Laden aus dem Netz kW"],["disKw","Entladen kW"],["eff","Wirkungsgrad Speicher %"],["ntCt","Modul 3: Niedertarif ct (0–6 Uhr)"],["htCt","Modul 3: Hochtarif ct (17–21 Uhr)"]];
+const DY_CHECKS=[["gridCharge","Speicher darf aus dem Netz laden"],["ev","E-Auto einrechnen"],["mod3","§ 14a Modul 3 (zeitvariables Netzentgelt)"]];
+function renderDyn(){
+  S.dyn=S.dyn||{}; const d=S.dyn, R=C.dynTariff(), fl=[];
+  if(S.gridPriceError) fl.push(flag(`Börsenpreise fehlen: bitte zuerst <code>docs/UPDATE_V60.sql</code> in Supabase ausführen (${esc(S.gridPriceError)}).`));
+  else if(!R.n) fl.push(flag("Noch keine Börsenpreise gespeichert. Sie werden beim Öffnen der App automatisch geladen (oder unten „Börsenpreise laden“).",true));
+  if(!S.loadProfile) fl.push(flag("Kein eigenes Lastprofil hinterlegt – der Hausverbrauch wird mit einem allgemeinen Haushaltsprofil über den Tag verteilt.",true));
+  $("dy-flags").innerHTML=fl.join("");
+  const ev=R.cfg?.ev!==false;
+  if(R.n){
+    const yf=365/R.n, dEur=v=>eur(v*yf);
+    $("dy-kpis").innerHTML=kpi(dEur(R.totalFix),"Fester Vertrag pro Jahr",`${nf(R.fixed.ap*100,2)} ct/kWh + ${eur(R.fixed.gpYear)} Grundpreis, Netzbezug ${kwh(R.tot.gridFix*yf)} (Modell)`)
+      +kpi(dEur(R.totalDyn),"Dynamisch pro Jahr",`Ø Börse ${nf(R.avgSpot/10,1)} ct/kWh netto, Netzbezug ${kwh(R.tot.gridOpt*yf)}`)
+      +kpi(`<span class="${R.saving>=0?"ok":"warn"}">${R.saving>=0?"":"−"}${dEur(Math.abs(R.saving))}</span>`,R.saving>=0?"Ersparnis pro Jahr":"Mehrkosten pro Jahr",`hochgerechnet aus ${nf(R.n)} Tagen (${dde(R.from)} – ${dde(R.to)})`)
+      +kpi(nf(R.cap,1)+" kWh","Speicher in der Rechnung",`${d.gridCharge===false?"nur PV-Ladung":"PV- und Netzladung"}, ${nf(+(d.disKw??DYN_DEFAULTS.disKw),1)} kW Entladung`);
+    const house=(R.tot.fix-R.tot.naive)-R.evSaving, fees=R.feesFix-R.feesDyn;
+    const row=(l,v,n)=>`<tr><td class="l">${l}</td><td class="${v>=0?"ok":"warn"}">${v>=0?"+":"−"}${eur(Math.abs(v*yf))}</td><td class="l note">${n}</td></tr>`;
+    $("dy-parts").innerHTML=`<thead><tr><th class="l">Baustein</th><th>pro Jahr</th><th class="l">Erklärung</th></tr></thead><tbody>`
+      +row("Hausverbrauch zu Börsenpreisen",house,"gleicher Verbrauch und Speicher wie heute, nur stündlich bepreist – teuer, wenn viel am Abend verbraucht wird")
+      +(ev?row("E-Auto in den günstigsten Nachtstunden",R.evSaving,`${kwh(R.tot.evKwh*yf)} pro Jahr; ohne Messung erwartete Menge laut Auto-Vergleich (${nf(R.evDay,1)} kWh/Tag)`):"")
+      +row("Speicher preisgesteuert",R.storage,d.gridCharge===false?"nur Verschieben des PV-Stroms in teure Stunden":"Netzladung in billigen Stunden, Entladen in teuren (nach Ladeverlust)")
+      +row("Grundgebühren",fees,`fest ${eur(R.feesFix*yf)} gegen dynamisch ${eur(R.feesDyn*yf)} pro Jahr`)
+      +`</tbody><tfoot><tr><td>Summe</td><td>${R.saving>=0?"+":"−"}${eur(Math.abs(R.saving*yf))}</td><td></td></tr></tfoot>`;
+    $("dy-note").innerHTML=`Modellrechnung mit perfekter Kenntnis der Day-Ahead-Preise (die gibt es am Vortag ab ~13 Uhr) und des Verbrauchsprofils – in der Praxis eher etwas weniger. Hausverbrauch je Tag gemessen, über den Tag nach ${S.loadProfile?"deinem Lastprofil":"einem allgemeinen Profil"} verteilt; PV als Sonnenkurve. Ohne Wärmepumpe (eigener Zähler und Tarif). Einspeisung ohne Vergütung.`;
+    const ks=Object.keys(R.months).sort(), fm=k=>R.months[k].n/R.n;
+    chart("dy-months",{type:"bar",data:{labels:ks.map(monthLabel),datasets:[
+      {label:"Fester Vertrag",data:ks.map(k=>R.months[k].fix+R.feesFix*fm(k)),backgroundColor:css("--muted")},
+      {label:"Dynamisch",data:ks.map(k=>R.months[k].opt+R.feesDyn*fm(k)),backgroundColor:css("--warn")}]},
+      options:{plugins:{tooltip:numTip("€",2)},scales:{y:{title:{display:true,text:"€"}}}}});
+    chart("dy-hours",{data:{labels:[...Array(24).keys()].map(h=>h+" Uhr"),datasets:[
+      {type:"line",label:"Ø Endpreis ct/kWh",data:R.avgPrice.map(v=>v*100),borderColor:css("--warn"),backgroundColor:css("--warn"),yAxisID:"y1",pointRadius:0,tension:.3},
+      {type:"bar",label:"Ø Hausverbrauch kWh",data:R.avgLoad,backgroundColor:css("--grid"),yAxisID:"y"}]},
+      options:{plugins:{ebTotals:false,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,2)}`}}},scales:{y:{title:{display:true,text:"kWh"}},y1:{position:"right",grid:{drawOnChartArea:false},title:{display:true,text:"ct/kWh"}}}}});
+  }else{ $("dy-kpis").innerHTML=""; $("dy-parts").innerHTML=""; $("dy-note").textContent=""; }
+  const capDef=R.cap!=null?nf(R.cap,1):"";
+  $("dy-form").innerHTML=DY_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="number" step="any" data-dyk="${k}" value="${d[k]??""}" placeholder="${k==="capKwh"?capDef:nf(DYN_DEFAULTS[k])}"></label>`).join("")
+    +DY_CHECKS.map(([k,l])=>`<label class="f check"><input type="checkbox" data-dyc="${k}" ${(d[k]??DYN_DEFAULTS[k])?"checked":""}> ${l}</label>`).join("");
+  $("dy-form").querySelectorAll("[data-dyk]").forEach(el=>el.addEventListener("change",()=>{ const v=el.value.trim(); if(v==="") delete d[el.dataset.dyk]; else { const n=parseNum(v); if(isFinite(n)) d[el.dataset.dyk]=n; } persist(); rerender(); }));
+  $("dy-form").querySelectorAll("[data-dyc]").forEach(el=>el.addEventListener("change",()=>{ d[el.dataset.dyc]=el.checked; persist(); rerender(); }));
+  $("dy-sync-msg").textContent=gpMsg||(R.n?`Börsenpreise bis ${dde(Object.keys(S.gridPrice||{}).sort().pop())}.`:"");
+}
+
 /* ---------- Angebote mit Positionen (v0.20) ---------- */
 function openOffers(){ return (S.offers||[]).reduce((a,o)=>{ const s=offerSums(o); return a+Object.entries(s.due).filter(([d])=>!(o.paid||{})[d]).reduce((b,[,D])=>b+D.total,0); },0); }
 function renderOffers(){
@@ -1581,10 +1645,10 @@ function renderLog(){
 
 /* ---------- Daten ---------- */
 
-const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-co2","--ok"],["p-cost","--grid"],["p-tarif","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
+const PAGES=[["p-quick","--ok"],["p-overview","--sun"],["p-fin","--ok"],["p-pv","--sun"],["p-batt","--batt"],["p-meter","--grid"],["p-hp","--heat"],["p-rel","--feed"],["p-co2","--ok"],["p-cost","--grid"],["p-tarif","--warn"],["p-dyn","--warn"],["p-amort","--sun"],["p-ausbau","--batt"],["p-car","--warn"],["p-log","--muted"],["p-data","--loss"]];
 let current="p-overview"; const rendered={};
 // v0.48: Navigation oben in Gruppen (Aufklappmenüs), am Handy ein Menüknopf; "|Text" = Zwischenüberschrift
-const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-ausbau"]],
+const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-dyn","p-ausbau"]],
   ["Auswertung",["p-co2","p-rel"]],["Auto",["p-log","p-car"]],["⚙",["p-data"]]];
 // v0.48: je Seite ab diesem Block (Index der direkten Kinder) eingeklappt unter „Mehr anzeigen“; fehlt = nichts einklappen
 const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":6,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
@@ -1636,7 +1700,7 @@ function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
     ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPowerDay(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
-       "p-amort":()=>renderAmort(first), "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":()=>{ renderLease(); renderLog(); }, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
+       "p-amort":()=>renderAmort(first), "p-dyn":renderDyn, "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":()=>{ renderLease(); renderLog(); }, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
 }
