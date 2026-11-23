@@ -822,3 +822,14 @@
   der nächste Start lädt nur die fehlenden Tage. Die Seite zeigt den Fortschritt.
 - Tests: `tests/v60.test.mjs` um Blockspeichern und Wiederholung ergänzt; `scripts/v60-check.mjs` simuliert einen Fehler.
 
+## v0.60.2 – Speichersteuerung korrigiert, Vergleich mit anderem Festpreis
+- Fehler: Die preisgesteuerte Speicherrechnung arbeitete mit Ladestufen von ~0,2 kWh. Kleine stündliche Defizite (0,1–0,2 kWh)
+  konnte sie nicht aus dem Speicher decken und rechnete Netzstrom – „Speicher preisgesteuert“ wurde dadurch negativ
+  (mit echten Daten −62 € statt +34 € pro Jahr).
+- Jetzt stufenlose Regel mit Preisschwellen: entladen ab Preis θ, aus dem Netz laden bis Preis φ bis zum Ziel-Ladestand;
+  θ, φ, Ziel je Tag gesucht und über 48 Stunden (heute + morgen) bewertet, ausgeführt werden 24. „Wie heute“ ist immer unter
+  den Kandidaten, die Steuerung kann also nicht schlechter rechnen.
+- Neu „Vergleich fest: Arbeitspreis/Grundpreis“: Vergleich mit einem anderen festen Tarif (z. B. Folgeangebot ab 04/2027)
+  statt mit dem aktuellen Vertrag.
+- Tests: `tests/v60.test.mjs` um kleine Defizite und den Vergleichstarif ergänzt.
+

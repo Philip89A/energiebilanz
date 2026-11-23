@@ -8,8 +8,8 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.60.1';
-import { dynSim, DYN_DEFAULTS } from './dyn.js?v=0.60.1';
+import { hpSum } from './hp.js?v=0.60.2';
+import { dynSim, DYN_DEFAULTS } from './dyn.js?v=0.60.2';
 
 export const ANKER_KEYS = { ev: 'eigenverbrauch', imp: 'netzimport', n2h: 'netz_zu_haus', s2h: 'solar_zu_haus',
   s2b: 'solar_zu_speicher', bch: 'speicher_ladung', bdis: 'speicher_entladung', b2h: 'speicher_zu_haus',
@@ -494,7 +494,8 @@ export function createCalc(S) {
   // Speicher: heutiger Ausbau (nutzbar). Vergleich mit dem heute gültigen Allgemeinstrom-Tarif.
   function dynTariff(over = {}) {
     const c = { ...DYN_DEFAULTS, ...(S.dyn || {}), ...over }, P = S.gridPrice || {}, today = A.dates[A.n - 1];
-    const t = currentTariff('as'), fixed = { ap: (t?.ap || 0) / 100, gpYear: +t?.gp || 0 }, evStart = (S.cars.ev || {}).start || '';
+    // v0.60.2: Vergleich wahlweise mit einem anderen festen Tarif (z. B. Folgeangebot ab April 2027)
+    const t = currentTariff('as'), fixed = { ap: (c.fixCt != null && c.fixCt !== '' ? +c.fixCt : t?.ap || 0) / 100, gpYear: c.fixGp != null && c.fixGp !== '' ? +c.fixGp : +t?.gp || 0 }, evStart = (S.cars.ev || {}).start || '';
     const cap = c.capKwh != null && c.capKwh !== '' ? +c.capKwh : usableOf(stageAt(today).capGross), evDay = evHomeYear() / 365;
     const from = addDays(today, -(+c.days || 365) + 1), days = [];
     A.dates.forEach((d, i) => {

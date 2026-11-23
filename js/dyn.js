@@ -58,7 +58,7 @@ export function evHours(kwh, price, evKw = 11) {
 
 // Ein Tag. mode: 'self' = Speicher wie heute (chronologisch Eigenverbrauch), 'opt' = preisgesteuert.
 // load, pv, ev: kWh je Stunde; price: €/kWh je Stunde; soc0: kWh im Speicher zu Tagesbeginn.
-export function simDay({ load, pv, ev, price, soc0, cap, cfg, mode, feed = 0 }) {
+export function simDay({ load, pv, ev, price, soc0, cap, cfg, mode, feed = 0, next = null }) {
   const c = { ...DYN_DEFAULTS, ...cfg }, eta = Math.sqrt(Math.max(0.5, Math.min(1, +c.eff / 100)));
   const grid = Array(24).fill(0), exp = Array(24).fill(0);
   if (mode !== 'opt' || !(cap > 0)) {
@@ -72,51 +72,54 @@ export function simDay({ load, pv, ev, price, soc0, cap, cfg, mode, feed = 0 }) 
     }
     return { grid, exp, soc, cost, gridKwh: fromGrid };
   }
-  // dynamische Programmierung über diskrete Ladestände
-  const N = Math.max(4, Math.min(60, Math.ceil(cap / 0.2))), D = cap / N, INF = 1e18;
-  const meanP = price.reduce((a, b) => a + b, 0) / 24;
-  let V = Array.from({ length: N + 1 }, (_, s) => -s * D * eta * meanP);     // Restwert der Ladung am Tagesende
-  const pol = Array.from({ length: 24 }, () => new Int16Array(N + 1));
-  const step = (h, s, t) => {   // Kosten und Netzbezug des Übergangs s → t in Stunde h, oder null
-    const n = load[h] - pv[h], sur0 = Math.max(0, -n), def0 = Math.max(0, n);
-    let sur = sur0, def = def0, gridCh = 0;
-    if (t > s) {
-      const ac = (t - s) * D / eta, pvUse = Math.min(sur, ac), g = ac - pvUse;
-      if (g > 1e-9 && (!c.gridCharge || g > +c.chgKw + 1e-9)) return null;
-      sur -= pvUse; gridCh = g;
-    } else if (t < s) {
-      const dl = (s - t) * D * eta; if (dl > Math.min(def, +c.disKw) + 1e-9) return null; def -= dl;
+  // v0.60.2: Preisgesteuert = stufenlose Regel mit Schwellen statt diskreter Ladestufen (die waren bei kleinen stündlichen
+  // Defiziten zu grob): entladen nur in Stunden ab Preis θ, aus dem Netz laden in Stunden bis Preis φ bis zum Ziel-Ladestand.
+  // θ, φ und Ziel werden je Tag gesucht, bewertet über 48 Stunden (heute + morgen, sofern bekannt); ausgeführt werden nur
+  // die ersten 24. Die Regel „wie heute“ (θ = −∞, keine Netzladung) ist immer unter den Kandidaten.
+  const nx = next && next.load ? next : null;
+  const L = nx ? [...load, ...nx.load] : load, PV = nx ? [...pv, ...nx.pv] : pv, EV = nx ? [...ev, ...nx.ev] : ev, PR = nx ? [...price, ...nx.price] : price;
+  const H = L.length, endP = nx ? 0 : Math.min(...price);
+  const run = (th, ph, tgt, hours, rec) => {
+    let soc = Math.min(cap, Math.max(0, soc0 || 0)), cost = 0, fromGrid = 0;
+    for (let h = 0; h < hours; h++) {
+      const n = L[h] - PV[h]; let sur = Math.max(0, -n), def = Math.max(0, n), gch = 0;
+      if (sur > 0) { const st = Math.min(sur * eta, cap - soc); soc += st; sur -= st / eta; }
+      if (def > 0 && PR[h] >= th) { const dl = Math.min(def, +c.disKw, soc * eta); soc -= dl / eta; def -= dl; }
+      if (c.gridCharge && PR[h] <= ph && soc < tgt * cap - 1e-9) { gch = Math.min(+c.chgKw, (tgt * cap - soc) / eta); soc += gch * eta; }
+      const evG = Math.max(0, EV[h] - sur), ex = Math.max(0, sur - EV[h]), g = def + evG + gch;
+      cost += g * PR[h] - ex * feed; fromGrid += g; if (rec) { grid[h] = g; exp[h] = ex; }
     }
-    const evG = Math.max(0, ev[h] - sur), ex = Math.max(0, sur - ev[h]), g = def + evG + gridCh;
-    return { cost: g * price[h] - ex * feed, g, ex };
+    return { cost, soc, fromGrid };
   };
-  for (let h = 23; h >= 0; h--) {
-    const W = new Array(N + 1).fill(INF), n = load[h] - pv[h];
-    const up = Math.ceil((Math.max(0, -n) + (c.gridCharge ? +c.chgKw : 0)) * eta / D), dn = Math.floor(Math.min(Math.max(0, n), +c.disKw) / eta / D + 1e-9);
-    for (let s = 0; s <= N; s++) for (let t = Math.max(0, s - dn); t <= Math.min(N, s + up); t++) {
-      const r = step(h, s, t); if (!r) continue; const v = r.cost + V[t];
-      if (v < W[s] - 1e-12) { W[s] = v; pol[h][s] = t; }
-    }
-    V = W;
+  const ths = [-Infinity, ...[...new Set(price)].sort((a, b) => a - b)];
+  const phs = [-Infinity, ...(c.gridCharge ? [...PR].sort((a, b) => a - b).slice(0, 6) : [])];
+  const tgts = c.gridCharge ? [0.5, 1] : [1];
+  let best = null;
+  for (const th of ths) for (const ph of phs) for (const tg of (ph === -Infinity ? [1] : tgts)) {
+    const r = run(th, ph, tg, H, false), v = r.cost - r.soc * eta * endP;
+    if (!best || v < best.v - 1e-12) best = { v, th, ph, tg };
   }
-  let s = Math.max(0, Math.min(N, Math.round((soc0 || 0) / D))), cost = 0, fromGrid = 0;
-  for (let h = 0; h < 24; h++) { const t = pol[h][s], r = step(h, s, t); grid[h] = r.g; exp[h] = r.ex; cost += r.cost; fromGrid += r.g; s = t; }
-  return { grid, exp, soc: s * D, cost, gridKwh: fromGrid };
+  const r = run(best.th, best.ph, best.tg, 24, true);
+  return { grid, exp, soc: r.soc, cost: r.cost, gridKwh: r.fromGrid };
 }
 
 // Gesamtlauf über Tage. days: [{ d, load (kWh), pv (kWh), ev (kWh), spot[24] (€/MWh) }]
 // fixed: { ap (€/kWh brutto), gpYear (€) }. Ergebnis je Monat und gesamt, aufgeteilt nach Haus / Speicher / E-Auto.
+const addDay = d => new Date(Date.parse(d + 'T00:00:00Z') + 864e5).toISOString().slice(0, 10);
 export function dynSim(days, { cfg = {}, fixed, cap, profile, feed = 0 } = {}) {
   const c = { ...DYN_DEFAULTS, ...cfg };
   const st = { fix: cap / 2, naive: cap / 2, opt: cap / 2 }, months = {}, hourSum = Array(24).fill(0), loadSum = Array(24).fill(0);
   const tot = { n: 0, fix: 0, naive: 0, opt: 0, evKwh: 0, evFix: 0, evDyn: 0, gridFix: 0, gridOpt: 0, spot: 0, load: 0 };
-  for (const x of days) {
+  const prep = days.map(x => {
     const price = hourPrices(x.spot, c), prof = profileFor(x.d, profile), sh = pvShape(x.d);
-    const load = prof.map(f => f * x.load), pv = sh.map(f => f * (x.pv || 0)), ev = c.ev ? evHours(x.ev || 0, price, +c.evKw) : Array(24).fill(0);
+    return { x, price, load: prof.map(f => f * x.load), pv: sh.map(f => f * (x.pv || 0)), ev: c.ev ? evHours(x.ev || 0, price, +c.evKw) : Array(24).fill(0) };
+  });
+  for (let i = 0; i < prep.length; i++) {
+    const { x, price, load, pv, ev } = prep[i], nxt = prep[i + 1] && prep[i + 1].x.d === addDay(x.d) ? prep[i + 1] : null;
     const flat = Array(24).fill(fixed.ap);
     const f = simDay({ load, pv, ev, price: flat, soc0: st.fix, cap, cfg: c, mode: 'self', feed });
     const nv = simDay({ load, pv, ev, price, soc0: st.naive, cap, cfg: c, mode: 'self', feed });
-    const o = simDay({ load, pv, ev, price, soc0: st.opt, cap, cfg: c, mode: 'opt', feed });
+    const o = simDay({ load, pv, ev, price, soc0: st.opt, cap, cfg: c, mode: 'opt', feed, next: nxt });
     st.fix = f.soc; st.naive = nv.soc; st.opt = o.soc;
     const evK = ev.reduce((a, b) => a + b, 0), evD = ev.reduce((a, k, h) => a + k * price[h], 0);
     const k = x.d.slice(0, 7), M = months[k] = months[k] || { n: 0, fix: 0, naive: 0, opt: 0, evFix: 0, evDyn: 0, gridFix: 0, gridOpt: 0 };
