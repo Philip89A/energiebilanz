@@ -193,6 +193,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      nur aus dem Hauptsystem (`mergeAnkerParsed` → `sideGrid`, Nebensystem = `parsed.sb2`). Prüfung: `v59-check`.
    - ✅ v0.60: Simulation dynamischer Tarif (`grid_price`, `docs/UPDATE_V60.sql`; Edge Function grid-co2 `&kind=price`; `js/gridprice.js`,
      `js/dyn.js` mit `hourPrices`/`evHours`/`simDay`/`dynSim`; `C.dynTariff()`; Seite `p-dyn`; `settings.data.dyn`, `loadProfile`). Prüfung: `v60-check`.
+   - ✅ v0.60.1: Börsenpreise blockweise speichern, Pause und eine Wiederholung je Block (`fetchGridPrice(…, onChunk)`).
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

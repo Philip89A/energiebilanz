@@ -66,3 +66,16 @@ test('Rechenkern: dynTariff mit Anker-Tagen und Preisen; Einstellungen dyn und l
   assert.ok(isFinite(r.saving));
   const out = toDb.settings(S).data; assert.equal(out.dyn.netzCt, 9); assert.ok(out.loadProfile.W_we0);
 });
+
+test('v0.60.1: Börsenpreise blockweise speichern, ein Fehler wird einmal wiederholt, Daten davor bleiben erhalten', async () => {
+  const { fetchGridPrice } = await import('../js/gridprice.js');
+  const mk = (a, b) => { const ts = [], pr = []; for (let t = Date.parse(a + 'T00:00:00+01:00') / 1000; t <= Date.parse(b + 'T23:45:00+01:00') / 1000; t += 900) { ts.push(t); pr.push(80); } return { unix_seconds: ts, price: pr }; };
+  let calls = 0; const saved = [];
+  const flaky = async (a, b) => { calls++; if (calls === 2) throw new Error('Energy-Charts: HTTP 429'); return mk(a, b); };
+  const rows = await fetchGridPrice('2026-01-01', '2026-03-15', flaky, async part => saved.push(...part), { wait: 0, retryWait: 0 });
+  assert.equal(calls, 4); assert.equal(rows.length, 74); assert.equal(saved.length, 74);
+  let n = 0; const broken = async (a, b) => { n++; if (n >= 2) throw new Error('HTTP 502'); return mk(a, b); };
+  const kept = [];
+  await assert.rejects(fetchGridPrice('2026-01-01', '2026-03-15', broken, async part => kept.push(...part), { wait: 0, retryWait: 0 }));
+  assert.equal(kept.length, 31, 'erster Block bleibt gespeichert');
+});
