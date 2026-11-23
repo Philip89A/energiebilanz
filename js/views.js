@@ -3,15 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.1';
-import { parseNum } from './queue.js?v=0.60.1';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.1';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.1';
-import { parseHpCsv, hpSum } from './hp.js?v=0.60.1';
-import { explainAll } from './explain.js?v=0.60.1';
-import { fetchGridCo2 } from './gridco2.js?v=0.60.1';
-import { fetchGridPrice } from './gridprice.js?v=0.60.1';
-import { DYN_DEFAULTS } from './dyn.js?v=0.60.1';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.2';
+import { parseNum } from './queue.js?v=0.60.2';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.2';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.2';
+import { parseHpCsv, hpSum } from './hp.js?v=0.60.2';
+import { explainAll } from './explain.js?v=0.60.2';
+import { fetchGridCo2 } from './gridco2.js?v=0.60.2';
+import { fetchGridPrice } from './gridprice.js?v=0.60.2';
+import { DYN_DEFAULTS } from './dyn.js?v=0.60.2';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1455,7 +1455,7 @@ export async function syncGridPrice(auto){
   }catch(e){ gpMsg=e.message==="offline"?"Offline – Börsenpreise werden beim nächsten Öffnen ergänzt.":`Börsenpreise teilweise geladen (${nf(saved)} Tage). Abbruch: ${esc(e.message)} – „Börsenpreise laden“ setzt fort.`; }
   refreshCalc(); if(current==="p-dyn") rerender();
 }
-const DY_FIELDS=[["netzCt","Netzentgelt ct/kWh netto"],["taxCt","Steuern und Umlagen ct/kWh netto"],["markupCt","Aufschlag Anbieter ct/kWh netto"],["feeMonth","Grundgebühr Anbieter €/Monat"],["netzGpYear","Grundpreis Netz €/Jahr"],
+const DY_FIELDS=[["fixCt","Vergleich fest: Arbeitspreis ct/kWh brutto"],["fixGp","Vergleich fest: Grundpreis €/Jahr"],["netzCt","Netzentgelt ct/kWh netto"],["taxCt","Steuern und Umlagen ct/kWh netto"],["markupCt","Aufschlag Anbieter ct/kWh netto"],["feeMonth","Grundgebühr Anbieter €/Monat"],["netzGpYear","Grundpreis Netz €/Jahr"],
   ["capKwh","Speicher nutzbar kWh"],["chgKw","Laden aus dem Netz kW"],["disKw","Entladen kW"],["eff","Wirkungsgrad Speicher %"],["ntCt","Modul 3: Niedertarif ct (0–6 Uhr)"],["htCt","Modul 3: Hochtarif ct (17–21 Uhr)"]];
 const DY_CHECKS=[["gridCharge","Speicher darf aus dem Netz laden"],["ev","E-Auto einrechnen"],["mod3","§ 14a Modul 3 (zeitvariables Netzentgelt)"]];
 function renderDyn(){
@@ -1491,7 +1491,7 @@ function renderDyn(){
       options:{plugins:{ebTotals:false,tooltip:{callbacks:{label:c=>`${c.dataset.label}: ${nf(c.parsed.y,2)}`}}},scales:{y:{title:{display:true,text:"kWh"}},y1:{position:"right",grid:{drawOnChartArea:false},title:{display:true,text:"ct/kWh"}}}}});
   }else{ $("dy-kpis").innerHTML=""; $("dy-parts").innerHTML=""; $("dy-note").textContent=""; }
   const capDef=R.cap!=null?nf(R.cap,1):"";
-  $("dy-form").innerHTML=DY_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="number" step="any" data-dyk="${k}" value="${d[k]??""}" placeholder="${k==="capKwh"?capDef:nf(DYN_DEFAULTS[k])}"></label>`).join("")
+  $("dy-form").innerHTML=DY_FIELDS.map(([k,l])=>`<label class="f">${l}<input type="number" step="any" data-dyk="${k}" value="${d[k]??""}" placeholder="${k==="capKwh"?capDef:k==="fixCt"?nf(R.fixed?.ap*100||0,2)+" (aktuell)":k==="fixGp"?nf(R.fixed?.gpYear||0,2)+" (aktuell)":nf(DYN_DEFAULTS[k])}"></label>`).join("")
     +DY_CHECKS.map(([k,l])=>`<label class="f check"><input type="checkbox" data-dyc="${k}" ${(d[k]??DYN_DEFAULTS[k])?"checked":""}> ${l}</label>`).join("");
   $("dy-form").querySelectorAll("[data-dyk]").forEach(el=>el.addEventListener("change",()=>{ const v=el.value.trim(); if(v==="") delete d[el.dataset.dyk]; else { const n=parseNum(v); if(isFinite(n)) d[el.dataset.dyk]=n; } persist(); rerender(); }));
   $("dy-form").querySelectorAll("[data-dyc]").forEach(el=>el.addEventListener("change",()=>{ d[el.dataset.dyc]=el.checked; persist(); rerender(); }));

@@ -79,3 +79,23 @@ test('v0.60.1: Börsenpreise blockweise speichern, ein Fehler wird einmal wieder
   await assert.rejects(fetchGridPrice('2026-01-01', '2026-03-15', broken, async part => kept.push(...part), { wait: 0, retryWait: 0 }));
   assert.equal(kept.length, 31, 'erster Block bleibt gespeichert');
 });
+
+test('v0.60.2: kleine stündliche Defizite werden aus dem Speicher gedeckt – preisgesteuert nie schlechter als „wie heute“', () => {
+  const price = hourPrices(SPOT, {}), load = Array(24).fill(0.15), pv = pvShape('2026-06-15').map(f => f * 4), ev = Array(24).fill(0);
+  for (const gridCharge of [false, true]) {
+    const a = simDay({ load, pv, ev, price, soc0: 3, cap: 11.25, cfg: { gridCharge }, mode: 'self' });
+    const b = simDay({ load, pv, ev, price, soc0: 3, cap: 11.25, cfg: { gridCharge }, mode: 'opt' });
+    const val = r => r.cost - r.soc * Math.sqrt(0.88) * Math.min(...price);
+    assert.ok(val(b) <= val(a) + 1e-9, `gridCharge ${gridCharge}`);
+  }
+  const a = simDay({ load, pv, ev, price, soc0: 3, cap: 11.25, cfg: { gridCharge: false }, mode: 'self' });
+  assert.equal(a.gridKwh, 0);
+});
+
+test('v0.60.2: Vergleich mit einem anderen festen Tarif (fixCt/fixGp)', () => {
+  const db = { anker_daily: [{ day: '2026-11-01', eigenverbrauch: 7, erzeugung: 1, netzimport: 6, genutzt: 1, einspeisung: 0 }], grid_price: [{ day: '2026-11-01', eur_mwh: 90, hours: SPOT }],
+    tariffs: [{ id: 'a', grp: 'as', name: 'x', valid_from: '2026-01-01', ap_ct: 33.08, gp_eur_year: 169.22, boni_eur: 0 }],
+    settings: { data: { cars: { ice: {}, ev: {} }, battery: { capGross: 10 }, dyn: { fixCt: 38, fixGp: 150 } } } };
+  const r = createCalc(stateFromDb(db)).dynTariff();
+  assert.equal(r.fixed.ap, 0.38); assert.equal(r.fixed.gpYear, 150);
+});
