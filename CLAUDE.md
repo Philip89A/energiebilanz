@@ -195,6 +195,7 @@ Stack wie beim Miles-&-More-Tracker: **Supabase** (Postgres + Auth per **E-Mail 
      `js/dyn.js` mit `hourPrices`/`evHours`/`simDay`/`dynSim`; `C.dynTariff()`; Seite `p-dyn`; `settings.data.dyn`, `loadProfile`). Prüfung: `v60-check`.
    - ✅ v0.60.1: Börsenpreise blockweise speichern, Pause und eine Wiederholung je Block (`fetchGridPrice(…, onChunk)`).
    - ✅ v0.60.2: Speichersteuerung stufenlos mit Preisschwellen über 48 h (statt diskreter DP), `dyn.fixCt`/`fixGp` als Vergleichstarif.
+   - ✅ v0.61: „Stromverbrauch über den Tag“ (Zähler & Verbrauch): Haushalt je Stunde, gemessene Tage aus `device_hourly` mit `device_id = '_haus'` (`HAUS_ID`, kein Gerät in `settings.devices`), sonst Anker-Eigenverbrauch ohne Wallbox × Lastprofil; `C.houseProfile()` leitet das Profil aus den Messtagen ab (fehlende Gruppen aus `settings.loadProfile`) und speist auch `dynTariff` (Messtage mit echter Tagesform `shape`). Zeitraum/Vergleich aus der Zeitraumleiste. Prüfung: `v61-check`.
 
 ## Mapping seed_state.json → Tabellen
 - `anker` {start, n, c:{ev, imp, n2h, s2h, s2b, bch, bdis, b2h, use, gen, feed, pv1..pv4}} → `anker_daily`

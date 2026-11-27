@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.60.2">
-<link rel="stylesheet" href="css/style.css?v=0.60.2">
+<meta name="app-version" content="0.61.0">
+<link rel="stylesheet" href="css/style.css?v=0.61.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -192,6 +192,12 @@
       </div>
       <p class="note" id="dvm-msg"></p>
     </div></div>
+  <div class="panel" style="margin-top:16px" id="hd-panel" hidden><h2>Stromverbrauch über den Tag</h2>
+    <p class="note">Haushalt (Allgemeinstrom ohne Wallbox und Wärmepumpe), Ø kWh je Stunde im gewählten Zeitraum, getrennt nach Werktag und Wochenende; gestrichelt der Vergleichszeitraum. Exakt an Tagen mit Stundenwerten, sonst Tagesverbrauch aus Anker über das Lastprofil verteilt.</p>
+    <div id="hd-flags"></div><div class="grid g4" id="hd-kpis" style="margin-top:12px"></div>
+    <div class="chart" style="margin-top:12px"><canvas id="hd-chart"></canvas></div>
+    <div class="chart" style="margin-top:12px"><canvas id="hd-trend"></canvas></div><div id="hd-note"></div>
+  </div>
   <div class="panel" style="margin-top:16px" id="tp-panel"><h2>Tagesprofil Strom</h2>
     <p class="note">Strom je Stunde, wo Stundenwerte vorliegen: Wärmepumpe (Buderus-Export) und Messsteckdosen (Excel-Export der Tapo-App, Blatt „Tag“ – enthält nur die letzten ~7 Tage, deshalb wöchentlich exportieren). Der übrige Allgemeinstrom hat keine Stundenwerte. Gestrichelt: Ø der 7 Tage davor; Linie rechts: CO₂ des Stromnetzes.</p>
     <div class="form" style="max-width:520px"><label class="f">Tag<select id="tp-day"></select></label><label class="f check-row" style="align-self:end"><span><input type="checkbox" id="tp-avg" checked> Ø 7 Tage zeigen</span></label></div>
@@ -557,8 +563,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.60.2"></script>
-<script src="vendor/chart.umd.js?v=0.60.2"></script>
-<script type="module" src="js/app.js?v=0.60.2"></script>
+<script src="vendor/supabase.js?v=0.61.0"></script>
+<script src="vendor/chart.umd.js?v=0.61.0"></script>
+<script type="module" src="js/app.js?v=0.61.0"></script>
 </body>
 </html>
