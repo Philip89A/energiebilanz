@@ -111,7 +111,8 @@ export function dynSim(days, { cfg = {}, fixed, cap, profile, feed = 0 } = {}) {
   const st = { fix: cap / 2, naive: cap / 2, opt: cap / 2 }, months = {}, hourSum = Array(24).fill(0), loadSum = Array(24).fill(0);
   const tot = { n: 0, fix: 0, naive: 0, opt: 0, evKwh: 0, evFix: 0, evDyn: 0, gridFix: 0, gridOpt: 0, spot: 0, load: 0 };
   const prep = days.map(x => {
-    const price = hourPrices(x.spot, c), prof = profileFor(x.d, profile), sh = pvShape(x.d);
+    // v0.61: gemessene Tagesform (Stundenwerte des Haushalts), sonst Lastprofil
+    const price = hourPrices(x.spot, c), prof = Array.isArray(x.shape) && x.shape.length === 24 && x.shape.some(v => v > 0) ? norm(x.shape) : profileFor(x.d, profile), sh = pvShape(x.d);
     return { x, price, load: prof.map(f => f * x.load), pv: sh.map(f => f * (x.pv || 0)), ev: c.ev ? evHours(x.ev || 0, price, +c.evKw) : Array(24).fill(0) };
   });
   for (let i = 0; i < prep.length; i++) {

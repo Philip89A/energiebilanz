@@ -833,3 +833,16 @@
   statt mit dem aktuellen Vertrag.
 - Tests: `tests/v60.test.mjs` um kleine Defizite und den Vergleichstarif ergänzt.
 
+## v0.61 – Stromverbrauch über den Tag
+- Neuer Abschnitt „Stromverbrauch über den Tag“ unter Energie → Zähler & Verbrauch: Haushalt (Allgemeinstrom ohne Wallbox und
+  Wärmepumpe) als Ø kWh je Stunde, getrennt nach Werktag und Wochenende, für den Zeitraum der Zeitraumleiste; mit Vergleich
+  als gestrichelte Linie.
+- Tage mit gemessenen Stundenwerten (Tabelle `device_hourly`, Gerät `_haus`, z. B. aus Anker-Screenshots) gehen exakt ein,
+  alle anderen Tage als Tagesverbrauch laut Anker × Lastprofil. Hinweis, wie viele Tage gemessen und geschätzt sind.
+- Kennzahlen: Ø pro Tag, Grundlast nachts 0–5 Uhr (nur aus Messtagen, sonst als Schätzung gekennzeichnet), Anteil 17–22 Uhr,
+  stärkste Stunde. Zweite Grafik: Tagesverbrauch mit gleitendem Ø über 7 und 30 Tage, Messtage hervorgehoben.
+- Lastprofil wird jetzt aus den Messtagen berechnet (Ø der normierten Tage je Jahreszeit × Werktag/Wochenende); neue
+  Messtage verbessern es automatisch. Gruppen ohne Messtag kommen weiter aus dem gespeicherten Profil.
+- Dynamischer Tarif: nutzt dieses Profil; an Messtagen die echte Tagesform.
+- Keine Datenbankänderung (Tabelle `device_hourly` gibt es seit v0.56).
+- Tests: `tests/v61.test.mjs`, `scripts/v61-check.mjs`.

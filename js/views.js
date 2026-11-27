@@ -3,15 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.60.2';
-import { parseNum } from './queue.js?v=0.60.2';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.60.2';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.60.2';
-import { parseHpCsv, hpSum } from './hp.js?v=0.60.2';
-import { explainAll } from './explain.js?v=0.60.2';
-import { fetchGridCo2 } from './gridco2.js?v=0.60.2';
-import { fetchGridPrice } from './gridprice.js?v=0.60.2';
-import { DYN_DEFAULTS } from './dyn.js?v=0.60.2';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.61.0';
+import { parseNum } from './queue.js?v=0.61.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.61.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.61.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.61.0';
+import { explainAll } from './explain.js?v=0.61.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.61.0';
+import { fetchGridPrice } from './gridprice.js?v=0.61.0';
+import { DYN_DEFAULTS } from './dyn.js?v=0.61.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -345,6 +345,42 @@ const dvColor = i => css(DV_PAL[i % DV_PAL.length]);
 let dvMsg = "";
 // v0.56: Tagesprofil Strom (Wärmepumpe + Messsteckdosen je Stunde, Netz-CO₂)
 let tpDay = "";
+// v0.61: Stromverbrauch über den Tag – Haushalt (Allgemeinstrom ohne Wallbox und Wärmepumpe) je Stunde im Zeitraum
+function renderHouseDay(){
+  const all = C.houseDays("0000-01-01", "9999-12-31");
+  if (!all.length) { $("hd-panel").hidden = true; return; } $("hd-panel").hidden = false;
+  // Zeitraum und Vergleich aus der Zeitraumleiste der Seite
+  const RS = periodSel(), P = RS.all ? { from: all[0].d, to: all[all.length - 1].d } : RS.P;
+  const st = C.houseDayStats(P.from, P.to), pv = RS.Cp ? C.houseDayStats(RS.Cp.from, RS.Cp.to) : null, fl = [];
+  if (!st) { $("hd-flags").innerHTML = flag("Im gewählten Zeitraum gibt es keine Verbrauchsdaten des Haushalts.", true); $("hd-kpis").innerHTML = ""; $("hd-note").innerHTML = "";
+    for (const id of ["hd-chart", "hd-trend"]) chart(id, { type: "bar", data: { labels: [], datasets: [] } }); return; }
+  const prof = C.houseProfile(), pct = v => `${nf(v * 100)} %`, k = v => `${nf(v, 2)} kWh`, hl = h => `${String(h).padStart(2, "0")}–${String(h + 1).padStart(2, "0")} Uhr`;
+  if (!st.measured) fl.push(flag(`Im Zeitraum gibt es keinen Tag mit gemessenen Stundenwerten – die Kurve ist die Form des Lastprofils${prof && prof.src === "measured" ? " (aus den Messtagen anderer Zeiträume)" : prof ? "" : " (allgemeines Haushaltsprofil)"}, skaliert auf den gemessenen Tagesverbrauch.`, true));
+  $("hd-flags").innerHTML = fl.join("");
+  $("hd-kpis").innerHTML = kpi(k(st.kwhDay), "Ø Haushalt pro Tag", `${dde(st.from)}–${dde(st.to)}, ${nf(st.n)} Tage${pv ? `; Vergleich ${k(pv.kwhDay)}` : ""}`)
+    + kpi(`${nf(st.nightW)} W`, "Grundlast nachts (0–5 Uhr)", st.nightMeasured ? `aus ${nf(st.measured)} Messtagen` : "nur aus dem Profil geschätzt")
+    + kpi(st.eveningShare != null ? pct(st.eveningShare) : "–", "Anteil 17–22 Uhr", `${k(st.kwhDay * (st.eveningShare || 0))} pro Tag`)
+    + kpi(hl(st.peak.h), "Stärkste Stunde", `Ø ${k(st.peak.kwh)}`);
+  const ds = [];
+  if (st.we0) ds.push({ label: `Werktag (${nf(st.nWe0)} Tage)`, data: st.we0, backgroundColor: css("--sun"), order: 2 });
+  if (st.we1) ds.push({ label: `Wochenende (${nf(st.nWe1)} Tage)`, data: st.we1, backgroundColor: css("--batt"), order: 2 });
+  if (pv) ds.push({ type: "line", label: `Ø Vergleich ${dde(pv.from)}–${dde(pv.to)} (${nf(pv.n)} Tage)`, data: pv.avg, borderColor: css("--ink"), borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5, order: 0, stepped: "middle" });
+  chart("hd-chart", { type: "bar", data: { labels: Array.from({ length: 24 }, (_, h) => String(h)), datasets: ds },
+    options: { plugins: { ebTotals: false, tooltip: { callbacks: { title: c => hl(+c[0].label), label: c => `${c.dataset.label}: ${nf(c.parsed.y, 3)} kWh` } } },
+      scales: { x: { title: { display: true, text: "Uhrzeit" } }, y: { title: { display: true, text: "Ø kWh je Stunde" } } } } });
+  // Tagesverlauf: Tagesverbrauch, gemessene Tage hervorgehoben, gleitender Ø 7 und 30 Tage
+  const it = st.days.map(x => ({ y: x.kwh, w: 1 })), m7 = movingAvgN(it, 7, 4), m30 = movingAvgN(it, 30, 15);
+  chart("hd-trend", { type: "bar", data: { labels: st.days.map(x => x.d), datasets: [
+      { label: "Tag (Anker)", data: st.days.map(x => (x.src === "e" ? x.kwh : null)), backgroundColor: css("--grid-soft"), stack: "d", order: 2 },
+      { label: "Tag mit Stundenwerten", data: st.days.map(x => (x.src === "m" ? x.kwh : null)), backgroundColor: css("--sun"), stack: "d", order: 2 },
+      { type: "line", label: "Ø 7 Tage", data: m7, borderColor: css("--ink"), pointRadius: 0, borderWidth: 1.5, order: 0, spanGaps: true },
+      { type: "line", label: "Ø 30 Tage", data: m30, borderColor: css("--muted"), borderDash: [5, 4], pointRadius: 0, borderWidth: 1.5, order: 0, spanGaps: true }] },
+    options: { plugins: { ebTotals: false, tooltip: { callbacks: { title: c => dde(c[0].label), label: c => `${c.dataset.label}: ${nf(c.parsed.y, 2)} kWh` } } },
+      scales: { x: { stacked: true, ticks: { callback: function (v) { return dde(this.getLabelForValue(v)); }, maxTicksLimit: 10 } }, y: { title: { display: true, text: "kWh pro Tag" } } } } });
+  const src = prof && prof.src === "measured" ? `Lastprofil aus ${nf(C.houseMeasuredDays().length)} Messtagen (${Object.entries(prof.n).map(([g, n]) => `${({ W: "Winter", U: "Übergang", S: "Sommer" })[g[0]]} ${g.endsWith("we1") ? "Wochenende" : "Werktag"} ${n}`).join(", ")})`
+    : prof ? "gespeichertes Lastprofil" : "allgemeines Haushaltsprofil";
+  $("hd-note").innerHTML = `<p class="note"><b>${nf(st.measured)} Tage gemessen</b> (Stundenwerte), <b>${nf(st.est)} Tage geschätzt</b>: Tagesverbrauch laut Anker (Eigenverbrauch ohne Wallbox) × ${src}. Ohne Wärmepumpe (eigener Zähler). Geschätzte Tage zeigen nur die typische Form – einzelne Spitzen (Waschen, Kochen) sehen nur die Messtage.</p>`;
+}
 function renderPowerDay(){
   const days = C.powerDays(), sel = $("tp-day");
   if (!days.length) { $("tp-panel").hidden = true; return; } $("tp-panel").hidden = false;
@@ -1462,7 +1498,7 @@ function renderDyn(){
   S.dyn=S.dyn||{}; const d=S.dyn, R=C.dynTariff(), fl=[];
   if(S.gridPriceError) fl.push(flag(`Börsenpreise fehlen: bitte zuerst <code>docs/UPDATE_V60.sql</code> in Supabase ausführen (${esc(S.gridPriceError)}).`));
   else if(!R.n) fl.push(flag("Noch keine Börsenpreise gespeichert. Sie werden beim Öffnen der App automatisch geladen (oder unten „Börsenpreise laden“).",true));
-  if(!S.loadProfile) fl.push(flag("Kein eigenes Lastprofil hinterlegt – der Hausverbrauch wird mit einem allgemeinen Haushaltsprofil über den Tag verteilt.",true));
+  if(!C.houseProfile()) fl.push(flag("Kein eigenes Lastprofil hinterlegt – der Hausverbrauch wird mit einem allgemeinen Haushaltsprofil über den Tag verteilt.",true));
   $("dy-flags").innerHTML=fl.join("");
   const ev=R.cfg?.ev!==false;
   if(R.n){
@@ -1479,7 +1515,7 @@ function renderDyn(){
       +row("Speicher preisgesteuert",R.storage,d.gridCharge===false?"nur Verschieben des PV-Stroms in teure Stunden":"Netzladung in billigen Stunden, Entladen in teuren (nach Ladeverlust)")
       +row("Grundgebühren",fees,`fest ${eur(R.feesFix*yf)} gegen dynamisch ${eur(R.feesDyn*yf)} pro Jahr`)
       +`</tbody><tfoot><tr><td>Summe</td><td>${R.saving>=0?"+":"−"}${eur(Math.abs(R.saving*yf))}</td><td></td></tr></tfoot>`;
-    $("dy-note").innerHTML=`Modellrechnung mit perfekter Kenntnis der Day-Ahead-Preise (die gibt es am Vortag ab ~13 Uhr) und des Verbrauchsprofils – in der Praxis eher etwas weniger. Hausverbrauch je Tag gemessen, über den Tag nach ${S.loadProfile?"deinem Lastprofil":"einem allgemeinen Profil"} verteilt; PV als Sonnenkurve. Ohne Wärmepumpe (eigener Zähler und Tarif). Einspeisung ohne Vergütung.`;
+    $("dy-note").innerHTML=`Modellrechnung mit perfekter Kenntnis der Day-Ahead-Preise (die gibt es am Vortag ab ~13 Uhr) und des Verbrauchsprofils – in der Praxis eher etwas weniger. Hausverbrauch je Tag gemessen, über den Tag nach ${C.houseProfile()?"deinem Lastprofil":"einem allgemeinen Profil"} verteilt (Tage mit gemessenen Stundenwerten mit ihrer echten Form); PV als Sonnenkurve. Ohne Wärmepumpe (eigener Zähler und Tarif). Einspeisung ohne Vergütung.`;
     const ks=Object.keys(R.months).sort(), fm=k=>R.months[k].n/R.n;
     chart("dy-months",{type:"bar",data:{labels:ks.map(monthLabel),datasets:[
       {label:"Fester Vertrag",data:ks.map(k=>R.months[k].fix+R.feesFix*fm(k)),backgroundColor:css("--muted")},
@@ -1652,7 +1688,7 @@ let current="p-overview"; const rendered={};
 const NAV=[["","p-quick"],["","p-overview"],["Energie",["p-pv","p-batt","p-hp","p-meter"]],["Geld",["p-fin","p-cost","p-amort","|Planung","p-tarif","p-dyn","p-ausbau"]],
   ["Auswertung",["p-co2","p-rel"]],["Auto",["p-log","p-car"]],["⚙",["p-data"]]];
 // v0.48: je Seite ab diesem Block (Index der direkten Kinder) eingeklappt unter „Mehr anzeigen“; fehlt = nichts einklappen
-const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":6,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
+const MORE_FROM={"p-overview":5,"p-fin":4,"p-pv":4,"p-batt":4,"p-meter":7,"p-hp":4,"p-co2":5,"p-cost":4,"p-ausbau":4,"p-log":5,"p-data":6};
 const pageTitle=id=>document.getElementById(id).dataset.title, pageColor=id=>(PAGES.find(p=>p[0]===id)||[])[1]||"--muted";
 const navLink=(id,cls="")=>`<a href="#${id.slice(2)}" data-p="${id}"${cls?` class="${cls}"`:""}><span class="dot" style="background:var(${pageColor(id)})"></span>${pageTitle(id)}</a>`;
 function buildNav(){
@@ -1700,7 +1736,7 @@ function show(id){
 function rerender(first=false){
   try{ renderPeriodBar(); }catch(err){ console.error(err); }
   try{
-    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderPowerDay(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
+    ({ "p-quick":renderQuick, "p-overview":()=>{ renderOverview(); renderOvWeather(); renderOvCo2(); }, "p-fin":renderFinance, "p-pv":()=>{ renderPV(); renderWxPv(); renderStages(); renderPvForecast(); }, "p-batt":()=>renderBattery(first), "p-meter":()=>{ renderMeters(); renderDevices(); renderHouseDay(); renderPowerDay(); renderPrograms(); renderWater(); }, "p-hp":()=>{ renderWpCompare(); renderHp(); renderHpDay(); renderWxWp(); renderClimate(); }, "p-rel":renderRelations, "p-co2":renderCo2, "p-cost":()=>{ renderCosts(); renderEvHome(); }, "p-tarif":renderTarif,
        "p-amort":()=>renderAmort(first), "p-dyn":renderDyn, "p-ausbau":renderAusbau, "p-car":()=>renderCar(first), "p-log":()=>{ renderLease(); renderLog(); }, "p-data":()=>{ renderData(); renderWxData(); renderHpImport(); renderDevImport(); renderClimImport(); } })[current]();
   }catch(err){ console.error(err); $("main").insertAdjacentHTML("afterbegin",flag("Fehler bei der Berechnung: "+esc(err.message))); }
   afterRender();
