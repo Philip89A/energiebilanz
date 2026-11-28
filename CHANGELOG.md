@@ -867,3 +867,11 @@
 - Korrektur: „heutiger Preis“ ist der Tarif am letzten Messtag, nicht ein bereits eingetragener künftiger Tarif.
 - Keine Datenbankänderung. Tests: `tests/v63.test.mjs`, `scripts/v63-check.mjs`.
 
+## v0.64 – Retoure und Verkauf mit dem Kauf verrechnen
+- Neue Spalte „Gruppe“ in der Investitionstabelle (Datenbank: `docs/UPDATE_V64.sql`). Kauf, Verkauf, Erstattung und
+  Rücksendekosten mit demselben Gruppennamen gehören zusammen.
+- „Was ist schon abbezahlt?“: Eine Gruppe erscheint als eine Zeile. Netto ≤ 0 → ↩ erledigt (Monat der letzten Buchung, ggf.
+  mit Plus); netto > 0 → Restposten über den Verlust, der wie ein Kauf abbezahlt wird. Gruppierte Rückflüsse gehen nicht mehr
+  in das allgemeine Guthaben. Break-even und Summen bleiben unverändert.
+- Tests: `tests/v64.test.mjs`, `scripts/v64-check.mjs`.
+

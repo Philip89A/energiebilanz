@@ -221,6 +221,7 @@ ol.rel-top{margin:8px 0 0 18px;padding:0;line-height:1.5}ol.rel-top li{margin:4p
 .pay-list .sub{font-size:12px;color:var(--muted)}
 .pay-list .st{text-align:right;white-space:nowrap}
 .pay-list li.paid .ic{color:var(--ok)}
+.pay-list li.settled{opacity:.7}.pay-list li.settled .ic{color:var(--muted)}
 .pay-list li.next .st,.pay-list li.later .st{font-style:italic;color:var(--muted)}
 .pay-list li.current{background:color-mix(in srgb,var(--sun) 8%,transparent)}
 .pay-list .pbar{grid-column:2/-1;height:8px;border-radius:4px;background:var(--grid-soft);overflow:hidden}
