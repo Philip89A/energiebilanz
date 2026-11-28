@@ -2,7 +2,7 @@
 // api.energy-charts.info/price?bzn=DE-LU, über die Edge Function „grid-co2“ (&kind=price). Seit Oktober 2025 liefert die
 // Börse Viertelstundenwerte; ausgewertet wird je Ortsstunde (Europe/Berlin) als Mittelwert in €/MWh. Negative Preise
 // sind möglich und bleiben erhalten. Antwortformat tolerant: Zeitachse unix_seconds/…, Werte price/data/values.
-import { localDayHour } from './gridco2.js?v=0.61.0';
+import { localDayHour } from './gridco2.js?v=0.62.0';
 const isoDay = d => d.toISOString().slice(0, 10);
 const addD = (s, n) => isoDay(new Date(Date.parse(s + 'T00:00:00Z') + n * 864e5));
 const pickArr = (o, keys) => { for (const k of keys) if (Array.isArray(o?.[k]) && o[k].length) return o[k]; return null; };

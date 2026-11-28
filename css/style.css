@@ -213,3 +213,16 @@ ol.rel-top{margin:8px 0 0 18px;padding:0;line-height:1.5}ol.rel-top li{margin:4p
 .cal-row i{display:block;aspect-ratio:1;border-radius:2px}.cal-row i.e{box-shadow:inset 0 0 0 1px var(--line)}.cal-row i.x{visibility:hidden}
 .cal-head b{font-size:10px;font-weight:400;color:var(--muted);text-align:center;overflow:visible;white-space:nowrap}
 #pv-heat{overflow:hidden}
+/* v0.62: Abzahlungsliste */
+.pay-list{list-style:none;margin:12px 0 0;padding:0}
+.pay-list li{display:grid;grid-template-columns:28px minmax(0,1fr) auto;gap:4px 10px;align-items:start;padding:9px 0;border-top:1px solid var(--line)}
+.pay-list .ic{font-size:16px;line-height:20px;text-align:center}
+.pay-list .nm{display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.pay-list .sub{font-size:12px;color:var(--muted)}
+.pay-list .st{text-align:right;white-space:nowrap}
+.pay-list li.paid .ic{color:var(--ok)}
+.pay-list li.next .st,.pay-list li.later .st{font-style:italic;color:var(--muted)}
+.pay-list li.current{background:color-mix(in srgb,var(--sun) 8%,transparent)}
+.pay-list .pbar{grid-column:2/-1;height:8px;border-radius:4px;background:var(--grid-soft);overflow:hidden}
+.pay-list .pbar i{display:block;height:100%;background:var(--sun)}
+

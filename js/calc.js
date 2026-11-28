@@ -8,8 +8,8 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.61.0';
-import { dynSim, DYN_DEFAULTS, profileKey, profileFor } from './dyn.js?v=0.61.0';
+import { hpSum } from './hp.js?v=0.62.0';
+import { dynSim, DYN_DEFAULTS, profileKey, profileFor } from './dyn.js?v=0.62.0';
 // v0.61: Pseudo-Gerät für gemessene Stundenwerte des ganzen Haushalts (Allgemeinstrom ohne Wärmepumpe), z. B. aus Anker-Screenshots
 export const HAUS_ID = '_haus';
 
@@ -508,6 +508,36 @@ export function createCalc(S) {
     });
     if (!days.length) return { n: 0, fixed, cap, cfg: c };
     return { ...dynSim(days, { cfg: c, fixed, cap, profile: houseProfile() }), n: days.length, from: days[0].d, to: days[days.length - 1].d, fixed, cap, cfg: c, evDay };
+  }
+  // v0.62: Was ist schon abbezahlt? Die kumulierte Ersparnis (inkl. Erstattungen) plus Verkaufserlöse wird Monat für Monat
+  // auf die gekauften Posten verteilt – order 'date': ältester Kauf zuerst, 'cheap': günstigster zuerst. Ein Posten bekommt
+  // erst ab seinem Kaufmonat Geld. Ab dem letzten gemessenen Monat gilt die Prognose.
+  function amortPayoff(order = 'date', opt = {}) {
+    const tl = opt.tl || amortTimeline(opt), raw = S.invest.filter(x => x.cat !== 'refund').map(x => ({ ...x, date: x.date || A.dates[0] }));
+    const sales = raw.filter(x => (+x.cost || 0) < 0), items = raw.filter(x => (+x.cost || 0) > 0)
+      .map(x => ({ id: x.id, name: x.name, cat: x.cat, date: x.date, cost: +x.cost, paid: 0, paidK: null, proj: false }));
+    const prio = order === 'cheap' ? (a, b) => a.cost - b.cost || a.date.localeCompare(b.date) : (a, b) => a.date.localeCompare(b.date) || a.cost - b.cost;
+    items.sort(prio);
+    const nowIdx = tl.labels.indexOf(tl.lastK); let snap = null;
+    for (let j = 0; j < tl.labels.length; j++) {
+      const k = tl.labels[j], me = monthEnd(k);
+      const credit = tl.cumS[j] - sales.filter(x => x.date <= me).reduce((a, x) => a + +x.cost, 0);
+      // Abbezahltes bleibt abbezahlt; der Rest wird jeden Monat neu nach Rangfolge auf die bereits gekauften Posten verteilt
+      let r = credit - items.filter(x => x.paidK).reduce((a, x) => a + x.cost, 0);
+      for (const it of items) { if (it.paidK) continue; if (it.date > me) { it.paid = 0; continue; }
+        it.paid = Math.max(0, Math.min(r, it.cost)); r -= it.paid;
+        if (it.cost - it.paid <= 1e-6) { it.paidK = k; it.proj = !!tl.proj[j]; } }
+      if (j === nowIdx) snap = { credit, paid: Object.fromEntries(items.map(x => [x.id, x.paid])) };
+    }
+    if (!snap) snap = { credit: 0, paid: {} };
+    const total = items.reduce((a, x) => a + x.cost, 0), out = items.map(x => {
+      const now = snap.paid[x.id] || 0, done = x.paidK && !x.proj;
+      return { ...x, paidNow: now, rest: x.cost - now, pct: x.cost ? now / x.cost : 0,
+        state: done ? 'paid' : now > 1e-6 ? 'current' : x.paidK ? 'next' : 'later' }; });
+    const byDate = [...out].sort((a, b) => (a.paidK || '9999').localeCompare(b.paidK || '9999') || a.date.localeCompare(b.date));
+    return { order, items: out, byDate, n: out.length, nPaid: out.filter(x => x.state === 'paid').length, total,
+      covered: out.reduce((a, x) => a + x.paidNow, 0), credit: snap.credit, nowK: tl.lastK, endK: tl.labels[tl.labels.length - 1],
+      sales: sales.reduce((a, x) => a - +x.cost, 0) };
   }
   function investTotal() { return S.invest.filter(x => x.cat !== 'refund').reduce((a, b) => a + (+b.cost || 0), 0); }
 
@@ -1570,7 +1600,7 @@ export function createCalc(S) {
     A, IMPORT_START, sumRange, last12, groupSeries, tariffAt, currentTariff, costs, last365Cost, feedValue, pvSavings,
     lastDataDay, firstDataDay, periodOf, periodKeys, currentPeriods, valueAt, periodCost, metrics, flow, ankerSeries, battery,
     pubTariff, pubTariffAt, pubNames, pubList, pubYearCost, pubEff, evHomeYear, dynTariff,
-    amortTimeline, investTotal, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
+    amortTimeline, investTotal, amortPayoff, abschlagAt, abschlagCheck, odoPoints, kmDaily, carCostItems, ledger12, carKpis,
     fuelStats, fuelPrice, icePrice, carCalc, finData, finYears, meterReconciliation, feedReconciliation, wpSwap,
     paymentSuggestions, billingPeriods, tariffBase, boniOf, boniInfo, energyBalance, ausbauBase, homeCharging, fuelStatsIn, wallboxFrom, evAbschlagHint,
     W, leaseKm, addMonths, powerDays, powerDayProfile, powerDayAverage, houseProfile, houseMeasuredDays, houseDays, houseDayStats, degreeDays, wpWeather, pvWeather, weatherNote, hpRows, hpMonths, hpYear, hpDays, hpDayRows, hpPeriod, hpHourDays, hpDayProfile, hpDayAverage, wpDegreeDay, pvForecast, stageAt, kwpIn, usableIn, stageEffects, waterStats, co2Range, co2Devices, gridProfile, co2Grey, co2Levers, co2Cfg, mixAt, trendModel, trendRest, trendBacktest, trendMonths, bestMethod, deviceWater, deviceSum, programMonths, programSummary, isWash, deviceStats, deviceAlerts, deviceSeries, climateStats, climateSeries, climateProfile, relations, fitLine,
