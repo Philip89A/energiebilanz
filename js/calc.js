@@ -8,8 +8,8 @@
 //           abschlaege, invest, fuel, charges, carlog, battery, pv, amort, cars }
 //   stateFromDb(db) wandelt Supabase-Zeilen in diese Form um.
 
-import { hpSum } from './hp.js?v=0.62.0';
-import { dynSim, DYN_DEFAULTS, profileKey, profileFor } from './dyn.js?v=0.62.0';
+import { hpSum } from './hp.js?v=0.63.0';
+import { dynSim, DYN_DEFAULTS, profileKey, profileFor } from './dyn.js?v=0.63.0';
 // v0.61: Pseudo-Gerät für gemessene Stundenwerte des ganzen Haushalts (Allgemeinstrom ohne Wärmepumpe), z. B. aus Anker-Screenshots
 export const HAUS_ID = '_haus';
 
@@ -433,6 +433,14 @@ export function createCalc(S) {
   }
 
   /* Amortisation entlang der Investitionsdaten */
+  const mDiff = (a, b) => (+b.slice(0, 4) - +a.slice(0, 4)) * 12 + (+b.slice(5, 7) - +a.slice(5, 7));
+  // v0.63: nächster Arbeitspreis Allgemeinstrom nach Tag d: eingetragener künftiger Tarif oder Annahme der Amortisation
+  function apNext(d) {
+    const f = S.tariffs.filter(t => t.group === 'as' && !tariffEmpty(t) && t.from > d).sort((a, b) => a.from.localeCompare(b.from))[0];
+    if (f) return { ap: +f.ap, from: f.from, src: 'tariff', name: f.name };
+    const am = S.amort || {};
+    return +am.apNext > 0 && am.apNextFrom && am.apNextFrom > d ? { ap: +am.apNext, from: am.apNextFrom, src: 'amort' } : null;
+  }
   function amortTimeline(opt = {}) {
     const choice = opt.pub;
     const am = S.amort, items = S.invest.filter(x => x.cat !== 'refund').map(x => ({ ...x, date: x.date || A.dates[0] })).sort((a, b) => a.date.localeCompare(b.date));
@@ -451,8 +459,11 @@ export function createCalc(S) {
     // v0.58: je Monat Ersparnis gegenüber dem Vergleichstarif (kWh, Grundgebühr) plus Marge aus Fremdladungen
     if (wbFrom) for (let mk = monthKey(wbFrom); mk <= lastK; mk = nextMonth(mk)) {
       const h = homeCharging([`${mk}-01`, wbFrom].sort()[1], monthEnd(mk), choice); wbK[mk] = h.saving + h.guest.margin; }
-    const tb = wbFrom ? tariffBase() : null, apNow = (currentTariff('as')?.ap || 0) / 100, pubNow = pubTariff(lastD, choice);
-    const wbYear = tb ? pubYearCost(pubNow, tb.evHome) - tb.evHome * apNow : 0, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
+    const tb = wbFrom ? tariffBase() : null, apNow = ((tariffAt('as', lastD) || currentTariff('as'))?.ap || 0) / 100, pubNow = pubTariff(lastD, choice);
+    // v0.63: neuer Arbeitspreis in der Prognose – ein eingetragener künftiger Tarif (gültig nach dem letzten Messtag) geht vor,
+    // sonst die Annahme amort.apNext ab amort.apNextFrom. Die Preissteigerung läuft ab dem Wechsel von diesem Preis weiter.
+    const nextAp = apNext(lastD), nextK = nextAp ? monthKey(nextAp.from) : null, apRatio = nextAp && apNow > 0 ? nextAp.ap / 100 / apNow : 1;
+    const wbYear = tb ? pubYearCost(pubNow, tb.evHome) - tb.evHome * apNow : 0, wbYearNext = tb && nextAp ? pubYearCost(pubNow, tb.evHome) - tb.evHome * nextAp.ap / 100 : wbYear, wbStartK = wbFrom ? monthKey([wbFrom, ev.start || wbFrom].sort()[1]) : null;
     // Erstattungen/Gutschriften (v0.18): gebuchte Beträge als Ersparnis im Monat des Eingangs. Prognose für §14a (Wert der
     // Ausbau-Seite, ab Wallbox und Übergabe) und THG-Prämie (Auto-Vergleich, ab Übergabe), jeweils frühestens 12 Monate
     // nach der letzten gebuchten Gutschrift dieser Art (Name enthält „14a“ bzw. „THG“), damit nichts doppelt zählt.
@@ -477,10 +488,11 @@ export function createCalc(S) {
       let v;
       if (k <= lastK) { v = (act[k] || 0) + (wbK[k] || 0) + (refK[k] || 0); if (k === lastK) idxLast = j; }
       else {
-        const yrs = (j - (idxLast ?? j)) / 12, cm = k.slice(5, 7);
-        v = (prof[cm] || 0) * Math.pow(1 + am.priceInc / 100, yrs) * Math.pow(1 - am.degr / 100, yrs);
+        const yrs = (j - (idxLast ?? j)) / 12, cm = k.slice(5, 7), nx = nextK && k >= nextK;
+        const g = Math.pow(1 + am.priceInc / 100, nx ? Math.max(0, mDiff(nextK, k)) / 12 : yrs);   // Preissteigerung, nach Wechsel ab neuem Preis
+        v = (prof[cm] || 0) * (nx ? apRatio : 1) * g * Math.pow(1 - am.degr / 100, yrs);
         const fd = `${k}-15`; if (am.feedin && (!am.feedinFrom || fd >= am.feedinFrom)) v += (profFeed[cm] || 0) * am.feedin / 100;
-        if (wbStartK && k >= wbStartK) v += wbYear / 12 * Math.pow(1 + am.priceInc / 100, yrs);
+        if (wbStartK && k >= wbStartK) v += (nx ? wbYearNext : wbYear) / 12 * g;
         v += (refK[k] || 0) + (s14K && k >= s14K ? s14Year / 12 : 0) + (thgK && k >= thgK ? thgYear / 12 : 0);
       }
       cs += v; const me = monthEnd(k), ci = items.filter(x => x.date <= me).reduce((s, x) => s + (+x.cost || 0), 0);
@@ -488,7 +500,7 @@ export function createCalc(S) {
       if (be === null && ci > 0 && cs >= ci && j > 0) be = k;
       k = nextMonth(k);
     }
-    return { labels, cumS, cumI, proj, be, startK, lastK, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK, pub: pubNow,
+    return { labels, cumS, cumI, proj, be, startK, lastK, apNow, nextAp, wbFrom, wbYear, refunds, s14Year, s14K, thgYear, thgK, pub: pubNow,
       pubEff: tb && tb.evHome > 0 ? pubYearCost(pubNow, tb.evHome) / tb.evHome : +pubNow.ap || 0 };
   }
   // v0.60: Simulation dynamischer Tarif über die letzten `days` Tage mit Anker-Daten und Börsenpreisen. Hausverbrauch =

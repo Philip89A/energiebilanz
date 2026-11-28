@@ -857,3 +857,13 @@
 - Kennzahlen: Käufe abbezahlt, gedeckter Betrag, aktuell in Abzahlung, nächster abbezahlt.
 - Keine Datenbankänderung. Tests: `tests/v62.test.mjs`, `scripts/v62-check.mjs`.
 
+## v0.63 – Neuer Arbeitspreis in der Amortisationsprognose
+- Unter Amortisation → Annahmen: „Neuer Arbeitspreis ab“ (Datum) und „Neuer Arbeitspreis ct/kWh“. Ab diesem Monat rechnet
+  die Prognose die PV-Ersparnis mit dem neuen Preis (Verhältnis neu/heute) und die Wallbox-Ersparnis gegenüber öffentlichem
+  Laden mit dem neuen Preis; die Strompreissteigerung läuft ab dem Wechsel von diesem Preis weiter. Leer = wie heute.
+- Ist der Folgevertrag als Tarif (Allgemeinstrom) mit Beginn in der Zukunft eingetragen, gilt automatisch dieser.
+- Hinweis über den Kennzahlen, solange ein neuer Preis die Prognose verändert. Break-even und „Was ist schon abbezahlt?“
+  verschieben sich entsprechend.
+- Korrektur: „heutiger Preis“ ist der Tarif am letzten Messtag, nicht ein bereits eingetragener künftiger Tarif.
+- Keine Datenbankänderung. Tests: `tests/v63.test.mjs`, `scripts/v63-check.mjs`.
+
