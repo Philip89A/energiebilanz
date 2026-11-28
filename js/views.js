@@ -3,15 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.61.0';
-import { parseNum } from './queue.js?v=0.61.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.61.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.61.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.61.0';
-import { explainAll } from './explain.js?v=0.61.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.61.0';
-import { fetchGridPrice } from './gridprice.js?v=0.61.0';
-import { DYN_DEFAULTS } from './dyn.js?v=0.61.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.62.0';
+import { parseNum } from './queue.js?v=0.62.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.62.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.62.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.62.0';
+import { explainAll } from './explain.js?v=0.62.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.62.0';
+import { fetchGridPrice } from './gridprice.js?v=0.62.0';
+import { DYN_DEFAULTS } from './dyn.js?v=0.62.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1411,7 +1411,7 @@ function renderAmort(first){
     kpi(eur(realized+wbAll+refAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll+refAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}${refAll?`, davon Erstattungen ${eur(refAll)}`:""}`);
   const fc=[tl.s14K?`§14a-Gutschrift ${eur(tl.s14Year)} pro Jahr ab ${monthLabel(tl.s14K)} (Wert der Ausbau-Seite)`:"", tl.thgK?`THG-Prämie ${eur(tl.thgYear)} pro Jahr ab ${monthLabel(tl.thgK)} – nicht durch die Investition verursacht, sie gibt es für jedes E-Auto`:""].filter(Boolean);
   $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den eigenen Ladevorgängen „zu Hause“ gegenüber ${esc(tl.pub.name)} (kWh × Preis − Arbeitspreis, dazu die Grundgebühr je Monat ab Übergabe), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich, effektiv ${nf(tl.pubEff,2)} €/kWh öffentlich inkl. Grundgebühr. Solarstrom im Auto steckt bereits in der PV-Ersparnis; Fremdladungen zählen mit ihrer Marge (Erstattung − kWh × Arbeitspreis).`, true) : "");
-  renderPub(tl);
+  renderPub(tl); renderPayoff(tl);
   $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
     S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td><td></td></tr>`:""}</tfoot>`;
   renderOffers();
@@ -1436,6 +1436,25 @@ function renderAmort(first){
     {label:"Investition kumuliert",data:tl.cumI,borderColor:css("--ink"),backgroundColor:css("--ink"),pointRadius:0,borderWidth:1.5,stepped:true}]},
     options:{plugins:{tooltip:numTip("€")},scales:{x:{ticks:{maxTicksLimit:12}},y:{title:{display:true,text:"€"}}}}});
 }
+
+/* ---------- Was ist schon abbezahlt? (v0.62) ---------- */
+function renderPayoff(tl=C.amortTimeline()){
+  const ui=S.ui, order=ui.payOrder==="cheap"?"cheap":"date", r=C.amortPayoff(order,{tl}), sel=$("am-pay-order");
+  sel.value=order;
+  if(!r.n||!tl.labels?.length){ $("am-pay-panel").hidden=true; return; } $("am-pay-panel").hidden=false;
+  const cur=r.items.find(x=>x.state==="current"), nxt=r.byDate.find(x=>x.state==="next"||x.state==="later");
+  $("am-pay-kpis").innerHTML =
+    kpi(`${nf(r.nPaid)} von ${nf(r.n)}`,"Käufe abbezahlt",`Stand ${monthLabel(r.nowK)} (laufender Monat hochgerechnet)`) +
+    kpi(eur(r.covered),"davon gedeckt",`von ${eur(r.total)} Kaufsumme (${pct(r.total?r.covered/r.total:0)})${r.sales?`; Verkäufe ${eur(r.sales)} eingerechnet`:""}`) +
+    kpi(cur?pct(cur.pct):"–","Aktuell in Abzahlung",cur?`${esc(short(cur.name))}, noch ${eur(cur.rest)}`:"kein Kauf teilweise abbezahlt") +
+    kpi(nxt&&nxt.paidK?monthLabel(nxt.paidK):"–","Nächster abbezahlt",nxt?(nxt.paidK?`${esc(short(nxt.name))} (Prognose)`:`${esc(short(nxt.name))}: nicht bis ${monthLabel(r.endK)}`):"alles abbezahlt");
+  const ic={paid:"✅",current:"◐",next:"○",later:"○"};
+  $("am-pay-list").innerHTML=r.byDate.map(x=>{
+    const st=x.state==="paid"?`abbezahlt ${monthLabel(x.paidK)}`:x.state==="current"?`${pct(x.pct)} · noch ${eur(x.rest)}${x.paidK?`<div class="sub">voraussichtlich ${monthLabel(x.paidK)}</div>`:""}`
+      :x.paidK?`voraussichtlich ${monthLabel(x.paidK)}`:`nicht bis ${monthLabel(r.endK)}`;
+    return `<li class="${x.state}"><span class="ic" aria-hidden="true">${ic[x.state]}</span><div><div class="nm">${esc(x.name)}</div><div class="sub">gekauft ${dde(x.date)} · ${eur(x.cost,2)}</div></div><div class="st">${st}</div>${x.state==="current"?`<div class="pbar"><i style="width:${(x.pct*100).toFixed(1)}%"></i></div>`:""}</li>`; }).join("");
+}
+const short=t=>{ t=String(t||""); const c=t.split(/[,–(]/)[0].trim(); return c.length>42?c.slice(0,40)+"…":c; };
 
 /* ---------- Vergleich öffentliches Laden (v0.58) ---------- */
 const PUB_FIELDS=[["name","Tarif","text"],["from","gültig ab","date"],["ap","€/kWh","0.01"],["fee","Grundgebühr €/Monat","0.01"]];
@@ -1761,7 +1780,8 @@ function renderData(){
       <td class="l"><input type="text" value="${esc(e.text||"")}" data-ev="${e.id}" data-k="text" style="min-width:260px"></td>
       <td><button class="x" data-ev-del="${e.id}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody>`:"";
 }
-function wireTrend(){ $("tr-g").addEventListener("change",renderTrend); }
+function wireTrend(){ $("tr-g").addEventListener("change",renderTrend);
+  $("am-pay-order").addEventListener("change",ev=>{ S.ui.payOrder=ev.target.value; persist(); renderPayoff(); }); }
 function wireEvents(){
   $("ev-add").addEventListener("click",()=>{
     const d=$("ev-d").value, text=$("ev-text").value.trim();
@@ -1787,7 +1807,7 @@ function wireEvents(){
 /* ---------- Nach jedem Rendern ---------- */
 // Nur lesen (body.ro, ab v0.14 Gastzugang): alle Eingaben in den Seiten sperren, außer Zeitraum und Anzeige-Auswahl
 const GUEST_DENY = new Set(["hp-file","csv-file","seed-file","seed-replace","dv-file","rk-file"]);   // Importe sind Schreiben
-const VIEW_INPUTS = new Set(["tp-day","tp-avg","hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
+const VIEW_INPUTS = new Set(["am-pay-order","tp-day","tp-avg","hpd-a","hpd-b","hp-file","dv-file","rk-file","rk-metric","rk-room","pb-mode","pb-key","pb-from","pb-to","pb-cmp","pb-cfrom","pb-cto","rd-filter","mt-yoy-g","lg-car","lg-gran","tr-g","pg-dev","pg-metric","csv-file","seed-file","seed-replace"]);
 function afterRender(){
   document.querySelectorAll("[data-sm]").forEach(e=>e.textContent=dde(IMPORT_START()));
   document.querySelectorAll("details.more").forEach(updMore);

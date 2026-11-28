@@ -846,3 +846,14 @@
 - Dynamischer Tarif: nutzt dieses Profil; an Messtagen die echte Tagesform.
 - Keine Datenbankänderung (Tabelle `device_hourly` gibt es seit v0.56).
 - Tests: `tests/v61.test.mjs`, `scripts/v61-check.mjs`.
+
+## v0.62 – Was ist schon abbezahlt?
+- Neuer Abschnitt auf der Seite Amortisation: Die kumulierte Ersparnis (mit Erstattungen) und Verkaufserlöse werden Monat für
+  Monat auf die Käufe verteilt. Liste nach Datum der Abzahlung: ✅ abbezahlt (Monat), ◐ aktuell in Abzahlung (Fortschritt,
+  Restbetrag), ○ voraussichtlich abbezahlt (Prognose aus der Amortisationsgrafik) oder nicht im Betrachtungszeitraum.
+- Umschalter „Verrechnung“: ältester Kauf zuerst (Standard) oder günstigster Kauf zuerst. Abbezahlte Käufe bleiben
+  abbezahlt, das übrige Guthaben wird jeden Monat neu nach der gewählten Reihenfolge verteilt; ein Kauf bekommt erst ab
+  seinem Kaufmonat etwas ab. Die Wahl gilt je Gerät.
+- Kennzahlen: Käufe abbezahlt, gedeckter Betrag, aktuell in Abzahlung, nächster abbezahlt.
+- Keine Datenbankänderung. Tests: `tests/v62.test.mjs`, `scripts/v62-check.mjs`.
+

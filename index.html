@@ -13,8 +13,8 @@
 <meta name="apple-mobile-web-app-title" content="Energiebilanz">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Energiebilanz</title>
-<meta name="app-version" content="0.61.0">
-<link rel="stylesheet" href="css/style.css?v=0.61.0">
+<meta name="app-version" content="0.62.0">
+<link rel="stylesheet" href="css/style.css?v=0.62.0">
 <script>
   // Lade- und Laufzeitfehler sichtbar machen, statt eine halb leere Seite zu zeigen
   function ebError(msg) {
@@ -384,6 +384,12 @@
     <div class="panel" style="grid-column:1/-1"><h2>Vergleich öffentliches Laden</h2><p class="note">Ohne Wallbox würde öffentlich geladen. Die Ersparnis der Wallbox ist der Preis des Vergleichstarifs (je kWh und Grundgebühr) minus Arbeitspreis zu Hause.</p><div id="am-pub"></div></div>
   </div>
   <div class="panel" style="margin-top:16px"><h2>Kumulierte Ersparnis gegen Investition</h2><p class="note">Monatsgenau ab der ersten Investition. Die Investitionslinie steigt zu den eingetragenen Kaufdaten und fällt bei Verkäufen. Durchgezogen: gemessene Ersparnis, gestrichelt: Prognose aus den letzten 12 Monaten mit Preissteigerung und Leistungsverlust.</p><div class="chart tall"><canvas id="am-chart"></canvas></div></div>
+  <div class="panel" style="margin-top:16px" id="am-pay-panel"><h2>Was ist schon abbezahlt?</h2>
+    <p class="note">Die bisherige Ersparnis (mit Erstattungen) und Verkaufserlöse werden Monat für Monat auf die Käufe verteilt. Ein Kauf bekommt erst ab seinem Kaufmonat etwas ab. Nach dem letzten gemessenen Monat gilt die Prognose der Grafik oben.</p>
+    <div class="form" style="max-width:420px;margin-top:8px"><label class="f">Verrechnung<select id="am-pay-order"><option value="date">ältester Kauf zuerst</option><option value="cheap">günstigster Kauf zuerst</option></select></label></div>
+    <div class="grid g4" id="am-pay-kpis" style="margin-top:12px"></div>
+    <ol class="pay-list" id="am-pay-list"></ol>
+  </div>
 </section>
 
 <section id="p-dyn" data-title="Dynamischer Tarif" hidden>
@@ -563,8 +569,8 @@
 </div>
 </div>
 
-<script src="vendor/supabase.js?v=0.61.0"></script>
-<script src="vendor/chart.umd.js?v=0.61.0"></script>
-<script type="module" src="js/app.js?v=0.61.0"></script>
+<script src="vendor/supabase.js?v=0.62.0"></script>
+<script src="vendor/chart.umd.js?v=0.62.0"></script>
+<script type="module" src="js/app.js?v=0.62.0"></script>
 </body>
 </html>
