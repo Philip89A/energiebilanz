@@ -161,3 +161,12 @@ Beide Skripte kann man gefahrlos mehrfach ausführen.
    ~13 Abrufe, danach nur neue Tage).
 4. **Geld → Dynamischer Tarif**: Annahmen prüfen (Netzentgelt und Grundpreis aus dem Preisblatt des Netzbetreibers).
 
+
+# Update v0.64 (Gruppen für Retoure und Verkauf)
+1. SQL Editor (https://supabase.com/dashboard/project/iweelkcxmqdycmotchxh/sql/new) → New query → Inhalt von
+   `docs/UPDATE_V64.sql` (https://raw.githubusercontent.com/Philip89A/energiebilanz/main/docs/UPDATE_V64.sql) → **Run**.
+   Kontrolle: `grp | text`.
+2. Pull Request mergen, App neu laden (v0.64.0).
+3. **Geld → Amortisation → Investition**: In der neuen Spalte „Gruppe“ Kauf und zugehörigen Verkauf, Erstattung und
+   Rücksendekosten mit demselben Namen versehen (z. B. „Smart Plugs“). „Was ist schon abbezahlt?“ zeigt die Gruppe dann als
+   erledigt (↩) oder als Restposten.

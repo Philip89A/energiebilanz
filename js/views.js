@@ -3,15 +3,15 @@
 //  - S/A kommen aus setModel(), Ansicht und UI-Auswahl (S.view, S.ui) je Gerät im localStorage
 //  - private Details in Texten (Anbieter, Daten, Geräteaufbau) durch Werte aus den Daten oder neutral ersetzt
 //  - Bearbeiten (v0.5): Handler der Referenz, jede Änderung wird als einzelner Datensatz nach Supabase geschrieben
-import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.62.0';
-import { parseNum } from './queue.js?v=0.62.0';
-import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.62.0';
-import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.62.0';
-import { parseHpCsv, hpSum } from './hp.js?v=0.62.0';
-import { explainAll } from './explain.js?v=0.62.0';
-import { fetchGridCo2 } from './gridco2.js?v=0.62.0';
-import { fetchGridPrice } from './gridprice.js?v=0.62.0';
-import { DYN_DEFAULTS } from './dyn.js?v=0.62.0';
+import { createCalc, shiftYear, weekKey, monthEnd, carBucket, toDb, tarifRechner, parseBoniNote, ausbauRechner, AUSBAU_DEFAULTS, abschlagEmpty, tariffEmpty, movingAvgN, movingAvg, offerSums, offerShare, offerBookingRows, OFFER_DUES, OFFER_ALLOC } from './calc.js?v=0.64.0';
+import { parseNum } from './queue.js?v=0.64.0';
+import { geocode, fetchDays, fetchForecast } from './weather.js?v=0.64.0';
+import { parseTapoCsv, tapoDeviceName, parseMerossSheets, monthRows, diffDevice, parseClimateCsv, goveeRoomName } from './import.js?v=0.64.0';
+import { parseHpCsv, hpSum } from './hp.js?v=0.64.0';
+import { explainAll } from './explain.js?v=0.64.0';
+import { fetchGridCo2 } from './gridco2.js?v=0.64.0';
+import { fetchGridPrice } from './gridprice.js?v=0.64.0';
+import { DYN_DEFAULTS } from './dyn.js?v=0.64.0';
 const hpSumOne = r => hpSum([r]);
 
 let S = null, A = null, C = null;
@@ -1410,10 +1410,13 @@ function renderAmort(first){
     kpi(tl.be?monthLabel(tl.be):"–","Break-even", tl.be?`${nf(beYears,1)} Jahre nach der ersten Investition`:"Nicht innerhalb der Betrachtungsdauer") +
     kpi(eur(realized+wbAll+refAll),"Bereits erwirtschaftet",`Seit ${dde(A.dates[0])}${inv?`, ${pct((realized+wbAll+refAll)/inv)} der Investition`:""}${tl.wbFrom?`, davon Wallbox ${eur(wbAll)}`:""}${refAll?`, davon Erstattungen ${eur(refAll)}`:""}`);
   const fc=[tl.s14K?`§14a-Gutschrift ${eur(tl.s14Year)} pro Jahr ab ${monthLabel(tl.s14K)} (Wert der Ausbau-Seite)`:"", tl.thgK?`THG-Prämie ${eur(tl.thgYear)} pro Jahr ab ${monthLabel(tl.thgK)} – nicht durch die Investition verursacht, sie gibt es für jedes E-Auto`:""].filter(Boolean);
-  $("am-wb-note").innerHTML = (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den eigenen Ladevorgängen „zu Hause“ gegenüber ${esc(tl.pub.name)} (kWh × Preis − Arbeitspreis, dazu die Grundgebühr je Monat ab Übergabe), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich, effektiv ${nf(tl.pubEff,2)} €/kWh öffentlich inkl. Grundgebühr. Solarstrom im Auto steckt bereits in der PV-Ersparnis; Fremdladungen zählen mit ihrer Marge (Erstattung − kWh × Arbeitspreis).`, true) : "");
+  const nx=tl.nextAp, nxNote=nx?flag(`Prognose ab ${monthLabel(nx.from.slice(0,7))} mit ${nf(nx.ap,2)} ct/kWh statt heute ${nf(tl.apNow*100,2)} ct/kWh (${nx.src==="tariff"?`eingetragener Tarif „${esc(nx.name||"")}“`:"Annahme unter „Annahmen“"}); die Strompreissteigerung läuft ab dann von diesem Preis weiter. Gilt für PV-Ersparnis und Wallbox.`):"";
+  $("am-wb-note").innerHTML = nxNote + (fc.length ? flag(`Prognose enthält ${fc.join("; ")}. Abschaltbar unter „Annahmen“. Gebuchte Gutschriften (Kategorie „Erstattung/Gutschrift“, Name mit „14a“ bzw. „THG“) ersetzen die Prognose für die folgenden 12 Monate.`, true) : "") + (tl.wbFrom ? flag(`Wallbox ab ${dde(tl.wbFrom)}: gemessen aus den eigenen Ladevorgängen „zu Hause“ gegenüber ${esc(tl.pub.name)} (kWh × Preis − Arbeitspreis, dazu die Grundgebühr je Monat ab Übergabe), Prognose ${eur(tl.wbYear)} pro Jahr aus dem Auto-Vergleich, effektiv ${nf(tl.pubEff,2)} €/kWh öffentlich inkl. Grundgebühr. Solarstrom im Auto steckt bereits in der PV-Ersparnis; Fremdladungen zählen mit ihrer Marge (Erstattung − kWh × Arbeitspreis).`, true) : "");
   renderPub(tl); renderPayoff(tl);
-  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th><th></th></tr></thead><tbody>${
-    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td><td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td><td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td><td></td></tr>`:""}</tfoot>`;
+  const gOk=S.invest.some(x=>"grp" in x);   // v0.64: Spalte „Gruppe“ erst nach docs/UPDATE_V64.sql
+  $("am-inv").innerHTML = `<thead><tr><th class="l">Position</th><th class="l">Kategorie</th><th class="l">Datum</th><th>Kosten €</th>${gOk?`<th class="l" title="Kauf, Verkauf, Erstattung und Rücksendekosten mit gleichem Gruppennamen werden miteinander verrechnet">Gruppe</th>`:""}<th></th></tr></thead><tbody>${
+    S.invest.map((x,i)=>`<tr><td class="l"><input type="text" style="min-width:200px" value="${esc(x.name)}" data-inv="${i}" data-k="name"></td><td class="l"><select data-inv="${i}" data-k="cat" style="width:auto">${INV_CATS.map(([k,l])=>`<option value="${k}" ${(x.cat||"pv")===k?"selected":""}>${l}</option>`).join("")}</select></td><td class="l"><input type="date" value="${esc(x.date)}" data-inv="${i}" data-k="date"></td><td><input type="number" step="0.01" value="${x.cost}" data-inv="${i}" data-k="cost" style="width:110px"></td>${gOk?`<td class="l"><input type="text" list="inv-grps" style="width:130px" value="${esc(x.grp||"")}" data-inv="${i}" data-k="grp" placeholder="–"></td>`:""}<td><button class="x" data-del-inv="${i}" aria-label="Löschen">×</button></td></tr>`).join("")}</tbody><tfoot><tr><td>Summe Investition</td><td></td><td></td><td>${eur(inv,2)}</td>${gOk?"<td></td>":""}<td></td></tr>${tl.refunds.length?`<tr><td>Erstattungen/Gutschriften (als Ersparnis)</td><td></td><td></td><td>${eur(tl.refunds.reduce((a,x)=>a+(+x.cost||0),0),2)}</td>${gOk?"<td></td>":""}<td></td></tr>`:""}</tfoot>`
+    + `<datalist id="inv-grps">${[...new Set(S.invest.map(x=>String(x.grp||"").trim()).filter(Boolean))].map(g=>`<option value="${esc(g)}">`).join("")}</datalist>`;
   renderOffers();
   if(first){
     const h=$("am-sl"); h.innerHTML="";
@@ -1423,6 +1426,11 @@ function renderAmort(first){
     slider(h,am,"feedin","Einspeisevergütung",0,10,0.5,"ct/kWh");
     const l=document.createElement("label"); l.className="f"; l.textContent="Einspeisevergütung gilt ab"; const i=document.createElement("input"); i.type="date"; i.value=am.feedinFrom||"";
     i.addEventListener("change",()=>{ am.feedinFrom=i.value; persist(); rerender(); }); l.appendChild(i); h.appendChild(l);
+    // v0.63: neuer Arbeitspreis Allgemeinstrom für die Prognose (z. B. Folgevertrag)
+    const ln=document.createElement("label"); ln.className="f"; ln.textContent="Neuer Arbeitspreis ab"; const dn=document.createElement("input"); dn.type="date"; dn.id="am-apnext-from"; dn.value=am.apNextFrom||"";
+    dn.addEventListener("change",()=>{ am.apNextFrom=dn.value; persist(); rerender(); }); ln.appendChild(dn); h.appendChild(ln);
+    const lp=document.createElement("label"); lp.className="f"; lp.textContent="Neuer Arbeitspreis ct/kWh (brutto)"; const pn=document.createElement("input"); pn.type="number"; pn.step="0.01"; pn.id="am-apnext"; pn.placeholder="leer = wie heute"; pn.value=am.apNext??"";
+    pn.addEventListener("change",()=>{ const v=parseNum(pn.value); am.apNext=v>0?v:null; persist(); rerender(); }); lp.appendChild(pn); h.appendChild(lp);
     // v0.18: Prognose von Gutschriften an/aus
     [["s14aFc","§14a-Gutschrift in der Prognose (Wert der Ausbau-Seite)"],["thg","THG-Prämie in der Prognose (nicht durch die Investition verursacht)"]].forEach(([k,t])=>{
       const c=document.createElement("label"); c.className="f check"; c.style.gridColumn="1/-1";
@@ -1444,15 +1452,16 @@ function renderPayoff(tl=C.amortTimeline()){
   if(!r.n||!tl.labels?.length){ $("am-pay-panel").hidden=true; return; } $("am-pay-panel").hidden=false;
   const cur=r.items.find(x=>x.state==="current"), nxt=r.byDate.find(x=>x.state==="next"||x.state==="later");
   $("am-pay-kpis").innerHTML =
-    kpi(`${nf(r.nPaid)} von ${nf(r.n)}`,"Käufe abbezahlt",`Stand ${monthLabel(r.nowK)} (laufender Monat hochgerechnet)`) +
+    kpi(`${nf(r.nPaid)} von ${nf(r.n)}`,"Käufe abbezahlt",`Stand ${monthLabel(r.nowK)} (laufender Monat hochgerechnet)${r.settled.length?`; ${nf(r.settled.length)} durch Retoure/Verkauf erledigt`:""}`) +
     kpi(eur(r.covered),"davon gedeckt",`von ${eur(r.total)} Kaufsumme (${pct(r.total?r.covered/r.total:0)})${r.sales?`; Verkäufe ${eur(r.sales)} eingerechnet`:""}`) +
     kpi(cur?pct(cur.pct):"–","Aktuell in Abzahlung",cur?`${esc(short(cur.name))}, noch ${eur(cur.rest)}`:"kein Kauf teilweise abbezahlt") +
     kpi(nxt&&nxt.paidK?monthLabel(nxt.paidK):"–","Nächster abbezahlt",nxt?(nxt.paidK?`${esc(short(nxt.name))} (Prognose)`:`${esc(short(nxt.name))}: nicht bis ${monthLabel(r.endK)}`):"alles abbezahlt");
-  const ic={paid:"✅",current:"◐",next:"○",later:"○"};
+  const ic={paid:"✅",current:"◐",next:"○",later:"○",settled:"↩"};
   $("am-pay-list").innerHTML=r.byDate.map(x=>{
+    if(x.state==="settled") return `<li class="settled"><span class="ic" aria-hidden="true">↩</span><div><div class="nm">${esc(x.name)}</div><div class="sub">Retoure/Verkauf · ${nf(x.n)} Buchungen · Kosten ${eur(x.cost,2)}</div></div><div class="st">erledigt ${monthLabel(x.paidK)}${x.result>0.005?`<div class="sub">Plus ${eur(x.result,2)}</div>`:""}</div></li>`;
     const st=x.state==="paid"?`abbezahlt ${monthLabel(x.paidK)}`:x.state==="current"?`${pct(x.pct)} · noch ${eur(x.rest)}${x.paidK?`<div class="sub">voraussichtlich ${monthLabel(x.paidK)}</div>`:""}`
       :x.paidK?`voraussichtlich ${monthLabel(x.paidK)}`:`nicht bis ${monthLabel(r.endK)}`;
-    return `<li class="${x.state}"><span class="ic" aria-hidden="true">${ic[x.state]}</span><div><div class="nm">${esc(x.name)}</div><div class="sub">gekauft ${dde(x.date)} · ${eur(x.cost,2)}</div></div><div class="st">${st}</div>${x.state==="current"?`<div class="pbar"><i style="width:${(x.pct*100).toFixed(1)}%"></i></div>`:""}</li>`; }).join("");
+    return `<li class="${x.state}"><span class="ic" aria-hidden="true">${ic[x.state]}</span><div><div class="nm">${esc(x.name)}</div><div class="sub">${x.group?`Gruppe: Kauf ${eur(x.buy,2)}, nach Verkauf/Retoure noch ${eur(x.cost,2)}`:`gekauft ${dde(x.date)} · ${eur(x.cost,2)}`}</div></div><div class="st">${st}</div>${x.state==="current"?`<div class="pbar"><i style="width:${(x.pct*100).toFixed(1)}%"></i></div>`:""}</li>`; }).join("");
 }
 const short=t=>{ t=String(t||""); const c=t.split(/[,–(]/)[0].trim(); return c.length>42?c.slice(0,40)+"…":c; };
 
